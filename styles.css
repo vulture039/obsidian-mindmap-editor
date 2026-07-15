@@ -1,0 +1,172 @@
+.mindmap-view {
+	padding: 0;
+}
+
+.mindmap-scroller {
+	width: 100%;
+	height: 100%;
+	overflow: auto;
+	outline: none;
+	cursor: grab;
+}
+
+.mindmap-canvas {
+	position: relative;
+	min-width: 100%;
+	min-height: 100%;
+}
+
+.mindmap-edges {
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+}
+
+.mindmap-empty {
+	padding: 24px;
+	color: var(--text-muted);
+}
+
+.mindmap-node {
+	--branch-color: var(--text-faint);
+	position: absolute;
+	display: flex;
+	align-items: center;
+	gap: 3px; /* checkbox-to-text: about one half-width space */
+	max-width: 300px;
+	padding: 4px 10px;
+	border: 2px solid var(--branch-color);
+	border-radius: 999px;
+	background: var(--background-primary);
+	font-size: var(--font-ui-small);
+	cursor: pointer;
+	user-select: none;
+}
+
+.mindmap-node-text {
+	min-width: 16px;
+	overflow-wrap: anywhere;
+}
+
+/* All nodes share the same pill outline (uniform corners, edges meet them
+   cleanly); headings stand out by weight and a strong color-tinted fill
+   instead of shape. Dashed borders stay reserved for the drop-target state. */
+.mindmap-node-heading {
+	font-weight: 600;
+	background: color-mix(
+		in srgb,
+		var(--branch-color) 30%,
+		var(--background-primary)
+	);
+}
+
+/* Read-only "✓ n done" pill standing in for hidden completed tasks. */
+.mindmap-node-summary {
+	border-style: dotted;
+	color: var(--text-muted);
+}
+
+.mindmap-node.is-selected {
+	box-shadow: 0 0 0 2px var(--interactive-accent);
+}
+
+.mindmap-node.is-drop-target {
+	box-shadow: 0 0 0 2px var(--interactive-accent);
+	border-style: dashed;
+}
+
+.mindmap-node.is-dragging {
+	opacity: 0.4;
+}
+
+/* Movable nodes show a grab cursor; the root (not movable) keeps pointer. */
+.mindmap-node.is-draggable {
+	cursor: grab;
+}
+
+.mindmap-canvas.is-drag-active,
+.mindmap-canvas.is-drag-active .mindmap-node {
+	cursor: grabbing;
+}
+
+/* While dragging, nodes that cannot accept the drop are dimmed. */
+.mindmap-canvas.is-drag-active .mindmap-node.is-invalid-target {
+	opacity: 0.35;
+	filter: grayscale(60%);
+}
+
+/* Sibling-reorder drop slot: an insertion bar in the gap, while the anchor
+   node nudges aside to visually make room. */
+.mindmap-drop-indicator {
+	position: absolute;
+	height: 4px;
+	border-radius: 2px;
+	background: var(--interactive-accent);
+	pointer-events: none;
+	z-index: 9;
+}
+
+.mindmap-canvas.is-drag-active .mindmap-node {
+	transition: transform 80ms ease;
+}
+
+.mindmap-node.is-shift-down {
+	transform: translateY(6px);
+}
+
+.mindmap-node.is-shift-up {
+	transform: translateY(-6px);
+}
+
+.mindmap-node.mindmap-ghost {
+	pointer-events: none;
+	opacity: 0.85;
+	z-index: 10;
+	box-shadow: var(--shadow-s);
+}
+
+.mindmap-node .mindmap-link {
+	color: var(--link-color, var(--interactive-accent));
+	text-decoration: underline;
+	cursor: pointer;
+}
+
+.mindmap-node.is-done .mindmap-node-text {
+	color: var(--text-muted);
+	text-decoration: line-through;
+}
+
+.mindmap-node-root {
+	border-color: var(--interactive-accent);
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	font-weight: 600;
+}
+
+/* The node itself shows a grab cursor; the checkbox is a click target, so
+   it advertises that on hover with a pointer, a slight grow, and an accent
+   ring. */
+.mindmap-checkbox {
+	margin: 0;
+	flex-shrink: 0;
+	cursor: pointer;
+	transition:
+		transform 80ms ease,
+		box-shadow 80ms ease;
+}
+
+.mindmap-checkbox:hover {
+	transform: scale(1.15);
+	border-color: var(--interactive-accent);
+	box-shadow: 0 0 0 2px
+		color-mix(in srgb, var(--interactive-accent) 30%, transparent);
+}
+
+/* Inline editor: a contenteditable span that shares .mindmap-node-text
+   styles, so the node size does not change between viewing and editing. */
+.mindmap-edit-input {
+	outline: none;
+	white-space: pre-wrap;
+	cursor: text;
+	user-select: text;
+}

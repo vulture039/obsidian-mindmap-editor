@@ -1,0 +1,9 @@
+{
+	"id": "mindmap-editor",
+	"name": "Mind map editor",
+	"version": "0.1.6",
+	"minAppVersion": "1.12.3",
+	"description": "Edit a note as a mind map: headings and lists become nodes, with clickable checkboxes for tasks.",
+	"author": "vulture039",
+	"isDesktopOnly": false
+}

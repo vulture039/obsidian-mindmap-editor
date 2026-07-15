@@ -1,0 +1,69 @@
+import { Notice, Plugin, WorkspaceLeaf } from 'obsidian';
+import { MindmapView, VIEW_TYPE_MINDMAP } from './mindmap-view';
+import {
+	DEFAULT_SETTINGS,
+	MindmapSettings,
+	MindmapSettingTab,
+} from './settings';
+
+export default class MindmapPlugin extends Plugin {
+	settings!: MindmapSettings;
+
+	async onload(): Promise<void> {
+		await this.loadSettings();
+		this.registerView(
+			VIEW_TYPE_MINDMAP,
+			(leaf: WorkspaceLeaf) => new MindmapView(leaf, this),
+		);
+		this.addRibbonIcon('git-fork', 'Open mind map', () => {
+			void this.openMindmap();
+		});
+		this.addCommand({
+			id: 'open-mindmap',
+			name: 'Open mind map for the active file',
+			callback: () => {
+				void this.openMindmap();
+			},
+		});
+		this.addSettingTab(new MindmapSettingTab(this.app, this));
+	}
+
+	private async openMindmap(): Promise<void> {
+		const file = this.app.workspace.getActiveFile();
+		if (!file || file.extension !== 'md') {
+			new Notice('Open a Markdown file first.');
+			return;
+		}
+		const existing =
+			this.app.workspace.getLeavesOfType(VIEW_TYPE_MINDMAP)[0];
+		const leaf = existing ?? this.openSplit();
+		await leaf.setViewState({
+			type: VIEW_TYPE_MINDMAP,
+			active: true,
+			state: { file: file.path },
+		});
+		await this.app.workspace.revealLeaf(leaf);
+	}
+
+	/** Opens a new pane split in the user's configured direction. */
+	openSplit(): WorkspaceLeaf {
+		return this.app.workspace.getLeaf('split', this.settings.splitDirection);
+	}
+
+	async loadSettings(): Promise<void> {
+		this.settings = Object.assign(
+			{},
+			DEFAULT_SETTINGS,
+			(await this.loadData()) as Partial<MindmapSettings>,
+		);
+	}
+
+	async saveSettings(): Promise<void> {
+		await this.saveData(this.settings);
+		for (const leaf of this.app.workspace.getLeavesOfType(
+			VIEW_TYPE_MINDMAP,
+		)) {
+			if (leaf.view instanceof MindmapView) leaf.view.refresh();
+		}
+	}
+}

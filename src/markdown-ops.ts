@@ -191,7 +191,7 @@ const INDENTED_LIST_RE = new RegExp(
 	String.raw`^(\s+)(?:${LIST_MARKER_SRC})\s`,
 );
 
-export function detectIndentUnit(lines: string[]): string {
+function detectIndentUnit(lines: string[]): string {
 	let best: string | null = null;
 	for (const line of lines) {
 		const m = INDENTED_LIST_RE.exec(line);
@@ -236,7 +236,11 @@ export function addChildOp(
 		const hasHeadings = node.children.some((c) => c.type === 'heading');
 		let at = lines.length;
 		while (at > 0 && (lines[at - 1] ?? '').trim() === '') at--;
-		lines.splice(at, 0, hasHeadings ? '# ' : task ? '- [ ] ' : '- ');
+		lines.splice(
+			at,
+			0,
+			hasHeadings ? headingPrefix(1) : listPrefix('', '-', task ?? false),
+		);
 		return { lines, insertedLine: at };
 	}
 	if (node.type === 'heading') {

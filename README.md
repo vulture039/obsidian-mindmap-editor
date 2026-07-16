@@ -13,24 +13,31 @@ Markdown change.
 
 ## Features
 
-- **Automatic mind map** from headings and bullet lists; the note title is
-  the root. Headings are bold pills with a color-tinted fill, list items are
-  plain pills.
-- **Edit on the map**: rename, add, delete, drag & drop. Dropping on a
-  node's middle makes it a child; dropping near a sibling's top/bottom edge
-  inserts it there (an insertion bar appears and the sibling makes room).
-- **Working checkboxes**: clicking toggles `[ ]` ⇄ `[x]` in the file.
-- **Collapse completed tasks**: the check-check header button folds checked
-  tasks into one `✓ n done` pill per parent. Click a pill to reveal just
-  that parent (`− hide done` folds it back). Remembered across sessions.
-- **Click to jump**: clicking a node moves the editor cursor to its line
-  and briefly highlights it.
-- **Follow wikilinks**: clicking a `[[wikilink]]` switches map and editor
-  to the linked note together. The jump joins the tab's navigation history,
-  so Obsidian's Navigate back/forward, the tab-header arrows, and the mouse
-  back button all return.
-- **Branch colors**: each top-level branch gets a palette color by position
-  and its subtree inherits it. Pin colors in settings, one rule per line:
+- Automatic mind map  
+  Headings and bullet lists become nodes, with the note title as the root.
+  Headings are bold pills with a color-tinted fill; list items are plain
+  pills.
+- Edit on the map  
+  Rename, add, delete, drag & drop. Dropping on a node's middle makes it a
+  child; dropping near a sibling's top/bottom edge inserts it there (an
+  insertion bar appears and the sibling makes room).
+- Working checkboxes  
+  Clicking toggles `[ ]` ⇄ `[x]` in the file.
+- Collapse completed tasks  
+  The check-check header button folds checked tasks into one `✓ n done`
+  pill per parent. Click a pill to reveal just that parent (`− hide done`
+  folds it back). Remembered across sessions.
+- Click to jump  
+  Clicking a node moves the editor cursor to its line and briefly
+  highlights it.
+- Follow wikilinks  
+  Clicking a `[[wikilink]]` switches map and editor to the linked note
+  together. The jump joins the tab's navigation history, so Obsidian's
+  Navigate back/forward, the tab-header arrows, and the mouse back button
+  all return.
+- Branch colors  
+  Each top-level branch gets a palette color by position and its subtree
+  inherits it. Pin colors in settings, one rule per line:
   `Project A: #3b82f6`.
 
 ## Keyboard shortcuts
@@ -56,9 +63,14 @@ or mouse back/forward buttons).
 
 ## Settings
 
-**Settings → Mind map editor**: follow active file (default on), hide
-completed tasks, split direction (side by side / stacked; also updates
-itself when you rearrange the map pane), and branch color overrides.
+**Settings → Mind map editor**:
+
+- Follow active file (default on)
+- Hide completed tasks
+- Split direction  
+  Side by side / stacked; also updates itself when you rearrange the map
+  pane.
+- Branch color overrides
 
 ## Development
 

@@ -1,4 +1,4 @@
-export const PALETTE = [
+const PALETTE = [
 	'#3b82f6', // blue
 	'#ef4444', // red
 	'#22c55e', // green

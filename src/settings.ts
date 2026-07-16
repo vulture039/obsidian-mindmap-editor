@@ -1,4 +1,9 @@
-import { App, PluginSettingTab, Setting } from 'obsidian';
+import {
+	App,
+	PluginSettingTab,
+	Setting,
+	SettingDefinitionItem,
+} from 'obsidian';
 import type MindmapPlugin from './main';
 
 export interface MindmapSettings {
@@ -26,68 +31,94 @@ export class MindmapSettingTab extends PluginSettingTab {
 		this.plugin = plugin;
 	}
 
+	/** Declarative settings (Obsidian 1.13+): rendered by the app and
+	 *  included in the global settings search. */
+	getSettingDefinitions(): SettingDefinitionItem[] {
+		return [
+			{
+				name: 'Follow active file',
+				desc: 'Switch the mind map to whichever Markdown file becomes active.',
+				control: { type: 'toggle', key: 'followActiveFile' },
+			},
+			{
+				name: 'Hide completed tasks',
+				desc: 'Collapse checked tasks into one "✓ n done" node per parent. Also toggled with the check-check button in the view header.',
+				control: { type: 'toggle', key: 'hideCompleted' },
+			},
+			{
+				name: 'Split direction',
+				desc: 'How the workspace splits when the plugin opens a new pane (mind map or editor). Updates automatically when you rearrange the mind map pane.',
+				control: {
+					type: 'dropdown',
+					key: 'splitDirection',
+					defaultValue: 'vertical',
+					options: {
+						vertical: 'Side by side (left and right)',
+						horizontal: 'Stacked (top and bottom)',
+					},
+				},
+			},
+			{
+				name: 'Branch colors',
+				desc: 'Override automatic branch colors. One rule per line, in the form "top-level heading text: #rrggbb". Branches without a rule keep their automatic color.',
+				control: {
+					type: 'textarea',
+					key: 'colorOverrides',
+					placeholder: 'Projects: #e5484d',
+					rows: 5,
+				},
+			},
+		];
+	}
+
+	getControlValue(key: string): unknown {
+		return (this.plugin.settings as unknown as Record<string, unknown>)[
+			key
+		];
+	}
+
+	/** Persist through the plugin so open mind map views refresh on every
+	 *  change (the default would call saveData and skip that). */
+	async setControlValue(key: string, value: unknown): Promise<void> {
+		(this.plugin.settings as unknown as Record<string, unknown>)[key] =
+			value;
+		await this.plugin.saveSettings();
+	}
+
+	/** Fallback for Obsidian < 1.13, built from the same definitions. */
 	display(): void {
 		const { containerEl } = this;
 		containerEl.empty();
-
-		new Setting(containerEl)
-			.setName('Follow active file')
-			.setDesc(
-				'Switch the mind map to whichever Markdown file becomes active.',
-			)
-			.addToggle((toggle) =>
-				toggle
-					.setValue(this.plugin.settings.followActiveFile)
-					.onChange(async (value) => {
-						this.plugin.settings.followActiveFile = value;
-						await this.plugin.saveSettings();
-					}),
-			);
-
-		new Setting(containerEl)
-			.setName('Hide completed tasks')
-			.setDesc(
-				'Collapse checked tasks into one "✓ n done" node per parent. Also toggled with the check-check button in the view header.',
-			)
-			.addToggle((toggle) =>
-				toggle
-					.setValue(this.plugin.settings.hideCompleted)
-					.onChange(async (value) => {
-						this.plugin.settings.hideCompleted = value;
-						await this.plugin.saveSettings();
-					}),
-			);
-
-		new Setting(containerEl)
-			.setName('Split direction')
-			.setDesc(
-				'How the workspace splits when the plugin opens a new pane (mind map or editor). Updates automatically when you rearrange the mind map pane.',
-			)
-			.addDropdown((dropdown) =>
-				dropdown
-					.addOption('vertical', 'Side by side (left and right)')
-					.addOption('horizontal', 'Stacked (top and bottom)')
-					.setValue(this.plugin.settings.splitDirection)
-					.onChange(async (value) => {
-						this.plugin.settings.splitDirection =
-							value === 'horizontal' ? 'horizontal' : 'vertical';
-						await this.plugin.saveSettings();
-					}),
-			);
-
-		new Setting(containerEl)
-			.setName('Branch colors')
-			.setDesc(
-				'Override automatic branch colors. One rule per line, in the form "top-level heading text: #rrggbb". Branches without a rule keep their automatic color.',
-			)
-			.addTextArea((text) => {
-				text.setPlaceholder('Projects: #e5484d')
-					.setValue(this.plugin.settings.colorOverrides)
-					.onChange(async (value) => {
-						this.plugin.settings.colorOverrides = value;
-						await this.plugin.saveSettings();
-					});
-				text.inputEl.rows = 5;
-			});
+		const str = (v: unknown): string => (typeof v === 'string' ? v : '');
+		for (const def of this.getSettingDefinitions()) {
+			if (!('control' in def) || !def.control) continue;
+			const control = def.control;
+			const setting = new Setting(containerEl).setName(def.name);
+			if (typeof def.desc === 'string') setting.setDesc(def.desc);
+			if (control.type === 'toggle') {
+				setting.addToggle((toggle) =>
+					toggle
+						.setValue(Boolean(this.getControlValue(control.key)))
+						.onChange((v) => this.setControlValue(control.key, v)),
+				);
+			} else if (control.type === 'dropdown') {
+				setting.addDropdown((dropdown) =>
+					dropdown
+						.addOptions(control.options)
+						.setValue(
+							str(this.getControlValue(control.key)) ||
+								(control.defaultValue ?? ''),
+						)
+						.onChange((v) => this.setControlValue(control.key, v)),
+				);
+			} else if (control.type === 'textarea') {
+				setting.addTextArea((text) => {
+					text.setPlaceholder(control.placeholder ?? '')
+						.setValue(str(this.getControlValue(control.key)))
+						.onChange((v) => this.setControlValue(control.key, v));
+					if (control.rows) text.inputEl.rows = control.rows;
+				});
+			}
+		}
 	}
 }

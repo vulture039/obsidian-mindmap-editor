@@ -1,4 +1,4 @@
-const PALETTE = [
+export const DEFAULT_PALETTE = [
 	'#3b82f6', // blue
 	'#ef4444', // red
 	'#22c55e', // green
@@ -13,25 +13,17 @@ const PALETTE = [
 	'#eab308', // yellow
 ];
 
-/** Parses "Heading text: #rrggbb" lines from the settings textarea. */
-export function parseColorOverrides(raw: string): Map<string, string> {
-	const map = new Map<string, string>();
-	for (const line of raw.split('\n')) {
-		const i = line.lastIndexOf(':');
-		if (i < 0) continue;
-		const key = line.slice(0, i).trim();
-		const value = line.slice(i + 1).trim();
-		if (key && value) map.set(key, value);
-	}
-	return map;
+/** Parses one color per line from the settings textarea. Falls back to
+ *  the default palette if the result would otherwise be empty. */
+export function parsePalette(raw: string): string[] {
+	const colors = raw
+		.split('\n')
+		.map((line) => line.trim())
+		.filter((line) => line.length > 0);
+	return colors.length > 0 ? colors : DEFAULT_PALETTE;
 }
 
-export function branchColorFor(
-	text: string,
-	index: number,
-	overrides: Map<string, string>,
-): string {
-	const override = overrides.get(text);
-	if (override) return override;
-	return PALETTE[index % PALETTE.length] ?? '#888888';
+export function branchColorFor(index: number, palette: string[]): string {
+	// palette is always non-empty: parsePalette guarantees it.
+	return palette[index % palette.length]!;
 }

@@ -23,7 +23,8 @@ src/
   markdown-ops.ts  Mutation ops (setText/setCheckbox/add/delete/move/reorder),
                    updateFileLines (editor open → replaceRange, else vault.process)
   layout.ts        Left-to-right tree layout (measures real DOM offsetWidth/Height)
-  colors.ts        Automatic per-branch colors + user overrides
+  colors.ts        Per-branch colors, cycled by position from a
+                   user-configurable palette (settings)
   node-text.ts     Node text rendering (wikilinks / md links become links)
   settings.ts      Settings tab
 styles.css         All styles

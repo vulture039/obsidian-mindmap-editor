@@ -8,7 +8,7 @@ import type MindmapPlugin from './main';
 
 export interface MindmapSettings {
 	followActiveFile: boolean;
-	colorOverrides: string;
+	palette: string;
 	/** Collapse checked tasks into "✓ n done" pills; toggled from the view
 	 *  header too, and remembered across sessions. */
 	hideCompleted: boolean;
@@ -18,7 +18,7 @@ export interface MindmapSettings {
 
 export const DEFAULT_SETTINGS: MindmapSettings = {
 	followActiveFile: true,
-	colorOverrides: '',
+	palette: '',
 	hideCompleted: false,
 	splitDirection: 'vertical',
 };
@@ -60,11 +60,11 @@ export class MindmapSettingTab extends PluginSettingTab {
 			},
 			{
 				name: 'Branch colors',
-				desc: 'Override automatic branch colors. One rule per line, in the form "top-level heading text: #rrggbb". Branches without a rule keep their automatic color.',
+				desc: 'Colors assigned to top-level branches by position, one hex color per line. Branches beyond the last line cycle back to the first. Leave empty for the default palette.',
 				control: {
 					type: 'textarea',
-					key: 'colorOverrides',
-					placeholder: 'Projects: #e5484d',
+					key: 'palette',
+					placeholder: '#3b82f6\n#ef4444\n#22c55e',
 					rows: 5,
 				},
 			},

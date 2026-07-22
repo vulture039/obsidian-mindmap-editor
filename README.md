@@ -8,7 +8,7 @@ Markdown change.
 ## Usage
 
 1. Open a Markdown file.
-2. Run **Open mind map for the active file** (or click the ribbon icon).
+2. Press Ctrl+P (Cmd+P on macOS) and run **Open mind map for the active file** (or click the ribbon icon).
 3. The map opens in a split and stays in sync while you type.
 
 ## Features
@@ -19,12 +19,11 @@ Markdown change.
   pills.
 - Edit on the map  
   Rename, add, delete, drag & drop. Dropping on a node's middle makes it a
-  child; dropping near a sibling's top/bottom edge inserts it there (an
-  insertion bar appears and the sibling makes room).
+  child; dropping near a sibling's top/bottom edge inserts it there.
 - Working checkboxes  
   Clicking toggles `[ ]` ⇄ `[x]` in the file.
 - Collapse completed tasks  
-  The check-check header button folds checked tasks into one `✓ n done`
+  The `✓✓` header button folds checked tasks into one `✓ n done`
   pill per parent. Click a pill to reveal just that parent (`− hide done`
   folds it back). Remembered across sessions.
 - Click to jump  
@@ -32,13 +31,10 @@ Markdown change.
   highlights it.
 - Follow wikilinks  
   Clicking a `[[wikilink]]` switches map and editor to the linked note
-  together. The jump joins the tab's navigation history, so Obsidian's
-  Navigate back/forward, the tab-header arrows, and the mouse back button
-  all return.
+  together.
 - Branch colors  
   Each top-level branch gets a palette color by position and its subtree
-  inherits it. Pin colors in settings, one rule per line:
-  `Project A: #3b82f6`.
+  inherits it. Customize the palette in settings, one hex color per line.
 
 ## Keyboard shortcuts
 
@@ -57,9 +53,8 @@ click-to-jump).
 | `Delete` / `Backspace` | Delete the node and its subtree |
 | `Esc` | Clear the selection |
 
-Back/forward use Obsidian's own **Navigate back / forward** (macOS
-`Cmd + Option + ←/→`, Windows/Linux `Ctrl + Alt + ←/→`, tab-header arrows,
-or mouse back/forward buttons).
+Back/forward use Obsidian's own **Navigate back / forward** command:  
+`Ctrl + Alt + ←/→` (`Cmd + Option + ←/→` on macOS).
 
 ## Settings
 
@@ -70,7 +65,8 @@ or mouse back/forward buttons).
 - Split direction  
   Side by side / stacked; also updates itself when you rearrange the map
   pane.
-- Branch color overrides
+- Branch colors  
+  Custom palette, one hex color per line.
 
 ## Development
 
@@ -81,5 +77,10 @@ npm run build  # type check + production build
 npm run lint
 ```
 
-Copy `main.js`, `manifest.json`, and `styles.css` into
-`<Vault>/.obsidian/plugins/mindmap-editor/` to test in a vault.
+To test the plugin in a vault, copy the following files into:
+
+`<Vault>/.obsidian/plugins/mindmap-editor/`
+
+- `main.js`
+- `manifest.json`
+- `styles.css`

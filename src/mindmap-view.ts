@@ -18,7 +18,7 @@ import {
 	parseMarkdown,
 } from './parser';
 import { LaidNode, layoutTree, makeLaid } from './layout';
-import { branchColorFor, parseColorOverrides } from './colors';
+import { branchColorFor, parsePalette } from './colors';
 import { renderNodeText } from './node-text';
 import {
 	addChildOp,
@@ -457,10 +457,8 @@ export class MindmapView extends ItemView {
 		this.renderedWhileHidden = this.contentEl.offsetHeight === 0;
 
 		const svg = this.canvasEl.createSvg('svg', { cls: 'mindmap-edges' });
-		const overrides = parseColorOverrides(
-			this.plugin.settings.colorOverrides,
-		);
-		const laidRoot = this.buildNode(this.root, '', overrides);
+		const palette = parsePalette(this.plugin.settings.palette);
+		const laidRoot = this.buildNode(this.root, '', palette);
 		const { width, height } = layoutTree(laidRoot);
 		this.applyPositions(laidRoot);
 		this.drawEdges(svg, laidRoot);
@@ -490,7 +488,7 @@ export class MindmapView extends ItemView {
 	private buildNode(
 		node: MindNode,
 		color: string,
-		overrides: Map<string, string>,
+		palette: string[],
 	): LaidNode {
 		const el = this.canvasEl.createDiv({
 			cls: ['mindmap-node', `mindmap-node-${node.type}`],
@@ -501,7 +499,7 @@ export class MindmapView extends ItemView {
 			own = '';
 		} else if (node.parent?.type === 'root') {
 			const index = node.parent.children.indexOf(node);
-			own = branchColorFor(node.text, index, overrides);
+			own = branchColorFor(index, palette);
 		}
 		if (own) el.setCssProps({ '--branch-color': own });
 
@@ -557,7 +555,7 @@ export class MindmapView extends ItemView {
 				continue;
 			}
 			if (isCompletedTask(child)) shownDone++;
-			laid.children.push(this.buildNode(child, own, overrides));
+			laid.children.push(this.buildNode(child, own, palette));
 		}
 		if (hiddenDone > 0) {
 			laid.children.push(this.buildDonePill(node, hiddenDone, own));

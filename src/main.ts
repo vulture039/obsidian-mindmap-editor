@@ -25,7 +25,25 @@ export default class MindmapPlugin extends Plugin {
 				void this.openMindmap();
 			},
 		});
+		this.addCommand({
+			id: 'toggle-map-focus',
+			name: 'Toggle focus between mind map and Markdown editor',
+			callback: () => {
+				void this.toggleMindmapFocus();
+			},
+		});
 		this.addSettingTab(new MindmapSettingTab(this.app, this));
+	}
+
+	/** From the map, focuses its Markdown pane; from Markdown, focuses (or
+	 *  opens) the mind map for the active file. */
+	private async toggleMindmapFocus(): Promise<void> {
+		const mindmap = this.app.workspace.getActiveViewOfType(MindmapView);
+		if (mindmap) {
+			await mindmap.focusEditor();
+			return;
+		}
+		await this.openMindmap();
 	}
 
 	private async openMindmap(): Promise<void> {

@@ -7,7 +7,7 @@ heading depth and list indentation define the hierarchy, and every edit on the m
 ## Usage
 
 1. Open a Markdown file.
-2. Press Ctrl+P (Cmd+P on macOS) and run **Open mind map for the active file** (or click the ribbon icon).
+2. Press Ctrl+P (Cmd+P on macOS) and run `Open mind map for the active file` (or click the ribbon icon).
 3. The map opens in a split and stays in sync while you type.
 
 ## Features
@@ -24,8 +24,10 @@ heading depth and list indentation define the hierarchy, and every edit on the m
   The `✓✓` header button folds checked tasks into one `✓ n done` pill per parent. 
   Click a pill to reveal just that parent (`− hide done` folds it back). 
   Remembered across sessions.
-- Click to jump  
-  Clicking a node moves the editor cursor to its line and briefly highlights it.
+- The editor always follows the selection  
+  Selecting a node — by click or arrow keys — moves the Markdown editor's
+  cursor to its line and briefly highlights it, without stealing focus
+  from the map.
 - Follow wikilinks  
   Clicking a `[[wikilink]]` switches map and editor to the linked note together.
 - Branch colors  
@@ -34,7 +36,7 @@ heading depth and list indentation define the hierarchy, and every edit on the m
 
 ## Keyboard shortcuts
 
-Active while the mind map pane is focused (focus stays on the map after a click-to-jump).
+Active while the mind map pane is focused.
 
 | Key | Action |
 | --- | --- |
@@ -48,8 +50,11 @@ Active while the mind map pane is focused (focus stays on the map after a click-
 | `Delete` / `Backspace` | Delete the node and its subtree |
 | `Esc` | Clear the selection |
 
-Back/forward use Obsidian's own **Navigate back / forward** command:  
+Back/forward use Obsidian's own Navigate back / forward command:  
 `Ctrl + Alt + ←/→` (`Cmd + Option + ←/→` on macOS).
+
+`Toggle focus between mind map and Markdown editor` can be bound to one in
+Settings → Hotkeys to jump between the two.
 
 ## Settings
 

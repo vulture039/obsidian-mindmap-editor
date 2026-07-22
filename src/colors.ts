@@ -1,16 +1,16 @@
 export const DEFAULT_PALETTE = [
-	'#3b82f6', // blue
-	'#ef4444', // red
-	'#22c55e', // green
-	'#f59e0b', // amber
-	'#a855f7', // purple
-	'#06b6d4', // cyan
-	'#ec4899', // pink
-	'#84cc16', // lime
-	'#f97316', // orange
-	'#6366f1', // indigo
-	'#14b8a6', // teal
-	'#eab308', // yellow
+	'#3b82f6',
+	'#ef4444',
+	'#22c55e',
+	'#f59e0b',
+	'#a855f7',
+	'#06b6d4',
+	'#ec4899',
+	'#84cc16',
+	'#f97316',
+	'#6366f1',
+	'#14b8a6',
+	'#eab308',
 ];
 
 /** Parses one color per line from the settings textarea. Falls back to

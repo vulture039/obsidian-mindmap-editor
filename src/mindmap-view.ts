@@ -543,7 +543,6 @@ export class MindmapView extends ItemView {
 		el.addEventListener('click', (e) => {
 			e.stopPropagation();
 			this.selectNode(node, el);
-			void this.focusLineInEditor(node);
 		});
 		el.addEventListener('dblclick', (e) => {
 			e.stopPropagation();
@@ -639,6 +638,9 @@ export class MindmapView extends ItemView {
 		el.addClass('is-selected');
 		this.selectedLine = node.line;
 		this.scrollerEl.focus({ preventScroll: true });
+		// The editor always follows the current selection, whether it came
+		// from a click or from arrow-key navigation.
+		void this.focusLineInEditor(node);
 	}
 
 	private clearSelectionClass(): void {
@@ -687,24 +689,42 @@ export class MindmapView extends ItemView {
 	}
 
 	/**
+	 * Picks which Markdown pane to reuse: the one the user was last actually
+	 * looking at over an arbitrary open tab (getLeavesOfType's order is
+	 * unrelated to focus), else any open Markdown leaf, else a new split.
+	 */
+	private resolveEditorLeaf(): WorkspaceLeaf {
+		const markdownLeaves = this.app.workspace.getLeavesOfType('markdown');
+		return (
+			(this.lastActiveMarkdownLeaf &&
+				markdownLeaves.includes(this.lastActiveMarkdownLeaf) &&
+				this.lastActiveMarkdownLeaf) ||
+			markdownLeaves[0] ||
+			this.plugin.openSplit()
+		);
+	}
+
+	/**
 	 * Shows `file` in a Markdown pane (reusing an existing one, else
 	 * splitting) without stealing focus, so the editor always tracks the
 	 * file the map is showing.
 	 */
 	private async syncEditorTo(file: TFile): Promise<void> {
 		if (findMarkdownView(this.app, file)) return;
-		const markdownLeaves = this.app.workspace.getLeavesOfType('markdown');
-		// Prefer the Markdown pane the user was last actually looking at over
-		// an arbitrary open tab (getLeavesOfType's order is unrelated to
-		// focus) — otherwise a wikilink follow can hijack an unfocused,
-		// unrelated tab elsewhere in the workspace.
-		const leaf =
-			(this.lastActiveMarkdownLeaf &&
-				markdownLeaves.includes(this.lastActiveMarkdownLeaf) &&
-				this.lastActiveMarkdownLeaf) ||
-			markdownLeaves[0] ||
-			this.plugin.openSplit();
-		await leaf.openFile(file, { active: false });
+		await this.resolveEditorLeaf().openFile(file, { active: false });
+	}
+
+	/**
+	 * Reveals and focuses the Markdown pane for this map's file, opening one
+	 * if none is open yet. The other half of the mind-map/Markdown toggle
+	 * command (see `openMindmap` in main.ts for the reverse direction).
+	 */
+	async focusEditor(): Promise<void> {
+		if (!this.file) return;
+		const existing = findMarkdownView(this.app, this.file);
+		const leaf = existing?.leaf ?? this.resolveEditorLeaf();
+		if (!existing) await leaf.openFile(this.file, { active: false });
+		this.app.workspace.setActiveLeaf(leaf, { focus: true });
 	}
 
 	/**
@@ -721,6 +741,11 @@ export class MindmapView extends ItemView {
 		});
 	}
 
+	/**
+	 * Moves the editor cursor to `node`'s line, without stealing keyboard
+	 * focus from the map — selecting a node (click or arrow keys) always
+	 * calls this, so the map stays navigable throughout.
+	 */
 	private async focusLineInEditor(node: MindNode): Promise<void> {
 		if (!this.file || node.line < 0) return;
 		const mdView = findMarkdownView(this.app, this.file);
@@ -740,7 +765,6 @@ export class MindmapView extends ItemView {
 			// line (same mechanism as search results / outline clicks) to
 			// make the jump target visible.
 			mdView.setEphemeralState({ line: node.line });
-			// Keep keyboard focus on the map so Enter/Tab keep working.
 			this.scrollerEl.focus({ preventScroll: true });
 		} else {
 			const leaf = this.app.workspace.getLeaf(

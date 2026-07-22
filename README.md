@@ -1,6 +1,6 @@
 # Mind map editor
 
-Edit your outline as a mind map, synced to Markdown. 
+Edit your outline as a mind map, synced to Markdown.
 No new file format, no markup to add.
 
 ![Demo: reordering and reparenting nodes by drag & drop, checking off a task, and renaming a node - all saved back to the Markdown file live](docs/demo.gif)
@@ -31,17 +31,17 @@ No new file format, no markup to add.
 
 Active while the mind map pane is focused.
 
-| Key | Action |
-| --- | --- |
-| `↑` / `↓` | Select previous / next sibling |
-| `←` / `→` | Select parent / first child |
-| `Shift + ↑/↓` | Move the node among its siblings (also in the right-click menu) |
-| `Enter` | Add a sibling (a child on the root) |
-| `Tab` | Add a child |
-| `F2` | Rename (same as double-click); `Enter` saves, `Esc` cancels |
-| `Space` | Toggle the selected task's checkbox |
-| `Delete` / `Backspace` | Delete the node and its subtree |
-| `Esc` | Clear the selection |
+| Key                    | Action                                                          |
+| ---------------------- | --------------------------------------------------------------- |
+| `↑` / `↓`              | Select previous / next sibling                                  |
+| `←` / `→`              | Select parent / first child                                     |
+| `Shift + ↑/↓`          | Move the node among its siblings (also in the right-click menu) |
+| `Enter`                | Add a sibling (a child on the root)                             |
+| `Tab`                  | Add a child                                                     |
+| `F2`                   | Rename (same as double-click); `Enter` saves, `Esc` cancels     |
+| `Space`                | Toggle the selected task's checkbox                             |
+| `Delete` / `Backspace` | Delete the node and its subtree                                 |
+| `Esc`                  | Clear the selection                                             |
 
 Back/forward use Obsidian's own Navigate back / forward command:
 `Ctrl + Alt + ←/→` (`Cmd + Option + ←/→` on macOS).

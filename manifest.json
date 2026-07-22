@@ -3,7 +3,7 @@
 	"name": "Mind map editor",
 	"version": "0.1.6",
 	"minAppVersion": "1.12.3",
-	"description": "Edit a note as a mind map: headings and lists become nodes, with clickable checkboxes for tasks.",
+	"description": "Edit your outline as a mind map, synced to Markdown.",
 	"author": "vulture039",
 	"isDesktopOnly": false
 }

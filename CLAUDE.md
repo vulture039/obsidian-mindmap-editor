@@ -5,8 +5,8 @@ mind map and writes every map edit back to the .md file.
 
 ## Design principles
 - Markdown text is the source of truth  
-  The map is a projection of the parse result and has no storage format of
-  its own. Heading depth + list indentation define the hierarchy.
+  The map is a projection of the parse result, recomputed on every render;
+  it has no storage format of its own.
 - Write ops validate line freshness  
   Each node keeps `line`/`endLine`. Ops check `lineMatchesNode` before
   running and throw on mismatch → notice + re-render.
@@ -78,9 +78,3 @@ styles.css         All styles
   Opposite of intuition — don't use axis names in UI labels. Auto-saved on
   layout-change from the DOM's mod-vertical/mod-horizontal classes (not
   overwritten when the map is the only pane).
-
-## Verification
-Ops logic runs standalone in Node.
-
-Deploy: copy manifest.json, main.js, and styles.css into
-`<vault>/.obsidian/plugins/mindmap-editor/`.

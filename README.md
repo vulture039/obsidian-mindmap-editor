@@ -1,8 +1,9 @@
 # Mind map editor
 
-An Obsidian plugin that shows a note as a mind map you can edit directly.
-The Markdown file is the source of truth: 
-heading depth and list indentation define the hierarchy, and every edit on the map is saved back as a plain Markdown change.
+Edit your outline as a mind map, synced to Markdown. 
+No new file format, no markup to add.
+
+![Demo: reordering and reparenting nodes by drag & drop, checking off a task, and renaming a node - all saved back to the Markdown file live](docs/demo.gif)
 
 ## Usage
 
@@ -12,26 +13,18 @@ heading depth and list indentation define the hierarchy, and every edit on the m
 
 ## Features
 
-- Automatic mind map  
-  Headings and bullet lists become nodes, with the note title as the root.
+- **Automatic mind map** - Headings and bullet lists become nodes, with the note title as the root;
+  heading depth and list indentation define the hierarchy.
   Headings are bold pills with a color-tinted fill; list items are plain pills.
-- Edit on the map  
-  Rename, add, delete, drag & drop. Dropping on a node's middle makes it a child; 
+- **Edit on the map** - Rename, add, delete, drag & drop. Dropping on a node's middle makes it a child;
   dropping near a sibling's top/bottom edge inserts it there.
-- Working checkboxes  
-  Clicking toggles `[ ]` ⇄ `[x]` in the file.
-- Collapse completed tasks  
-  The `✓✓` header button folds checked tasks into one `✓ n done` pill per parent. 
-  Click a pill to reveal just that parent (`− hide done` folds it back). 
+- **Working checkboxes** - Clicking toggles `[ ]` ⇄ `[x]` in the file.
+- **Collapse completed tasks** - The `✓✓` header button folds checked tasks into one `✓ n done` pill per parent.
+  Click a pill to reveal just that parent (`− hide done` folds it back).
   Remembered across sessions.
-- The editor always follows the selection  
-  Selecting a node — by click or arrow keys — moves the Markdown editor's
-  cursor to its line and briefly highlights it, without stealing focus
-  from the map.
-- Follow wikilinks  
-  Clicking a `[[wikilink]]` switches map and editor to the linked note together.
-- Branch colors  
-  Each top-level branch gets a palette color by position and its subtree inherits it.
+- **The editor always follows the selection** - Selecting a node (by click or arrow keys) moves the Markdown editor's cursor to its line and briefly highlights it, without stealing focus from the map.
+- **Follow wikilinks** - Clicking a `[[wikilink]]` switches map and editor to the linked note together.
+- **Branch colors** - Each top-level branch gets a palette color by position and its subtree inherits it.
   Customize the palette in settings, one hex color per line.
 
 ## Keyboard shortcuts
@@ -50,7 +43,7 @@ Active while the mind map pane is focused.
 | `Delete` / `Backspace` | Delete the node and its subtree |
 | `Esc` | Clear the selection |
 
-Back/forward use Obsidian's own Navigate back / forward command:  
+Back/forward use Obsidian's own Navigate back / forward command:
 `Ctrl + Alt + ←/→` (`Cmd + Option + ←/→` on macOS).
 
 `Toggle focus between mind map and Markdown editor` can be bound to one in
@@ -60,12 +53,10 @@ Settings → Hotkeys to jump between the two.
 
 **Settings → Mind map editor**:
 
-- Follow active file (default on)
-- Hide completed tasks
-- Split direction  
-  Side by side / stacked; also updates itself when you rearrange the map pane.
-- Branch colors  
-  Custom palette, one hex color per line.
+- **Follow active file** (default on)
+- **Hide completed tasks**
+- **Split direction** - Side by side / stacked; also updates itself when you rearrange the map pane.
+- **Branch colors** - Custom palette, one hex color per line.
 
 ## Development
 

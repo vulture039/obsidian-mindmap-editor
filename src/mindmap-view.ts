@@ -2,6 +2,7 @@ import {
 	debounce,
 	ItemView,
 	Keymap,
+	MarkdownView,
 	Menu,
 	Notice,
 	Scope,
@@ -73,6 +74,10 @@ export class MindmapView extends ItemView {
 	/** Parents (by line) whose completed tasks are shown despite
 	 *  hideCompleted, via a click on their "✓ n done" pill. */
 	private expandedDone = new Set<number>();
+	/** Most recently focused Markdown leaf, so syncEditorTo reuses the
+	 *  editor the user was actually looking at instead of an arbitrary
+	 *  (and possibly unfocused) open tab. */
+	private lastActiveMarkdownLeaf: WorkspaceLeaf | null = null;
 
 	/** Checked tasks collapse into one "✓ n done" pill per parent. Backed by
 	 *  plugin settings so the choice survives restarts. */
@@ -305,6 +310,13 @@ export class MindmapView extends ItemView {
 		this.registerEvent(
 			this.app.workspace.on('editor-change', (_editor, info) => {
 				if (info.file === this.file) this.requestRender();
+			}),
+		);
+		this.registerEvent(
+			this.app.workspace.on('active-leaf-change', (leaf) => {
+				if (leaf?.view instanceof MarkdownView) {
+					this.lastActiveMarkdownLeaf = leaf;
+				}
 			}),
 		);
 		this.registerEvent(
@@ -681,8 +693,16 @@ export class MindmapView extends ItemView {
 	 */
 	private async syncEditorTo(file: TFile): Promise<void> {
 		if (findMarkdownView(this.app, file)) return;
+		const markdownLeaves = this.app.workspace.getLeavesOfType('markdown');
+		// Prefer the Markdown pane the user was last actually looking at over
+		// an arbitrary open tab (getLeavesOfType's order is unrelated to
+		// focus) — otherwise a wikilink follow can hijack an unfocused,
+		// unrelated tab elsewhere in the workspace.
 		const leaf =
-			this.app.workspace.getLeavesOfType('markdown')[0] ??
+			(this.lastActiveMarkdownLeaf &&
+				markdownLeaves.includes(this.lastActiveMarkdownLeaf) &&
+				this.lastActiveMarkdownLeaf) ||
+			markdownLeaves[0] ||
 			this.plugin.openSplit();
 		await leaf.openFile(file, { active: false });
 	}
@@ -885,6 +905,10 @@ export class MindmapView extends ItemView {
 		}
 		input.addEventListener('keydown', (ev) => {
 			ev.stopPropagation();
+			// IME candidate confirmation also fires a "real" Enter keydown
+			// with isComposing still true — that must only close the IME
+			// composition, not the inline edit itself.
+			if (ev.isComposing) return;
 			if (ev.key === 'Enter') {
 				ev.preventDefault();
 				finish(true);

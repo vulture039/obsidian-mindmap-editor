@@ -31,6 +31,12 @@ styles.css         All styles
 ```
 
 ## Pitfalls (guards against past bugs)
+- Unmarked continuation lines under a list item extend its `endLine`  
+  A description paragraph indented under a bullet (no `-`/`*`/etc of its
+  own) isn't a node, but must still move/delete with its item. The parser
+  extends the innermost open list item's `endLine` to cover it; `fixLists`
+  must start its rollup from the existing `endLine`, not reset to
+  `n.line`, or the extension is silently discarded.
 - `renderSeq` serializes `render()`  
   A render gone stale across an await must not touch the DOM. Concurrent
   renders cause double drawing and inconsistency.
@@ -54,9 +60,20 @@ styles.css         All styles
   (mouse buttons, tab-header arrows). No custom mouse-event handling — it
   can be swallowed at the OS/driver layer and never reach the DOM.
   `syncEditorTo` keeps the editor on the same file as the map.
+- `syncEditorTo` targets `lastActiveMarkdownLeaf`, not `getLeavesOfType[0]`  
+  `getLeavesOfType('markdown')` order has nothing to do with focus; indexing
+  `[0]` can silently hijack an unrelated, unfocused tab elsewhere in the
+  workspace. `active-leaf-change` tracks the last-focused Markdown leaf so
+  wikilink follows land in the pane the user was actually looking at.
 - Editors can be empty right after startup  
   A restored MarkdownView's editor may return "" before it loads.
   `getFileText` falls back to the vault; onLayoutReady re-renders.
+- Inline edit's Enter handler must ignore IME composition  
+  A Japanese/CJK IME's candidate-confirming Enter still fires a real
+  `keydown` with `key === 'Enter'`, but `ev.isComposing` is true — treating
+  it as "commit and exit" ends the edit mid-input. Guard on `isComposing`
+  before acting, but keep `stopPropagation()` unconditional so the
+  composing Enter can't leak to the view's global Enter shortcut either.
 - Split direction: vertical = side by side, horizontal = stacked  
   Opposite of intuition — don't use axis names in UI labels. Auto-saved on
   layout-change from the DOM's mod-vertical/mod-horizontal classes (not

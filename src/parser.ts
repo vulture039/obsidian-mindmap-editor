@@ -128,6 +128,17 @@ export function parseMarkdown(text: string, rootText: string): MindNode {
 			};
 			parent.children.push(node);
 			listStack.push({ width: w, node });
+		} else if (listStack.length && line.trim() !== '') {
+			// A continuation line under the innermost open list item (e.g. a
+			// description paragraph indented under a bullet, with no marker
+			// of its own). It isn't parsed into its own node, but it must
+			// stay inside the item's endLine range so move/reorder/delete
+			// carry it along instead of stranding it at its old position.
+			const top = listStack[listStack.length - 1];
+			const leadingWs = /^\s*/.exec(line)?.[0] ?? '';
+			if (top && indentWidth(leadingWs) > top.width) {
+				top.node.endLine = i;
+			}
 		}
 	}
 
@@ -155,7 +166,10 @@ function computeEndLines(root: MindNode, lastLine: number): void {
 	const fixLists = (n: MindNode): void => {
 		for (const c of n.children) fixLists(c);
 		if (n.type === 'list') {
-			let end = n.line;
+			// Start from the node's own endLine, not just its line: the main
+			// pass may have already extended it to cover a trailing
+			// continuation/description line with no marker of its own.
+			let end = n.endLine;
 			for (const c of n.children) end = Math.max(end, c.endLine);
 			n.endLine = end;
 		}

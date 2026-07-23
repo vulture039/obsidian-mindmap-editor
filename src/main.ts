@@ -35,8 +35,10 @@ export default class MindmapPlugin extends Plugin {
 		this.addSettingTab(new MindmapSettingTab(this.app, this));
 	}
 
-	/** From the map, focuses its Markdown pane; from Markdown, focuses (or
-	 *  opens) the mind map for the active file. */
+	/**
+	 * From the map, focuses its Markdown pane; from Markdown, focuses (or
+	 * opens) the mind map for the active file.
+	 */
 	private async toggleMindmapFocus(): Promise<void> {
 		const mindmap = this.app.workspace.getActiveViewOfType(MindmapView);
 		if (mindmap) {

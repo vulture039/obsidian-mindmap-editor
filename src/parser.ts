@@ -19,8 +19,10 @@ export interface MindNode {
 	parent: MindNode | null;
 }
 
-/** Regex source for a list bullet ('-', '*', '+', '1.', '1)'). Shared with
- *  markdown-ops so parsing and line edits agree on what a list item is. */
+/**
+ * Regex source for a list bullet ('-', '*', '+', '1.', '1)'). Shared with
+ * markdown-ops so parsing and line edits agree on what a list item is.
+ */
 export const LIST_MARKER_SRC = String.raw`[-*+]|\d+[.)]`;
 
 const HEADING_RE = /^(#{1,6})\s+(.*)$/;

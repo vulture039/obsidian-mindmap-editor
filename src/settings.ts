@@ -9,10 +9,10 @@ import type MindmapPlugin from './main';
 export interface MindmapSettings {
 	followActiveFile: boolean;
 	palette: string;
-	/** Collapse checked tasks into "✓ n done" pills; toggled from the view
-	 *  header too, and remembered across sessions. */
+	// Collapse checked tasks into "✓ n done" pills; toggled from the view
+	// header too, and remembered across sessions.
 	hideCompleted: boolean;
-	/** Direction used whenever the plugin opens a split (map ⇄ editor). */
+	// Direction used whenever the plugin opens a split (map ⇄ editor).
 	splitDirection: 'vertical' | 'horizontal';
 }
 
@@ -31,8 +31,10 @@ export class MindmapSettingTab extends PluginSettingTab {
 		this.plugin = plugin;
 	}
 
-	/** Declarative settings (Obsidian 1.13+): rendered by the app and
-	 *  included in the global settings search. */
+	/**
+	 * Declarative settings (Obsidian 1.13+): rendered by the app and
+	 * included in the global settings search.
+	 */
 	getSettingDefinitions(): SettingDefinitionItem[] {
 		return [
 			{
@@ -77,8 +79,10 @@ export class MindmapSettingTab extends PluginSettingTab {
 		];
 	}
 
-	/** Persist through the plugin so open mind map views refresh on every
-	 *  change (the default would call saveData and skip that). */
+	/**
+	 * Persist through the plugin so open mind map views refresh on every
+	 * change (the default would call saveData and skip that).
+	 */
 	async setControlValue(key: string, value: unknown): Promise<void> {
 		(this.plugin.settings as unknown as Record<string, unknown>)[key] =
 			value;

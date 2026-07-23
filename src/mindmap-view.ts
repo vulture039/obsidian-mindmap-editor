@@ -71,16 +71,22 @@ export class MindmapView extends ItemView {
 	private renderedWhileHidden = false;
 	private laidByLine = new Map<number, LaidNode>();
 	private hideCompletedActionEl: HTMLElement | null = null;
-	/** Parents (by line) whose completed tasks are shown despite
-	 *  hideCompleted, via a click on their "✓ n done" pill. */
+	/**
+	 * Parents (by line) whose completed tasks are shown despite
+	 * hideCompleted, via a click on their "✓ n done" pill.
+	 */
 	private expandedDone = new Set<number>();
-	/** Most recently focused Markdown leaf, so syncEditorTo reuses the
-	 *  editor the user was actually looking at instead of an arbitrary
-	 *  (and possibly unfocused) open tab. */
+	/**
+	 * Most recently focused Markdown leaf, so syncEditorTo reuses the
+	 * editor the user was actually looking at instead of an arbitrary
+	 * (and possibly unfocused) open tab.
+	 */
 	private lastActiveMarkdownLeaf: WorkspaceLeaf | null = null;
 
-	/** Checked tasks collapse into one "✓ n done" pill per parent. Backed by
-	 *  plugin settings so the choice survives restarts. */
+	/**
+	 * Checked tasks collapse into one "✓ n done" pill per parent. Backed by
+	 * plugin settings so the choice survives restarts.
+	 */
 	private get hideCompleted(): boolean {
 		return this.plugin.settings.hideCompleted;
 	}
@@ -222,8 +228,10 @@ export class MindmapView extends ItemView {
 		await this.applyOp((lines) => reorderSiblingOp(lines, node, other));
 	}
 
-	/** Writes the checkbox's own DOM state (not a flip of the parsed one) so
-	 *  rapid toggles before a re-render converge on what the user sees. */
+	/**
+	 * Writes the checkbox's own DOM state (not a flip of the parsed one) so
+	 * rapid toggles before a re-render converge on what the user sees.
+	 */
 	private writeCheckbox(
 		node: MindNode,
 		el: HTMLElement,
@@ -266,8 +274,10 @@ export class MindmapView extends ItemView {
 		return 'git-fork';
 	}
 
-	/** Whether `child` is hidden under `parent` (checked task, hide mode on,
-	 *  and the parent has not been expanded via its "✓ n done" pill). */
+	/**
+	 * Whether `child` is hidden under `parent` (checked task, hide mode on,
+	 * and the parent has not been expanded via its "✓ n done" pill).
+	 */
 	private isHiddenDone(parent: MindNode, child: MindNode): boolean {
 		return (
 			this.hideCompleted &&

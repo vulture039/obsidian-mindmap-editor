@@ -1,4 +1,5 @@
 import obsidianmd from 'eslint-plugin-obsidianmd';
+import jsdoc from 'eslint-plugin-jsdoc';
 import globals from 'globals';
 import { globalIgnores, defineConfig } from 'eslint/config';
 
@@ -21,11 +22,17 @@ export default defineConfig(
 			},
 			parserOptions: {
 				projectService: {
-					allowDefaultProject: ['eslint.config.mts', 'manifest.json'],
+					allowDefaultProject: ['manifest.json'],
 				},
 				tsconfigRootDir: import.meta.dirname,
 				extraFileExtensions: ['.json'],
 			},
+		},
+		plugins: {
+			jsdoc,
+		},
+		rules: {
+			'jsdoc/multiline-blocks': ['error', { noSingleLineBlocks: false }],
 		},
 	},
 	...obsidianmd.configs.recommended,

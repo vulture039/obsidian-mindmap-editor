@@ -13,8 +13,10 @@ export const DEFAULT_PALETTE = [
 	'#eab308',
 ];
 
-/** Parses one color per line from the settings textarea. Falls back to
- *  the default palette if the result would otherwise be empty. */
+/**
+ * Parses one color per line from the settings textarea. Falls back to
+ *  the default palette if the result would otherwise be empty.
+ */
 export function parsePalette(raw: string): string[] {
 	const colors = raw
 		.split('\n')

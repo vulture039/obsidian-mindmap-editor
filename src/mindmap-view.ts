@@ -11,16 +11,11 @@ import {
   WorkspaceLeaf,
 } from 'obsidian';
 import type MindmapPlugin from './main';
-import {
-  findByLine,
-  isDescendantOrSelf,
-  maxHeadingLevel,
-  MindNode,
-  parseMarkdown,
-} from './parser';
+import { findByLine, MindNode, parseMarkdown } from './parser';
 import { LaidNode, layoutTree, makeLaid } from './layout';
 import { branchColorFor, parsePalette } from './colors';
 import { renderNodeText } from './node-text';
+import { canDrop, canDropAsSibling, DropTarget, findDrop } from './drag';
 import {
   addChildOp,
   addSiblingOp,
@@ -957,102 +952,17 @@ export class MindmapView extends ItemView {
     }, 0);
   }
 
-  private canDrop(source: MindNode, target: MindNode): boolean {
-    if (isDescendantOrSelf(target, source)) return false;
-    if (source.type === 'heading' && target.type === 'list') return false;
-    if (source.type === 'heading') {
-      const targetLevel = target.type === 'root' ? 0 : target.level;
-      const delta = targetLevel + 1 - source.level;
-      if (delta > 0 && maxHeadingLevel(source) + delta > 6) return false;
-    }
-    return true;
-  }
-
   private async moveNode(
     source: MindNode,
     target: MindNode,
     before: MindNode | null = null,
   ): Promise<void> {
-    if (!this.canDrop(source, target)) {
+    if (!canDrop(source, target)) {
       new Notice('This node cannot be dropped there.');
       return;
     }
     this.selectedLine = null;
     await this.applyOp((lines) => moveNodeOp(lines, source, target, before));
-  }
-
-  /** Max distance (px) from the pointer to a node for snap reparenting. */
-  private static readonly SNAP_DISTANCE = 60;
-
-  /** Whether `source` could be inserted as a sibling next to `target`. */
-  private canDropAsSibling(source: MindNode, target: MindNode): boolean {
-    return (
-      !!target.parent &&
-      target.type === source.type &&
-      this.canDrop(source, target.parent)
-    );
-  }
-
-  /**
-   * What a drop at the pointer would do. `parent` null = reparent into
-   * `laid.node` (pointer over the node's middle); otherwise insert into
-   * `parent`'s children before `before` (pointer in the top/bottom third
-   * of a same-type sibling; null `before` = at the end). Slots that would
-   * leave the node where it already is return null.
-   */
-  private findDrop(
-    source: MindNode,
-    clientX: number,
-    clientY: number,
-  ): {
-    laid: LaidNode;
-    parent: MindNode | null;
-    before: MindNode | null;
-  } | null {
-    let best: LaidNode | null = null;
-    let bestRect: DOMRect | null = null;
-    let bestDist = Infinity;
-    for (const laid of this.laidByLine.values()) {
-      if (isDescendantOrSelf(laid.node, source)) continue;
-      const r = laid.el.getBoundingClientRect();
-      const dx = Math.max(r.left - clientX, 0, clientX - r.right);
-      const dy = Math.max(r.top - clientY, 0, clientY - r.bottom);
-      const d = Math.hypot(dx, dy);
-      if (d < bestDist) {
-        bestDist = d;
-        best = laid;
-        bestRect = r;
-      }
-    }
-    if (!best || !bestRect || bestDist > MindmapView.SNAP_DISTANCE) {
-      return null;
-    }
-    const t = best.node;
-    const parent = t.parent;
-    if (parent && this.canDropAsSibling(source, t)) {
-      const sibs = parent.children;
-      const isNoop = (before: MindNode | null): boolean => {
-        if (source.parent !== parent) return false;
-        const i = sibs.indexOf(source);
-        return (
-          before === source ||
-          sibs[i + 1] === before ||
-          (before === null && i === sibs.length - 1)
-        );
-      };
-      const r = bestRect;
-      if (clientY < r.top + r.height / 3) {
-        return isNoop(t) ? null : { laid: best, parent, before: t };
-      }
-      if (clientY > r.bottom - r.height / 3) {
-        const before = sibs[sibs.indexOf(t) + 1] ?? null;
-        return isNoop(before) ? null : { laid: best, parent, before };
-      }
-    }
-    if (this.canDrop(source, t)) {
-      return { laid: best, parent: null, before: null };
-    }
-    return null;
   }
 
   private setupDrag(node: MindNode, el: HTMLElement): void {
@@ -1070,7 +980,7 @@ export class MindmapView extends ItemView {
       let finished = false;
       let ghost: HTMLElement | null = null;
       let indicator: HTMLElement | null = null;
-      let drop: ReturnType<MindmapView['findDrop']> = null;
+      let drop: DropTarget | null = null;
       const clearCues = (): void => {
         drop?.laid.el.removeClass(
           'is-drop-target',
@@ -1126,8 +1036,8 @@ export class MindmapView extends ItemView {
           this.canvasEl.addClass('is-drag-active');
           for (const laid of this.laidByLine.values()) {
             if (laid.el === el) continue;
-            const t = laid.node;
-            if (!this.canDrop(node, t) && !this.canDropAsSibling(node, t)) {
+            const target = laid.node;
+            if (!canDrop(node, target) && !canDropAsSibling(node, target)) {
               laid.el.addClass('is-invalid-target');
             }
           }
@@ -1141,7 +1051,7 @@ export class MindmapView extends ItemView {
           left: `${ev.clientX - rect.left + 10}px`,
           top: `${ev.clientY - rect.top + 10}px`,
         });
-        const next = this.findDrop(node, ev.clientX, ev.clientY);
+        const next = findDrop(this.laidByLine, node, ev.clientX, ev.clientY);
         const same =
           drop === next ||
           (drop &&

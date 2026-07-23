@@ -24,6 +24,7 @@ Obsidian plugin "Mindmap Editor": shows a Markdown note as an editable mind map 
 - **patterns.ts** - Shared Markdown-structure regexes (heading/list/checkbox), so parser.ts and markdown-ops.ts agree on what each construct is
 - **markdown-ops.ts** - Mutation ops (setText/setCheckbox/add/delete/move/reorder), updateFileLines (editor open → replaceRange, else vault.process)
 - **layout.ts** - Left-to-right tree layout (measures real DOM offsetWidth/Height)
+- **drag.ts** - Pure drop-target resolution (canDrop/canDropAsSibling/findDrop); setupDrag's pointer handling stays in mindmap-view.ts
 - **colors.ts** - Per-branch colors, cycled by position from a user-configurable palette (settings)
 - **node-text.ts** - Node text rendering (wikilinks / md links become links)
 - **settings.ts** - Settings tab

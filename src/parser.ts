@@ -1,3 +1,5 @@
+import { FENCE_RE, HEADING_RE, LIST_RE } from './patterns';
+
 export type NodeType = 'root' | 'heading' | 'list';
 
 export interface MindNode {
@@ -19,22 +21,10 @@ export interface MindNode {
   parent: MindNode | null;
 }
 
-/**
- * Regex source for a list bullet ('-', '*', '+', '1.', '1)'). Shared with
- * markdown-ops so parsing and line edits agree on what a list item is.
- */
-export const LIST_MARKER_SRC = String.raw`[-*+]|\d+[.)]`;
-
-const HEADING_RE = /^(#{1,6})\s+(.*)$/;
-const LIST_RE = new RegExp(
-  String.raw`^(\s*)(${LIST_MARKER_SRC})\s+(?:\[([ xX])\](?:\s+|$))?(.*)$`,
-);
-const FENCE_RE = /^\s*(```|~~~)/;
-
-function indentWidth(s: string): number {
-  let w = 0;
-  for (const ch of s) w += ch === '\t' ? 4 : 1;
-  return w;
+function indentWidth(text: string): number {
+  let width = 0;
+  for (const ch of text) width += ch === '\t' ? 4 : 1;
+  return width;
 }
 
 export function parseMarkdown(text: string, rootText: string): MindNode {

@@ -1,5 +1,13 @@
 import { App, Editor, MarkdownView, TFile } from 'obsidian';
-import { lineMatchesNode, LIST_MARKER_SRC, MindNode } from './parser';
+import { lineMatchesNode, MindNode } from './parser';
+import {
+  CHECKBOX_RE,
+  HEADING_SHIFT_RE,
+  INDENTED_LIST_RE,
+  LIST_PREFIX_RE,
+  MARKER_PREFIX_RE,
+  TASK_BOX_RE,
+} from './patterns';
 
 export interface InsertResult {
   lines: string[];
@@ -103,10 +111,6 @@ function applyLineDiff(
   }
 }
 
-const CHECKBOX_RE = new RegExp(
-  String.raw`^(\s*(?:${LIST_MARKER_SRC})\s+\[)[ xX](\])`,
-);
-
 function headingPrefix(level: number): string {
   return `${'#'.repeat(Math.min(6, Math.max(1, level)))} `;
 }
@@ -164,10 +168,6 @@ export function setCheckboxOp(
   return lines;
 }
 
-const LIST_PREFIX_RE = new RegExp(
-  String.raw`^(\s*(?:${LIST_MARKER_SRC})\s+(?:\[[ xX]\]\s+)?)`,
-);
-
 export function setTextOp(
   lines: string[],
   node: MindNode,
@@ -182,8 +182,6 @@ export function setTextOp(
   }
   return lines;
 }
-
-const INDENTED_LIST_RE = new RegExp(String.raw`^(\s+)(?:${LIST_MARKER_SRC})\s`);
 
 function detectIndentUnit(lines: string[]): string {
   let best: string | null = null;
@@ -263,13 +261,6 @@ export function addChildOp(
   lines.splice(at, 0, listPrefix(indent, marker, isTask));
   return { lines, insertedLine: at };
 }
-
-const MARKER_PREFIX_RE = new RegExp(
-  String.raw`^(\s*(?:${LIST_MARKER_SRC})\s+)`,
-);
-const TASK_BOX_RE = new RegExp(
-  String.raw`^(\s*(?:${LIST_MARKER_SRC})\s+)\[[ xX]\]\s*`,
-);
 
 /** Adds or removes the task checkbox on a list item, keeping its text. */
 export function toggleTaskOp(lines: string[], node: MindNode): string[] {
@@ -362,7 +353,7 @@ export function moveNodeOp(
       delta === 0
         ? segment.slice()
         : segment.map((l) => {
-            const m = /^(#{1,6})(\s.*)?$/.exec(l);
+            const m = HEADING_SHIFT_RE.exec(l);
             if (!m) return l;
             const level = Math.min(6, Math.max(1, (m[1] ?? '').length + delta));
             return '#'.repeat(level) + (m[2] ?? '');

@@ -1,6 +1,7 @@
 import obsidianmd from 'eslint-plugin-obsidianmd';
 import jsdoc from 'eslint-plugin-jsdoc';
 import globals from 'globals';
+import eslintConfigPrettier from 'eslint-config-prettier';
 import { globalIgnores, defineConfig } from 'eslint/config';
 
 export default defineConfig(
@@ -36,4 +37,5 @@ export default defineConfig(
     },
   },
   ...obsidianmd.configs.recommended,
+  eslintConfigPrettier,
 );

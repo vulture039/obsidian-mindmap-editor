@@ -54,8 +54,7 @@ export default class MindmapPlugin extends Plugin {
       new Notice('Open a Markdown file first.');
       return;
     }
-    const existing =
-      this.app.workspace.getLeavesOfType(VIEW_TYPE_MINDMAP)[0];
+    const existing = this.app.workspace.getLeavesOfType(VIEW_TYPE_MINDMAP)[0];
     const leaf = existing ?? this.openSplit();
     await leaf.setViewState({
       type: VIEW_TYPE_MINDMAP,
@@ -80,9 +79,7 @@ export default class MindmapPlugin extends Plugin {
 
   async saveSettings(): Promise<void> {
     await this.saveData(this.settings);
-    for (const leaf of this.app.workspace.getLeavesOfType(
-      VIEW_TYPE_MINDMAP,
-    )) {
+    for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_MINDMAP)) {
       if (leaf.view instanceof MindmapView) leaf.view.refresh();
     }
   }

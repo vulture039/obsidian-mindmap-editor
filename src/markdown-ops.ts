@@ -81,11 +81,7 @@ function applyLineDiff(
         { line: endOld, ch: lineLen(endOld) },
       );
     } else if (endOld < oldLines.length - 1) {
-      editor.replaceRange(
-        '',
-        { line: 0, ch: 0 },
-        { line: endOld + 1, ch: 0 },
-      );
+      editor.replaceRange('', { line: 0, ch: 0 }, { line: endOld + 1, ch: 0 });
     } else {
       editor.replaceRange(
         '',
@@ -187,9 +183,7 @@ export function setTextOp(
   return lines;
 }
 
-const INDENTED_LIST_RE = new RegExp(
-  String.raw`^(\s+)(?:${LIST_MARKER_SRC})\s`,
-);
+const INDENTED_LIST_RE = new RegExp(String.raw`^(\s+)(?:${LIST_MARKER_SRC})\s`);
 
 function detectIndentUnit(lines: string[]): string {
   let best: string | null = null;
@@ -244,9 +238,7 @@ export function addChildOp(
     return { lines, insertedLine: at };
   }
   if (node.type === 'heading') {
-    const hasHeadingChild = node.children.some(
-      (c) => c.type === 'heading',
-    );
+    const hasHeadingChild = node.children.some((c) => c.type === 'heading');
     const listChildren = node.children.filter((c) => c.type === 'list');
     // A forced task child is always a list item, never a sub-heading.
     if (!task && hasHeadingChild && listChildren.length === 0) {
@@ -257,11 +249,7 @@ export function addChildOp(
     const at = listInsertPoint(node);
     const proto = listChildren[0];
     const prefix = proto
-      ? listPrefix(
-          proto.indent,
-          proto.marker,
-          task ?? proto.checked !== null,
-        )
+      ? listPrefix(proto.indent, proto.marker, task ?? proto.checked !== null)
       : listPrefix('', '-', task ?? false);
     lines.splice(at, 0, prefix);
     return { lines, insertedLine: at };
@@ -376,10 +364,7 @@ export function moveNodeOp(
         : segment.map((l) => {
             const m = /^(#{1,6})(\s.*)?$/.exec(l);
             if (!m) return l;
-            const level = Math.min(
-              6,
-              Math.max(1, (m[1] ?? '').length + delta),
-            );
+            const level = Math.min(6, Math.max(1, (m[1] ?? '').length + delta));
             return '#'.repeat(level) + (m[2] ?? '');
           });
   }

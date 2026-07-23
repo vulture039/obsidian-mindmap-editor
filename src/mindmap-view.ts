@@ -246,9 +246,7 @@ export class MindmapView extends ItemView {
     const node = this.selectedNode();
     if (!node || node.checked === null) return true;
     const laid = this.laidByLine.get(node.line);
-    const cb = laid?.el.querySelector<HTMLInputElement>(
-      '.mindmap-checkbox',
-    );
+    const cb = laid?.el.querySelector<HTMLInputElement>('.mindmap-checkbox');
     if (!laid || !cb) return true;
     cb.checked = !cb.checked;
     this.writeCheckbox(node, laid.el, cb);
@@ -302,10 +300,7 @@ export class MindmapView extends ItemView {
       'Hide/show completed tasks',
       () => this.setHideCompleted(!this.hideCompleted),
     );
-    this.hideCompletedActionEl.toggleClass(
-      'is-active',
-      this.hideCompleted,
-    );
+    this.hideCompletedActionEl.toggleClass('is-active', this.hideCompleted);
     this.scrollerEl = this.contentEl.createDiv({
       cls: 'mindmap-scroller',
       attr: { tabindex: '0' },
@@ -404,10 +399,7 @@ export class MindmapView extends ItemView {
   refresh(): void {
     // Settings may have changed (e.g. hideCompleted from the settings
     // tab or another view's header button); keep the action in sync.
-    this.hideCompletedActionEl?.toggleClass(
-      'is-active',
-      this.hideCompleted,
-    );
+    this.hideCompletedActionEl?.toggleClass('is-active', this.hideCompleted);
     this.requestRender();
   }
 
@@ -532,9 +524,7 @@ export class MindmapView extends ItemView {
       });
       cb.checked = node.checked;
       cb.addEventListener('click', (e) => e.stopPropagation());
-      cb.addEventListener('change', () =>
-        this.writeCheckbox(node, el, cb),
-      );
+      cb.addEventListener('change', () => this.writeCheckbox(node, el, cb));
       el.toggleClass('is-done', node.checked);
     }
     const textEl = el.createSpan({ cls: 'mindmap-node-text' });
@@ -675,10 +665,7 @@ export class MindmapView extends ItemView {
     const linkpath = (target.split('#')[0] ?? '').trim();
     const resolve = (): TFile | null =>
       linkpath
-        ? this.app.metadataCache.getFirstLinkpathDest(
-            linkpath,
-            from.path,
-          )
+        ? this.app.metadataCache.getFirstLinkpathDest(linkpath, from.path)
         : null;
     let dest = resolve();
     if (!dest || dest.extension !== 'md') {
@@ -788,11 +775,7 @@ export class MindmapView extends ItemView {
     }
   }
 
-  private showNodeMenu(
-    node: MindNode,
-    el: HTMLElement,
-    e: MouseEvent,
-  ): void {
+  private showNodeMenu(node: MindNode, el: HTMLElement, e: MouseEvent): void {
     const menu = new Menu();
     const add = (title: string, icon: string, onClick: () => void): void => {
       menu.addItem((item) =>
@@ -806,17 +789,23 @@ export class MindmapView extends ItemView {
       node.type !== 'root' ||
       !node.children.some((c) => c.type === 'heading')
     ) {
-      add('Add child task', 'check-square', () =>
-        void this.addChildNode(node, true),
+      add(
+        'Add child task',
+        'check-square',
+        () => void this.addChildNode(node, true),
       );
     }
     if (node.type !== 'root') {
-      add('Add sibling', 'corner-down-right', () =>
-        void this.addSiblingNode(node),
+      add(
+        'Add sibling',
+        'corner-down-right',
+        () => void this.addSiblingNode(node),
       );
       if (node.type === 'list') {
-        add('Add sibling task', 'check-square', () =>
-          void this.addSiblingNode(node, true),
+        add(
+          'Add sibling task',
+          'check-square',
+          () => void this.addSiblingNode(node, true),
         );
       }
       add('Rename', 'pencil', () => this.startInlineEdit(node, el));
@@ -824,9 +813,7 @@ export class MindmapView extends ItemView {
         add('Move up', 'arrow-up', () => void this.reorderNode(node, -1));
       }
       if (this.reorderTarget(node, 1)) {
-        add('Move down', 'arrow-down', () =>
-          void this.reorderNode(node, 1),
-        );
+        add('Move down', 'arrow-down', () => void this.reorderNode(node, 1));
       }
       if (node.type === 'list') {
         add(
@@ -869,9 +856,7 @@ export class MindmapView extends ItemView {
     await this.render();
   }
 
-  private async applyOp(
-    mutate: (lines: string[]) => string[],
-  ): Promise<void> {
+  private async applyOp(mutate: (lines: string[]) => string[]): Promise<void> {
     if (!this.file) return;
     try {
       await updateFileLines(this.app, this.file, mutate);
@@ -920,9 +905,7 @@ export class MindmapView extends ItemView {
       if (done) return;
       done = true;
       this.isInlineEditing = false;
-      const value = (input.textContent ?? '')
-        .replace(/[\r\n]+/g, ' ')
-        .trim();
+      const value = (input.textContent ?? '').replace(/[\r\n]+/g, ' ').trim();
       if (save && value !== node.text) {
         void this.applyOp((lines) => setTextOp(lines, node, value));
       } else if (this.renderQueued) {
@@ -1122,8 +1105,7 @@ export class MindmapView extends ItemView {
       const onMove = (ev: PointerEvent): void => {
         if (!started) {
           if (
-            Math.abs(ev.clientX - startX) +
-              Math.abs(ev.clientY - startY) <
+            Math.abs(ev.clientX - startX) + Math.abs(ev.clientY - startY) <
             6
           ) {
             return;
@@ -1145,10 +1127,7 @@ export class MindmapView extends ItemView {
           for (const laid of this.laidByLine.values()) {
             if (laid.el === el) continue;
             const t = laid.node;
-            if (
-              !this.canDrop(node, t) &&
-              !this.canDropAsSibling(node, t)
-            ) {
+            if (!this.canDrop(node, t) && !this.canDropAsSibling(node, t)) {
               laid.el.addClass('is-invalid-target');
             }
           }
@@ -1193,9 +1172,7 @@ export class MindmapView extends ItemView {
         el.removeClass('is-dragging');
         this.canvasEl.removeClass('is-drag-active');
         for (const marked of Array.from(
-          this.canvasEl.querySelectorAll(
-            '.mindmap-node.is-invalid-target',
-          ),
+          this.canvasEl.querySelectorAll('.mindmap-node.is-invalid-target'),
         )) {
           marked.removeClass('is-invalid-target');
         }
@@ -1218,11 +1195,7 @@ export class MindmapView extends ItemView {
           );
           if (apply && finalDrop) {
             if (finalDrop.parent) {
-              void this.moveNode(
-                node,
-                finalDrop.parent,
-                finalDrop.before,
-              );
+              void this.moveNode(node, finalDrop.parent, finalDrop.before);
             } else {
               void this.moveNode(node, finalDrop.laid.node);
             }
@@ -1246,10 +1219,7 @@ export class MindmapView extends ItemView {
     // Pan with the main button only; side buttons (3/4) belong to the
     // history handler and must not grab pointer capture here.
     if (e.button !== 0) return;
-    if (
-      e.target instanceof HTMLElement &&
-      e.target.closest('.mindmap-node')
-    ) {
+    if (e.target instanceof HTMLElement && e.target.closest('.mindmap-node')) {
       return;
     }
     this.selectedLine = null;

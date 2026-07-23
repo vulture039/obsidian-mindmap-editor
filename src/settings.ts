@@ -74,9 +74,7 @@ export class MindmapSettingTab extends PluginSettingTab {
   }
 
   getControlValue(key: string): unknown {
-    return (this.plugin.settings as unknown as Record<string, unknown>)[
-      key
-    ];
+    return (this.plugin.settings as unknown as Record<string, unknown>)[key];
   }
 
   /**
@@ -84,8 +82,7 @@ export class MindmapSettingTab extends PluginSettingTab {
    * change (the default would call saveData and skip that).
    */
   async setControlValue(key: string, value: unknown): Promise<void> {
-    (this.plugin.settings as unknown as Record<string, unknown>)[key] =
-      value;
+    (this.plugin.settings as unknown as Record<string, unknown>)[key] = value;
     await this.plugin.saveSettings();
   }
 
@@ -117,7 +114,8 @@ export class MindmapSettingTab extends PluginSettingTab {
         );
       } else if (control.type === 'textarea') {
         setting.addTextArea((text) => {
-          text.setPlaceholder(control.placeholder ?? '')
+          text
+            .setPlaceholder(control.placeholder ?? '')
             .setValue(str(this.getControlValue(control.key)))
             .onChange((v) => this.setControlValue(control.key, v));
           if (control.rows) text.inputEl.rows = control.rows;

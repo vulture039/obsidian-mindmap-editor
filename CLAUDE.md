@@ -13,7 +13,7 @@ Obsidian plugin "Mindmap Editor": shows a Markdown note as an editable mind map 
 ## Commit messages
 
 - **Prefix the subject with a type** - `feat:`/`fix:`/`docs:`/`chore:`/`refactor:`/`test:`
-  (Conventional Commits). 
+  (Conventional Commits).
   Formatting-only changes (comment reflow, whitespace) count as `chore:`, not a separate `style:` type.
 
 ## Layout

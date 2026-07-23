@@ -10,6 +10,12 @@ Obsidian plugin "Mindmap Editor": shows a Markdown note as an editable mind map 
   Ops check `lineMatchesNode` before running and throw on mismatch → notice + re-render.
 - **Nodes are HTML elements, edges are SVG** - Checkboxes are real `<input>`s.
 
+## Commit messages
+
+- **Prefix the subject with a type** - `feat:`/`fix:`/`docs:`/`chore:`/`refactor:`/`test:`
+  (Conventional Commits). 
+  Formatting-only changes (comment reflow, whitespace) count as `chore:`, not a separate `style:` type.
+
 ## Layout
 
 - **main.ts** - Plugin entry: view registration, commands, settings, openSplit

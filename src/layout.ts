@@ -70,9 +70,9 @@ function place(laid: LaidNode, x: number, top: number): void {
 
 function collectBounds(
   laid: LaidNode,
-  b: { width: number; height: number },
+  bounds: { width: number; height: number },
 ): void {
-  b.width = Math.max(b.width, laid.x + laid.w);
-  b.height = Math.max(b.height, laid.y + laid.h);
-  for (const c of laid.children) collectBounds(c, b);
+  bounds.width = Math.max(bounds.width, laid.x + laid.w);
+  bounds.height = Math.max(bounds.height, laid.y + laid.h);
+  for (const child of laid.children) collectBounds(child, bounds);
 }

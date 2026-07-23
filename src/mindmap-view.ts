@@ -32,6 +32,9 @@ import {
 
 export const VIEW_TYPE_MINDMAP = 'mindmap-editor';
 
+/** Pointer travel (px) before a press on a node turns into a drag. */
+const DRAG_START_THRESHOLD = 6;
+
 /** A completed task node ('- [x]'), the unit hidden by hideCompleted. */
 function isCompletedTask(node: MindNode): boolean {
   return node.type === 'list' && node.checked === true;
@@ -303,8 +306,8 @@ export class MindmapView extends ItemView {
     this.canvasEl = this.scrollerEl.createDiv({ cls: 'mindmap-canvas' });
 
     this.registerEvent(
-      this.app.vault.on('modify', (f) => {
-        if (f === this.file) this.requestRender();
+      this.app.vault.on('modify', (file) => {
+        if (file === this.file) this.requestRender();
       }),
     );
     this.registerEvent(
@@ -320,15 +323,13 @@ export class MindmapView extends ItemView {
       }),
     );
     this.registerEvent(
-      this.app.workspace.on('file-open', (f) => {
-        if (
+      this.app.workspace.on('file-open', (file) => {
+        const shouldFollow =
           this.plugin.settings.followActiveFile &&
-          f &&
-          f.extension === 'md' &&
-          f !== this.file
-        ) {
-          void this.setFile(f);
-        }
+          file &&
+          file.extension === 'md' &&
+          file !== this.file;
+        if (shouldFollow) void this.setFile(file);
       }),
     );
     this.registerDomEvent(this.scrollerEl, 'pointerdown', (e) =>
@@ -780,10 +781,9 @@ export class MindmapView extends ItemView {
     add('Add child', 'plus', () => void this.addChildNode(node));
     // A forced task child is always a list item, so skip it only where a
     // child cannot be one: the root once it already has heading children.
-    if (
-      node.type !== 'root' ||
-      !node.children.some((c) => c.type === 'heading')
-    ) {
+    const rootWithHeadings =
+      node.type === 'root' && node.children.some((c) => c.type === 'heading');
+    if (!rootWithHeadings) {
       add(
         'Add child task',
         'check-square',
@@ -1014,12 +1014,9 @@ export class MindmapView extends ItemView {
       };
       const onMove = (ev: PointerEvent): void => {
         if (!started) {
-          if (
-            Math.abs(ev.clientX - startX) + Math.abs(ev.clientY - startY) <
-            6
-          ) {
-            return;
-          }
+          const traveled =
+            Math.abs(ev.clientX - startX) + Math.abs(ev.clientY - startY);
+          if (traveled < DRAG_START_THRESHOLD) return;
           started = true;
           this.isDragging = true;
           // Capture the pointer so pointerup still arrives when the

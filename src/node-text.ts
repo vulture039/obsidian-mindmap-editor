@@ -22,22 +22,22 @@ export function renderNodeText(
     attr: Record<string, string> | undefined,
     onClick: (e: MouseEvent) => void,
   ): void => {
-    const a = containerEl.createEl('a', { cls, text: label, attr });
-    a.draggable = false;
-    a.addEventListener('click', (e) => {
+    const anchor = containerEl.createEl('a', { cls, text: label, attr });
+    anchor.draggable = false;
+    anchor.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
       onClick(e);
     });
   };
   let last = 0;
-  for (const m of text.matchAll(LINK_RE)) {
-    const index = m.index ?? 0;
+  for (const match of text.matchAll(LINK_RE)) {
+    const index = match.index ?? 0;
     if (index > last) containerEl.appendText(text.slice(last, index));
-    const wikiTarget = m[1];
+    const wikiTarget = match[1];
     if (wikiTarget !== undefined) {
       const target = wikiTarget.trim();
-      const alias = m[2]?.trim();
+      const alias = match[2]?.trim();
       makeLink(
         'internal-link mindmap-link',
         alias?.length ? alias : target,
@@ -55,12 +55,15 @@ export function renderNodeText(
         },
       );
     } else {
-      const url = m[4] ?? '';
-      makeLink('external-link mindmap-link', m[3] ?? '', { href: url }, () =>
-        window.open(url),
+      const url = match[4] ?? '';
+      makeLink(
+        'external-link mindmap-link',
+        match[3] ?? '',
+        { href: url },
+        () => window.open(url),
       );
     }
-    last = index + m[0].length;
+    last = index + match[0].length;
   }
   if (last < text.length) containerEl.appendText(text.slice(last));
 }

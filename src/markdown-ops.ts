@@ -74,41 +74,52 @@ function applyLineDiff(
   const segment = newLines.slice(start, endNew + 1);
   const lineLen = (i: number): number => (oldLines[i] ?? '').length;
 
+  // Replacement: swap the changed old lines for the new segment.
   if (endOld >= start && segment.length > 0) {
     editor.replaceRange(
       segment.join('\n'),
       { line: start, ch: 0 },
       { line: endOld, ch: lineLen(endOld) },
     );
-  } else if (endOld >= start) {
-    // Pure deletion: remove the lines plus one adjacent newline.
+    return;
+  }
+
+  // Pure deletion: remove the lines plus one adjacent newline.
+  if (endOld >= start) {
     if (start > 0) {
       editor.replaceRange(
         '',
         { line: start - 1, ch: lineLen(start - 1) },
         { line: endOld, ch: lineLen(endOld) },
       );
-    } else if (endOld < oldLines.length - 1) {
-      editor.replaceRange('', { line: 0, ch: 0 }, { line: endOld + 1, ch: 0 });
-    } else {
-      editor.replaceRange(
-        '',
-        { line: 0, ch: 0 },
-        { line: endOld, ch: lineLen(endOld) },
-      );
+      return;
     }
-  } else if (start < oldLines.length) {
-    // Pure insertion before line `start`.
+    if (endOld < oldLines.length - 1) {
+      editor.replaceRange('', { line: 0, ch: 0 }, { line: endOld + 1, ch: 0 });
+      return;
+    }
+    editor.replaceRange(
+      '',
+      { line: 0, ch: 0 },
+      { line: endOld, ch: lineLen(endOld) },
+    );
+    return;
+  }
+
+  // Pure insertion before line `start`.
+  if (start < oldLines.length) {
     editor.replaceRange(segment.map((l) => `${l}\n`).join(''), {
       line: start,
       ch: 0,
     });
-  } else {
-    editor.replaceRange(`\n${segment.join('\n')}`, {
-      line: oldLines.length - 1,
-      ch: lineLen(oldLines.length - 1),
-    });
+    return;
   }
+
+  // Append past the last line.
+  editor.replaceRange(`\n${segment.join('\n')}`, {
+    line: oldLines.length - 1,
+    ch: lineLen(oldLines.length - 1),
+  });
 }
 
 function headingPrefix(level: number): string {
@@ -286,12 +297,13 @@ export function toggleTaskOp(lines: string[], node: MindNode): string[] {
  */
 export function reorderSiblingOp(
   lines: string[],
-  a: MindNode,
-  b: MindNode,
+  nodeA: MindNode,
+  nodeB: MindNode,
 ): string[] {
-  requireNodeLine(lines, a);
-  requireNodeLine(lines, b);
-  const [first, second] = a.line < b.line ? [a, b] : [b, a];
+  requireNodeLine(lines, nodeA);
+  requireNodeLine(lines, nodeB);
+  const [first, second] =
+    nodeA.line < nodeB.line ? [nodeA, nodeB] : [nodeB, nodeA];
   const firstBlock = nodeBlock(lines, first);
   const gap = lines.slice(first.endLine + 1, second.line);
   const secondBlock = nodeBlock(lines, second);

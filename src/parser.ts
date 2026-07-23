@@ -49,8 +49,8 @@ export function parseMarkdown(text: string, rootText: string): MindNode {
 
   if (lines[0] === '---') {
     for (let j = 1; j < lines.length; j++) {
-      const l = lines[j];
-      if (l === '---' || l === '...') {
+      const line = lines[j];
+      if (line === '---' || line === '...') {
         start = j + 1;
         break;
       }
@@ -65,9 +65,9 @@ export function parseMarkdown(text: string, rootText: string): MindNode {
     }
     if (inFence) continue;
 
-    const h = HEADING_RE.exec(line);
-    if (h) {
-      const level = (h[1] ?? '').length;
+    const headingMatch = HEADING_RE.exec(line);
+    if (headingMatch) {
+      const level = (headingMatch[1] ?? '').length;
       while (
         headingStack.length > 1 &&
         (headingStack[headingStack.length - 1]?.level ?? 0) >= level
@@ -77,7 +77,7 @@ export function parseMarkdown(text: string, rootText: string): MindNode {
       const parent = headingStack[headingStack.length - 1] ?? root;
       const node: MindNode = {
         type: 'heading',
-        text: (h[2] ?? '').trim(),
+        text: (headingMatch[2] ?? '').trim(),
         line: i,
         endLine: i,
         level,
@@ -93,13 +93,13 @@ export function parseMarkdown(text: string, rootText: string): MindNode {
       continue;
     }
 
-    const m = LIST_RE.exec(line);
-    if (m) {
-      const indent = m[1] ?? '';
-      const w = indentWidth(indent);
+    const listMatch = LIST_RE.exec(line);
+    if (listMatch) {
+      const indent = listMatch[1] ?? '';
+      const width = indentWidth(indent);
       while (
         listStack.length &&
-        (listStack[listStack.length - 1]?.width ?? 0) >= w
+        (listStack[listStack.length - 1]?.width ?? 0) >= width
       ) {
         listStack.pop();
       }
@@ -108,18 +108,18 @@ export function parseMarkdown(text: string, rootText: string): MindNode {
         : (headingStack[headingStack.length - 1] ?? root);
       const node: MindNode = {
         type: 'list',
-        text: (m[4] ?? '').trim(),
+        text: (listMatch[4] ?? '').trim(),
         line: i,
         endLine: i,
         level: listStack.length,
         indent,
-        marker: m[2] ?? '-',
-        checked: m[3] === undefined ? null : m[3] !== ' ',
+        marker: listMatch[2] ?? '-',
+        checked: listMatch[3] === undefined ? null : listMatch[3] !== ' ',
         children: [],
         parent,
       };
       parent.children.push(node);
-      listStack.push({ width: w, node });
+      listStack.push({ width, node });
     } else if (listStack.length && line.trim() !== '') {
       // A continuation line under the innermost open list item (e.g. a
       // description paragraph indented under a bullet, with no marker
@@ -154,7 +154,7 @@ function computeEndLines(root: MindNode, lastLine: number): void {
     for (const c of n.children) visit(c);
   };
   visit(root);
-  for (const h of open) h.endLine = lastLine;
+  for (const heading of open) heading.endLine = lastLine;
   const fixLists = (n: MindNode): void => {
     for (const c of n.children) fixLists(c);
     if (n.type === 'list') {

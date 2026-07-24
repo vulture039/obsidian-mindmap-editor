@@ -25,7 +25,10 @@ Obsidian plugin "Mindmap Editor": shows a Markdown note as an editable mind map 
 
 Split by the axis that matters here: whether a file imports the `obsidian`
 package. Dependencies point one way: `main.ts` → `obsidian/` → `core/`. `core/`
-imports nothing from `obsidian/`.
+imports nothing from `obsidian/`. Where a concern has both a pure part and an
+Obsidian part, the two live under the same basename in each dir (e.g.
+`core/settings.ts` holds the data, `obsidian/settings.ts` the settings tab;
+`core/node-text.ts` parses links, `obsidian/node-text.ts` renders them).
 
 - **main.ts** - Plugin entry: view registration, commands, settings, openSplit
 - **core/** - No `obsidian` import, so it's unit-testable in plain Node:
@@ -33,15 +36,17 @@ imports nothing from `obsidian/`.
   - **patterns.ts** - Shared Markdown-structure regexes (heading/list/checkbox), so parser.ts and markdown-ops.ts agree on what each construct is
   - **markdown-ops.ts** - Pure line-editing ops (setText/setCheckbox/add/delete/move/reorder) over `string[]`
   - **colors.ts** - Per-branch colors, cycled by position from a user-configurable palette (settings)
+  - **node-text.ts** - Parses node text into link/plain segments (parseNodeText)
+  - **settings.ts** - MindmapSettings shape and DEFAULT_SETTINGS
   - **layout.ts** - Left-to-right tree layout (measures real DOM offsetWidth/Height — DOM-bound, so not unit-tested, but Obsidian-free)
   - **drag.ts** - Pure drop-target resolution (canDrop/canDropAsSibling/findDrop); setupDrag's pointer handling stays in mindmap-view.ts
 - **obsidian/** - Everything that touches the Obsidian API:
   - **mindmap-view.ts** - ItemView: rendering, selection, keyboard ops, inline edit, drag & drop, context menu, completed-task folding
-  - **node-text.ts** - Node text rendering (wikilinks / md links become links)
+  - **node-text.ts** - Renders the parsed segments to DOM links (wikilink / md link)
   - **file-io.ts** - Obsidian file I/O: findMarkdownView, updateFileLines (editor open → replaceRange, else vault.process)
-  - **settings.ts** - Settings tab
+  - **settings.ts** - Settings tab (MindmapSettingTab)
 - **styles.css** - All styles
-- **\*.test.ts** - Vitest unit tests co-located under core/ (parser, markdown-ops, colors, drag). The obsidian/ modules need the Obsidian API, so no mock — they're exercised manually in a vault.
+- **\*.test.ts** - Vitest unit tests co-located under core/ (parser, markdown-ops, colors, drag, node-text). The obsidian/ modules need the Obsidian API, so no mock — they're exercised manually in a vault.
 
 ## Pitfalls (guards against past bugs)
 

@@ -75,10 +75,14 @@ export class MindmapSettingTab extends PluginSettingTab {
     containerEl.empty();
     const str = (v: unknown): string => (typeof v === 'string' ? v : '');
     for (const def of this.getSettingDefinitions()) {
-      if (!('control' in def) || !def.control) continue;
+      if (!('control' in def) || !def.control) {
+        continue;
+      }
       const control = def.control;
       const setting = new Setting(containerEl).setName(def.name);
-      if (typeof def.desc === 'string') setting.setDesc(def.desc);
+      if (typeof def.desc === 'string') {
+        setting.setDesc(def.desc);
+      }
       if (control.type === 'toggle') {
         setting.addToggle((toggle) =>
           toggle
@@ -101,7 +105,9 @@ export class MindmapSettingTab extends PluginSettingTab {
             .setPlaceholder(control.placeholder ?? '')
             .setValue(str(this.getControlValue(control.key)))
             .onChange((v) => this.setControlValue(control.key, v));
-          if (control.rows) text.inputEl.rows = control.rows;
+          if (control.rows) {
+            text.inputEl.rows = control.rows;
+          }
         });
       }
     }

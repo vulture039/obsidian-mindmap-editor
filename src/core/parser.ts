@@ -23,7 +23,9 @@ export interface MindNode {
 
 function indentWidth(text: string): number {
   let width = 0;
-  for (const ch of text) width += ch === '\t' ? 4 : 1;
+  for (const ch of text) {
+    width += ch === '\t' ? 4 : 1;
+  }
   return width;
 }
 
@@ -63,7 +65,9 @@ export function parseMarkdown(text: string, rootText: string): MindNode {
       inFence = !inFence;
       continue;
     }
-    if (inFence) continue;
+    if (inFence) {
+      continue;
+    }
 
     const headingMatch = HEADING_RE.exec(line);
     if (headingMatch) {
@@ -147,22 +151,32 @@ function computeEndLines(root: MindNode, lastLine: number): void {
     if (n.type === 'heading') {
       while ((open[open.length - 1]?.level ?? 0) >= n.level) {
         const closed = open.pop();
-        if (closed) closed.endLine = n.line - 1;
+        if (closed) {
+          closed.endLine = n.line - 1;
+        }
       }
       open.push(n);
     }
-    for (const c of n.children) visit(c);
+    for (const c of n.children) {
+      visit(c);
+    }
   };
   visit(root);
-  for (const heading of open) heading.endLine = lastLine;
+  for (const heading of open) {
+    heading.endLine = lastLine;
+  }
   const fixLists = (n: MindNode): void => {
-    for (const c of n.children) fixLists(c);
+    for (const c of n.children) {
+      fixLists(c);
+    }
     if (n.type === 'list') {
       // Start from the node's own endLine, not just its line: the main
       // pass may have already extended it to cover a trailing
       // continuation/description line with no marker of its own.
       let end = n.endLine;
-      for (const c of n.children) end = Math.max(end, c.endLine);
+      for (const c of n.children) {
+        end = Math.max(end, c.endLine);
+      }
       n.endLine = end;
     }
   };
@@ -176,7 +190,9 @@ function computeEndLines(root: MindNode, lastLine: number): void {
  * writes to the file.
  */
 export function lineMatchesNode(line: string, node: MindNode): boolean {
-  if (node.type === 'root') return true;
+  if (node.type === 'root') {
+    return true;
+  }
   if (node.type === 'heading') {
     const h = HEADING_RE.exec(line);
     return (
@@ -192,10 +208,14 @@ export function lineMatchesNode(line: string, node: MindNode): boolean {
 }
 
 export function findByLine(root: MindNode, line: number): MindNode | null {
-  if (root.line === line) return root;
+  if (root.line === line) {
+    return root;
+  }
   for (const c of root.children) {
     const found = findByLine(c, line);
-    if (found) return found;
+    if (found) {
+      return found;
+    }
   }
   return null;
 }
@@ -206,7 +226,9 @@ export function isDescendantOrSelf(
 ): boolean {
   let cur: MindNode | null = node;
   while (cur) {
-    if (cur === ancestor) return true;
+    if (cur === ancestor) {
+      return true;
+    }
     cur = cur.parent;
   }
   return false;
@@ -214,6 +236,8 @@ export function isDescendantOrSelf(
 
 export function maxHeadingLevel(node: MindNode): number {
   let max = node.type === 'heading' ? node.level : 0;
-  for (const c of node.children) max = Math.max(max, maxHeadingLevel(c));
+  for (const c of node.children) {
+    max = Math.max(max, maxHeadingLevel(c));
+  }
   return max;
 }

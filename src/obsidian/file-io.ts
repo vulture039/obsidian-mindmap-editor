@@ -55,7 +55,9 @@ function applyLineDiff(
     endOld--;
     endNew--;
   }
-  if (endOld < start && endNew < start) return;
+  if (endOld < start && endNew < start) {
+    return;
+  }
 
   const segment = newLines.slice(start, endNew + 1);
   const lineLen = (i: number): number => (oldLines[i] ?? '').length;

@@ -12,7 +12,9 @@ import {
 function flatten(node: MindNode): [string, string, number, number][] {
   const out: [string, string, number, number][] = [];
   const walk = (n: MindNode): void => {
-    if (n.type !== 'root') out.push([n.type, n.text, n.line, n.endLine]);
+    if (n.type !== 'root') {
+      out.push([n.type, n.text, n.line, n.endLine]);
+    }
     n.children.forEach(walk);
   };
   walk(node);

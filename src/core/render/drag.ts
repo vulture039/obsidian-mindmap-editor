@@ -18,12 +18,18 @@ export interface DropTarget {
 
 /** Whether `source`'s subtree may become a child of `target`. */
 export function canDrop(source: MindNode, target: MindNode): boolean {
-  if (isDescendantOrSelf(target, source)) return false;
-  if (source.type === 'heading' && target.type === 'list') return false;
+  if (isDescendantOrSelf(target, source)) {
+    return false;
+  }
+  if (source.type === 'heading' && target.type === 'list') {
+    return false;
+  }
   if (source.type === 'heading') {
     const targetLevel = target.type === 'root' ? 0 : target.level;
     const delta = targetLevel + 1 - source.level;
-    if (delta > 0 && maxHeadingLevel(source) + delta > 6) return false;
+    if (delta > 0 && maxHeadingLevel(source) + delta > 6) {
+      return false;
+    }
   }
   return true;
 }
@@ -51,7 +57,9 @@ export function findDrop(
   let bestRect: DOMRect | null = null;
   let bestDist = Infinity;
   for (const laid of laidByLine.values()) {
-    if (isDescendantOrSelf(laid.node, source)) continue;
+    if (isDescendantOrSelf(laid.node, source)) {
+      continue;
+    }
     const rect = laid.el.getBoundingClientRect();
     const dx = Math.max(rect.left - clientX, 0, clientX - rect.right);
     const dy = Math.max(rect.top - clientY, 0, clientY - rect.bottom);
@@ -70,7 +78,9 @@ export function findDrop(
   if (parent && canDropAsSibling(source, target)) {
     const sibs = parent.children;
     const isNoop = (before: MindNode | null): boolean => {
-      if (source.parent !== parent) return false;
+      if (source.parent !== parent) {
+        return false;
+      }
       const sourceIndex = sibs.indexOf(source);
       return (
         before === source ||

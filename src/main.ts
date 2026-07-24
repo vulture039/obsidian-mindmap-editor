@@ -77,7 +77,9 @@ export default class MindmapPlugin extends Plugin {
   async saveSettings(): Promise<void> {
     await this.saveData(this.settings);
     for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_MINDMAP)) {
-      if (leaf.view instanceof MindmapView) leaf.view.refresh();
+      if (leaf.view instanceof MindmapView) {
+        leaf.view.refresh();
+      }
     }
   }
 }

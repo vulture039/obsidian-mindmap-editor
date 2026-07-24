@@ -38,4 +38,12 @@ export default defineConfig(
   },
   ...obsidianmd.configs.recommended,
   eslintConfigPrettier,
+  {
+    // After eslint-config-prettier, which defensively turns curly off. It
+    // doesn't actually conflict with Prettier (brace presence, not layout),
+    // so re-enable it here to force braces on all control-flow bodies.
+    rules: {
+      curly: ['error', 'all'],
+    },
+  },
 );

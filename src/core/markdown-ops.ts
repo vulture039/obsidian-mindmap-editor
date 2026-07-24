@@ -31,10 +31,15 @@ function listInsertPoint(target: MindNode): number {
   let lastList: MindNode | undefined;
   let firstHeading: MindNode | undefined;
   for (const c of target.children) {
-    if (c.type === 'list') lastList = c;
-    else if (!firstHeading) firstHeading = c;
+    if (c.type === 'list') {
+      lastList = c;
+    } else if (!firstHeading) {
+      firstHeading = c;
+    }
   }
-  if (lastList) return lastList.endLine + 1;
+  if (lastList) {
+    return lastList.endLine + 1;
+  }
   return firstHeading ? firstHeading.line : target.endLine + 1;
 }
 
@@ -90,9 +95,15 @@ function detectIndentUnit(lines: string[]): string {
   for (const line of lines) {
     const m = INDENTED_LIST_RE.exec(line);
     const indent = m?.[1];
-    if (!indent) continue;
-    if (indent.includes('\t')) return '\t';
-    if (best === null || indent.length < best.length) best = indent;
+    if (!indent) {
+      continue;
+    }
+    if (indent.includes('\t')) {
+      return '\t';
+    }
+    if (best === null || indent.length < best.length) {
+      best = indent;
+    }
   }
   return best ?? '\t';
 }
@@ -125,11 +136,15 @@ export function addChildOp(
   node: MindNode,
   task?: boolean,
 ): InsertResult {
-  if (node.type !== 'root') requireNodeLine(lines, node);
+  if (node.type !== 'root') {
+    requireNodeLine(lines, node);
+  }
   if (node.type === 'root') {
     const hasHeadings = node.children.some((c) => c.type === 'heading');
     let at = lines.length;
-    while (at > 0 && (lines[at - 1] ?? '').trim() === '') at--;
+    while (at > 0 && (lines[at - 1] ?? '').trim() === '') {
+      at--;
+    }
     lines.splice(
       at,
       0,
@@ -167,7 +182,9 @@ export function addChildOp(
 /** Adds or removes the task checkbox on a list item, keeping its text. */
 export function toggleTaskOp(lines: string[], node: MindNode): string[] {
   const line = requireNodeLine(lines, node);
-  if (node.type !== 'list') return lines;
+  if (node.type !== 'list') {
+    return lines;
+  }
   if (node.checked === null) {
     const m = MARKER_PREFIX_RE.exec(line);
     const prefix = m?.[1];
@@ -228,8 +245,12 @@ export function moveNodeOp(
   before: MindNode | null = null,
 ): string[] {
   requireNodeLine(lines, source);
-  if (target.type !== 'root') requireNodeLine(lines, target);
-  if (before) requireNodeLine(lines, before);
+  if (target.type !== 'root') {
+    requireNodeLine(lines, target);
+  }
+  if (before) {
+    requireNodeLine(lines, before);
+  }
   const segment = nodeBlock(lines, source);
   let newSegment: string[];
 
@@ -257,7 +278,9 @@ export function moveNodeOp(
         ? segment.slice()
         : segment.map((l) => {
             const m = HEADING_SHIFT_RE.exec(l);
-            if (!m) return l;
+            if (!m) {
+              return l;
+            }
             const level = Math.min(6, Math.max(1, (m[1] ?? '').length + delta));
             return '#'.repeat(level) + (m[2] ?? '');
           });
@@ -274,7 +297,9 @@ export function moveNodeOp(
   }
 
   lines.splice(source.line, segment.length);
-  if (at > source.line) at -= segment.length;
+  if (at > source.line) {
+    at -= segment.length;
+  }
   lines.splice(at, 0, ...newSegment);
   return lines;
 }

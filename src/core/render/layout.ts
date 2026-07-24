@@ -40,7 +40,9 @@ export function layoutTree(root: LaidNode): { width: number; height: number } {
 function measure(laid: LaidNode): void {
   laid.w = laid.el.offsetWidth;
   laid.h = laid.el.offsetHeight;
-  for (const c of laid.children) measure(c);
+  for (const c of laid.children) {
+    measure(c);
+  }
 }
 
 function computeSubtreeHeight(laid: LaidNode): number {
@@ -49,7 +51,9 @@ function computeSubtreeHeight(laid: LaidNode): number {
     return laid.subtreeH;
   }
   let sum = V_GAP * (laid.children.length - 1);
-  for (const c of laid.children) sum += computeSubtreeHeight(c);
+  for (const c of laid.children) {
+    sum += computeSubtreeHeight(c);
+  }
   laid.subtreeH = Math.max(laid.h, sum);
   return laid.subtreeH;
 }
@@ -57,9 +61,13 @@ function computeSubtreeHeight(laid: LaidNode): number {
 function place(laid: LaidNode, x: number, top: number): void {
   laid.x = x;
   laid.y = top + (laid.subtreeH - laid.h) / 2;
-  if (!laid.children.length) return;
+  if (!laid.children.length) {
+    return;
+  }
   let childBlock = V_GAP * (laid.children.length - 1);
-  for (const c of laid.children) childBlock += c.subtreeH;
+  for (const c of laid.children) {
+    childBlock += c.subtreeH;
+  }
   let cy = top + (laid.subtreeH - childBlock) / 2;
   const childX = x + laid.w + H_GAP;
   for (const c of laid.children) {
@@ -74,5 +82,7 @@ function collectBounds(
 ): void {
   bounds.width = Math.max(bounds.width, laid.x + laid.w);
   bounds.height = Math.max(bounds.height, laid.y + laid.h);
-  for (const child of laid.children) collectBounds(child, bounds);
+  for (const child of laid.children) {
+    collectBounds(child, bounds);
+  }
 }

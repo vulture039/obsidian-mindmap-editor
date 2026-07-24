@@ -1,7 +1,7 @@
 {
   "id": "mindmap-editor",
   "name": "Mind map editor",
-  "version": "0.1.6",
+  "version": "1.0.0",
   "minAppVersion": "1.12.3",
   "description": "Edit your outline as a mind map, synced to Markdown.",
   "author": "vulture039",

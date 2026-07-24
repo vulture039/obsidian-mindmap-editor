@@ -1,6 +1,6 @@
 {
   "name": "mindmap-editor",
-  "version": "0.1.6",
+  "version": "1.0.0",
   "description": "Edit a note as a mind map: headings and lists become nodes, with clickable checkboxes for tasks.",
   "main": "main.js",
   "type": "module",

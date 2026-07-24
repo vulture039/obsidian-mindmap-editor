@@ -22,13 +22,15 @@ Obsidian plugin "Mindmap Editor": shows a Markdown note as an editable mind map 
 - **mindmap-view.ts** - ItemView: rendering, selection, keyboard ops, inline edit, drag & drop, context menu, completed-task folding
 - **parser.ts** - Markdown → MindNode tree. lineMatchesNode
 - **patterns.ts** - Shared Markdown-structure regexes (heading/list/checkbox), so parser.ts and markdown-ops.ts agree on what each construct is
-- **markdown-ops.ts** - Mutation ops (setText/setCheckbox/add/delete/move/reorder), updateFileLines (editor open → replaceRange, else vault.process)
+- **markdown-ops.ts** - Pure line-editing ops (setText/setCheckbox/add/delete/move/reorder) over `string[]`; no Obsidian import, so they're unit-testable
+- **file-io.ts** - Obsidian file I/O: findMarkdownView, updateFileLines (editor open → replaceRange, else vault.process)
 - **layout.ts** - Left-to-right tree layout (measures real DOM offsetWidth/Height)
 - **drag.ts** - Pure drop-target resolution (canDrop/canDropAsSibling/findDrop); setupDrag's pointer handling stays in mindmap-view.ts
 - **colors.ts** - Per-branch colors, cycled by position from a user-configurable palette (settings)
 - **node-text.ts** - Node text rendering (wikilinks / md links become links)
 - **settings.ts** - Settings tab
 - **styles.css** - All styles
+- **\*.test.ts** - Vitest unit tests, co-located with the pure-logic modules they cover (parser, markdown-ops, colors, drag). These modules import no Obsidian API, so no mock is needed; the Obsidian-facing view/file-io code is exercised manually in a vault instead.
 
 ## Pitfalls (guards against past bugs)
 

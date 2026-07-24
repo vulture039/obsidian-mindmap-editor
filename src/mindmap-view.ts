@@ -20,15 +20,14 @@ import {
   addChildOp,
   addSiblingOp,
   deleteNodeOp,
-  findMarkdownView,
   InsertResult,
   moveNodeOp,
   reorderSiblingOp,
   setCheckboxOp,
   setTextOp,
   toggleTaskOp,
-  updateFileLines,
 } from './markdown-ops';
+import { findMarkdownView, updateFileLines } from './file-io';
 
 export const VIEW_TYPE_MINDMAP = 'mindmap-editor';
 

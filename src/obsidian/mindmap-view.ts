@@ -93,6 +93,14 @@ export class MindmapView extends ItemView {
     return this.plugin.settings.hideCompleted;
   }
 
+  /**
+   * An interaction is in progress (inline edit or drag) that a re-render must
+   * not interrupt; render() defers into renderQueued while this is true.
+   */
+  private get isBusy(): boolean {
+    return this.isInlineEditing || this.isDragging;
+  }
+
   private readonly requestRender = debounce(
     () => {
       void this.render();
@@ -520,7 +528,7 @@ export class MindmapView extends ItemView {
   }
 
   private async render(): Promise<void> {
-    if (this.isInlineEditing || this.isDragging) {
+    if (this.isBusy) {
       this.renderQueued = true;
 
       return;
@@ -547,7 +555,7 @@ export class MindmapView extends ItemView {
     if (seq !== this.renderSeq) {
       return;
     }
-    if (this.isInlineEditing || this.isDragging) {
+    if (this.isBusy) {
       this.renderQueued = true;
 
       return;
@@ -606,15 +614,9 @@ export class MindmapView extends ItemView {
     });
 
     el.dataset.line = String(node.line);
-    let own = color;
 
-    if (node.type === 'root') {
-      own = '';
-    } else if (node.parent?.type === 'root') {
-      const index = node.parent.children.indexOf(node);
+    const own = this.nodeColor(node, color, palette);
 
-      own = branchColorFor(index, palette);
-    }
     if (own) {
       el.setCssProps({ '--branch-color': own });
     }
@@ -663,6 +665,42 @@ export class MindmapView extends ItemView {
     const laid = makeLaid(node, el, own);
 
     this.laidByLine.set(node.line, laid);
+    this.buildChildNodes(node, laid, own, palette);
+
+    return laid;
+  }
+
+  /**
+   * The node's own branch color: the root has none, a top-level branch takes
+   * a palette color by its position, and deeper nodes inherit the passed-in
+   * color.
+   */
+  private nodeColor(
+    node: MindNode,
+    inherited: string,
+    palette: string[],
+  ): string {
+    if (node.type === 'root') {
+      return '';
+    }
+    if (node.parent?.type === 'root') {
+      return branchColorFor(node.parent.children.indexOf(node), palette);
+    }
+
+    return inherited;
+  }
+
+  /**
+   * Builds the visible children under `laid`. With hideCompleted on, checked
+   * tasks are skipped and collapsed into one "✓ n done" pill per parent (or a
+   * "− hide done" pill when the parent is currently expanded).
+   */
+  private buildChildNodes(
+    node: MindNode,
+    laid: LaidNode,
+    own: string,
+    palette: string[],
+  ): void {
     let hiddenDone = 0;
     let shownDone = 0;
 
@@ -679,12 +717,8 @@ export class MindmapView extends ItemView {
     if (hiddenDone > 0) {
       laid.children.push(this.buildDonePill(node, hiddenDone, own));
     } else if (this.hideCompleted && shownDone > 0) {
-      // This parent was expanded via its "✓ n done" pill; offer the
-      // way back without touching the rest of the map.
       laid.children.push(this.buildDonePill(node, 0, own));
     }
-
-    return laid;
   }
 
   /**

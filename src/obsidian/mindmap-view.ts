@@ -116,8 +116,15 @@ export class MindmapView extends ItemView {
     // part in Obsidian's per-leaf navigation history: back/forward via
     // the tab-header arrows, mouse buttons, and the built-in hotkeys.
     this.navigation = true;
-    // A view scope receives keys whenever this leaf is active, without
-    // depending on which inner element has DOM focus.
+    this.registerShortcuts();
+  }
+
+  /**
+   * Registers the view-scoped keyboard shortcuts. A view scope receives keys
+   * whenever this leaf is active, without depending on which inner element
+   * has DOM focus.
+   */
+  private registerShortcuts(): void {
     this.scope = new Scope(this.app.scope);
     this.scope.register([], 'Enter', () => {
       const node = this.selectedNode();
@@ -375,6 +382,20 @@ export class MindmapView extends ItemView {
     });
     this.canvasEl = this.scrollerEl.createDiv({ cls: 'mindmap-canvas' });
 
+    this.registerWorkspaceEvents();
+    // During workspace restore, renders can run before files and editors
+    // are fully loaded; one more render after layout-ready fills in the
+    // real content (runs immediately when the layout is already ready).
+    this.app.workspace.onLayoutReady(() => this.requestRender());
+    await this.render();
+  }
+
+  /**
+   * Wires the vault/workspace events that keep the map in sync: re-render on
+   * edits, track the last-focused Markdown pane, follow the active file, pan
+   * on background drag, and remember the split direction.
+   */
+  private registerWorkspaceEvents(): void {
     this.registerEvent(
       this.app.vault.on('modify', (file) => {
         if (file === this.file) {
@@ -425,11 +446,6 @@ export class MindmapView extends ItemView {
         }
       }),
     );
-    // During workspace restore, renders can run before files and editors
-    // are fully loaded; one more render after layout-ready fills in the
-    // real content (runs immediately when the layout is already ready).
-    this.app.workspace.onLayoutReady(() => this.requestRender());
-    await this.render();
   }
 
   getState(): Record<string, unknown> {

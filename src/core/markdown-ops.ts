@@ -260,6 +260,58 @@ export function deleteNodeOp(lines: string[], node: MindNode): string[] {
   return lines;
 }
 
+/** Re-indents a moved list subtree from its old indent to sit under target. */
+function reindentListSegment(
+  segment: string[],
+  source: MindNode,
+  target: MindNode,
+  lines: string[],
+): string[] {
+  let newIndent: string;
+
+  if (target.type === 'list') {
+    const firstChild = target.children[0];
+
+    newIndent = firstChild
+      ? firstChild.indent
+      : target.indent + detectIndentUnit(lines);
+  } else {
+    newIndent = '';
+  }
+  const oldIndent = source.indent;
+
+  return segment.map((l) =>
+    l.trim() !== '' && l.startsWith(oldIndent)
+      ? newIndent + l.slice(oldIndent.length)
+      : l,
+  );
+}
+
+/** Shifts a moved heading subtree's levels so source sits under target. */
+function shiftHeadingSegment(
+  segment: string[],
+  source: MindNode,
+  target: MindNode,
+): string[] {
+  const targetLevel = target.type === 'root' ? 0 : target.level;
+  const delta = targetLevel + 1 - source.level;
+
+  if (delta === 0) {
+    return segment.slice();
+  }
+
+  return segment.map((l) => {
+    const m = HEADING_SHIFT_RE.exec(l);
+
+    if (!m) {
+      return l;
+    }
+    const level = Math.min(6, Math.max(1, (m[1] ?? '').length + delta));
+
+    return '#'.repeat(level) + (m[2] ?? '');
+  });
+}
+
 /**
  * Moves the source subtree to become a child of the target: before the
  * `before` sibling when given (same-type reorder/insert), else as the last
@@ -281,45 +333,10 @@ export function moveNodeOp(
     requireNodeLine(lines, before);
   }
   const segment = nodeBlock(lines, source);
-  let newSegment: string[];
-
-  if (source.type === 'list') {
-    let newIndent: string;
-
-    if (target.type === 'list') {
-      const firstChild = target.children[0];
-
-      newIndent = firstChild
-        ? firstChild.indent
-        : target.indent + detectIndentUnit(lines);
-    } else {
-      newIndent = '';
-    }
-    const oldIndent = source.indent;
-
-    newSegment = segment.map((l) =>
-      l.trim() !== '' && l.startsWith(oldIndent)
-        ? newIndent + l.slice(oldIndent.length)
-        : l,
-    );
-  } else {
-    const targetLevel = target.type === 'root' ? 0 : target.level;
-    const delta = targetLevel + 1 - source.level;
-
-    newSegment =
-      delta === 0
-        ? segment.slice()
-        : segment.map((l) => {
-            const m = HEADING_SHIFT_RE.exec(l);
-
-            if (!m) {
-              return l;
-            }
-            const level = Math.min(6, Math.max(1, (m[1] ?? '').length + delta));
-
-            return '#'.repeat(level) + (m[2] ?? '');
-          });
-  }
+  const newSegment =
+    source.type === 'list'
+      ? reindentListSegment(segment, source, target, lines)
+      : shiftHeadingSegment(segment, source, target);
 
   let at: number;
 

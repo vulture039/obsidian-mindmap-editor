@@ -72,6 +72,7 @@ npm test       # run the Vitest unit tests (npm run test:watch to watch)
 ```
 
 **Testing**
+
 Unit tests (Vitest) exercise the pure logic — Markdown parsing, the line-editing operations, palette and drop-target rules.
 The Obsidian-API-facing view code is exercised manually in a vault rather than mocked.
 

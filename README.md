@@ -65,7 +65,13 @@ npm install
 npm run dev    # watch build
 npm run build  # type check + production build
 npm run lint
+npm test       # run the Vitest unit tests (npm run test:watch to watch)
 ```
+
+Unit tests (Vitest) sit next to the modules they cover (`src/*.test.ts`) and
+exercise the pure logic — Markdown parsing (`parser.ts`), the line-editing ops
+(`markdown-ops.ts`), palette and drop-target rules. The Obsidian-API-facing
+view code is exercised manually in a vault rather than mocked.
 
 To test the plugin in a vault, copy the following files into:
 

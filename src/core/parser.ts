@@ -23,9 +23,11 @@ export interface MindNode {
 
 function indentWidth(text: string): number {
   let width = 0;
+
   for (const ch of text) {
     width += ch === '\t' ? 4 : 1;
   }
+
   return width;
 }
 
@@ -52,6 +54,7 @@ export function parseMarkdown(text: string, rootText: string): MindNode {
   if (lines[0] === '---') {
     for (let j = 1; j < lines.length; j++) {
       const line = lines[j];
+
       if (line === '---' || line === '...') {
         start = j + 1;
         break;
@@ -61,6 +64,7 @@ export function parseMarkdown(text: string, rootText: string): MindNode {
 
   for (let i = start; i < lines.length; i++) {
     const line = lines[i] ?? '';
+
     if (FENCE_RE.test(line)) {
       inFence = !inFence;
       continue;
@@ -70,8 +74,10 @@ export function parseMarkdown(text: string, rootText: string): MindNode {
     }
 
     const headingMatch = HEADING_RE.exec(line);
+
     if (headingMatch) {
       const level = (headingMatch[1] ?? '').length;
+
       while (
         headingStack.length > 1 &&
         (headingStack[headingStack.length - 1]?.level ?? 0) >= level
@@ -91,6 +97,7 @@ export function parseMarkdown(text: string, rootText: string): MindNode {
         children: [],
         parent,
       };
+
       parent.children.push(node);
       headingStack.push(node);
       listStack = [];
@@ -98,9 +105,11 @@ export function parseMarkdown(text: string, rootText: string): MindNode {
     }
 
     const listMatch = LIST_RE.exec(line);
+
     if (listMatch) {
       const indent = listMatch[1] ?? '';
       const width = indentWidth(indent);
+
       while (
         listStack.length &&
         (listStack[listStack.length - 1]?.width ?? 0) >= width
@@ -122,6 +131,7 @@ export function parseMarkdown(text: string, rootText: string): MindNode {
         children: [],
         parent,
       };
+
       parent.children.push(node);
       listStack.push({ width, node });
     } else if (listStack.length && line.trim() !== '') {
@@ -132,6 +142,7 @@ export function parseMarkdown(text: string, rootText: string): MindNode {
       // carry it along instead of stranding it at its old position.
       const top = listStack[listStack.length - 1];
       const leadingWs = /^\s*/.exec(line)?.[0] ?? '';
+
       if (top && indentWidth(leadingWs) > top.width) {
         top.node.endLine = i;
       }
@@ -139,6 +150,7 @@ export function parseMarkdown(text: string, rootText: string): MindNode {
   }
 
   computeEndLines(root, lastLine);
+
   return root;
 }
 
@@ -151,6 +163,7 @@ function computeEndLines(root: MindNode, lastLine: number): void {
     if (n.type === 'heading') {
       while ((open[open.length - 1]?.level ?? 0) >= n.level) {
         const closed = open.pop();
+
         if (closed) {
           closed.endLine = n.line - 1;
         }
@@ -161,6 +174,7 @@ function computeEndLines(root: MindNode, lastLine: number): void {
       visit(c);
     }
   };
+
   visit(root);
   for (const heading of open) {
     heading.endLine = lastLine;
@@ -174,12 +188,14 @@ function computeEndLines(root: MindNode, lastLine: number): void {
       // pass may have already extended it to cover a trailing
       // continuation/description line with no marker of its own.
       let end = n.endLine;
+
       for (const c of n.children) {
         end = Math.max(end, c.endLine);
       }
       n.endLine = end;
     }
   };
+
   fixLists(root);
 }
 
@@ -195,6 +211,7 @@ export function lineMatchesNode(line: string, node: MindNode): boolean {
   }
   if (node.type === 'heading') {
     const h = HEADING_RE.exec(line);
+
     return (
       !!h &&
       (h[1] ?? '').length === node.level &&
@@ -202,6 +219,7 @@ export function lineMatchesNode(line: string, node: MindNode): boolean {
     );
   }
   const m = LIST_RE.exec(line);
+
   return (
     !!m && (m[1] ?? '') === node.indent && (m[4] ?? '').trim() === node.text
   );
@@ -213,10 +231,12 @@ export function findByLine(root: MindNode, line: number): MindNode | null {
   }
   for (const c of root.children) {
     const found = findByLine(c, line);
+
     if (found) {
       return found;
     }
   }
+
   return null;
 }
 
@@ -225,19 +245,23 @@ export function isDescendantOrSelf(
   ancestor: MindNode,
 ): boolean {
   let cur: MindNode | null = node;
+
   while (cur) {
     if (cur === ancestor) {
       return true;
     }
     cur = cur.parent;
   }
+
   return false;
 }
 
 export function maxHeadingLevel(node: MindNode): number {
   let max = node.type === 'heading' ? node.level : 0;
+
   for (const c of node.children) {
     max = Math.max(max, maxHeadingLevel(c));
   }
+
   return max;
 }

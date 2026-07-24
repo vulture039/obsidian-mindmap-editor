@@ -33,7 +33,9 @@ export function layoutTree(root: LaidNode): { width: number; height: number } {
   computeSubtreeHeight(root);
   place(root, PADDING, PADDING);
   const bounds = { width: 0, height: 0 };
+
   collectBounds(root, bounds);
+
   return { width: bounds.width + PADDING, height: bounds.height + PADDING };
 }
 
@@ -48,13 +50,16 @@ function measure(laid: LaidNode): void {
 function computeSubtreeHeight(laid: LaidNode): number {
   if (!laid.children.length) {
     laid.subtreeH = laid.h;
+
     return laid.subtreeH;
   }
   let sum = V_GAP * (laid.children.length - 1);
+
   for (const c of laid.children) {
     sum += computeSubtreeHeight(c);
   }
   laid.subtreeH = Math.max(laid.h, sum);
+
   return laid.subtreeH;
 }
 
@@ -65,11 +70,13 @@ function place(laid: LaidNode, x: number, top: number): void {
     return;
   }
   let childBlock = V_GAP * (laid.children.length - 1);
+
   for (const c of laid.children) {
     childBlock += c.subtreeH;
   }
   let cy = top + (laid.subtreeH - childBlock) / 2;
   const childX = x + laid.w + H_GAP;
+
   for (const c of laid.children) {
     place(c, childX, cy);
     cy += c.subtreeH + V_GAP;

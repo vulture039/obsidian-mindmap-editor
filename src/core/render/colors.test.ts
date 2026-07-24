@@ -19,6 +19,7 @@ describe('parsePalette', () => {
 describe('branchColorFor', () => {
   it('cycles through the palette by position', () => {
     const palette = ['#a', '#b', '#c'];
+
     expect(branchColorFor(0, palette)).toBe('#a');
     expect(branchColorFor(2, palette)).toBe('#c');
     expect(branchColorFor(3, palette)).toBe('#a');

@@ -21,6 +21,7 @@ export function renderNodeText(
     onClick: (e: MouseEvent) => void,
   ): void => {
     const anchor = containerEl.createEl('a', { cls, text: label, attr });
+
     anchor.draggable = false;
     anchor.addEventListener('click', (e) => {
       e.preventDefault();
@@ -28,11 +29,13 @@ export function renderNodeText(
       onClick(e);
     });
   };
+
   for (const segment of parseNodeText(text)) {
     if (segment.kind === 'text') {
       containerEl.appendText(segment.text);
     } else if (segment.kind === 'wikilink') {
       const { target, label } = segment;
+
       makeLink('internal-link mindmap-link', label, undefined, (e) => {
         if (onInternalLink) {
           onInternalLink(target, e);
@@ -46,6 +49,7 @@ export function renderNodeText(
       });
     } else {
       const { url, label } = segment;
+
       makeLink('external-link mindmap-link', label, { href: url }, () =>
         window.open(url),
       );

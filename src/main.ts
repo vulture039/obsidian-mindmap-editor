@@ -38,8 +38,10 @@ export default class MindmapPlugin extends Plugin {
    */
   private async toggleMindmapFocus(): Promise<void> {
     const mindmap = this.app.workspace.getActiveViewOfType(MindmapView);
+
     if (mindmap) {
       await mindmap.focusEditor();
+
       return;
     }
     await this.openMindmap();
@@ -47,12 +49,15 @@ export default class MindmapPlugin extends Plugin {
 
   private async openMindmap(): Promise<void> {
     const file = this.app.workspace.getActiveFile();
+
     if (!file || file.extension !== 'md') {
       new Notice('Open a Markdown file first.');
+
       return;
     }
     const existing = this.app.workspace.getLeavesOfType(VIEW_TYPE_MINDMAP)[0];
     const leaf = existing ?? this.openSplit();
+
     await leaf.setViewState({
       type: VIEW_TYPE_MINDMAP,
       active: true,

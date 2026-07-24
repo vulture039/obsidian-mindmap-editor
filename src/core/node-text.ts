@@ -15,15 +15,19 @@ export type NodeSegment =
 export function parseNodeText(text: string): NodeSegment[] {
   const segments: NodeSegment[] = [];
   let last = 0;
+
   for (const match of text.matchAll(LINK_RE)) {
     const index = match.index ?? 0;
+
     if (index > last) {
       segments.push({ kind: 'text', text: text.slice(last, index) });
     }
     const wikiTarget = match[1];
+
     if (wikiTarget !== undefined) {
       const target = wikiTarget.trim();
       const alias = match[2]?.trim();
+
       segments.push({
         kind: 'wikilink',
         target,
@@ -41,5 +45,6 @@ export function parseNodeText(text: string): NodeSegment[] {
   if (last < text.length) {
     segments.push({ kind: 'text', text: text.slice(last) });
   }
+
   return segments;
 }

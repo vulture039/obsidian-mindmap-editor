@@ -27,10 +27,12 @@ export function canDrop(source: MindNode, target: MindNode): boolean {
   if (source.type === 'heading') {
     const targetLevel = target.type === 'root' ? 0 : target.level;
     const delta = targetLevel + 1 - source.level;
+
     if (delta > 0 && maxHeadingLevel(source) + delta > 6) {
       return false;
     }
   }
+
   return true;
 }
 
@@ -56,6 +58,7 @@ export function findDrop(
   let best: LaidNode | null = null;
   let bestRect: DOMRect | null = null;
   let bestDist = Infinity;
+
   for (const laid of laidByLine.values()) {
     if (isDescendantOrSelf(laid.node, source)) {
       continue;
@@ -64,6 +67,7 @@ export function findDrop(
     const dx = Math.max(rect.left - clientX, 0, clientX - rect.right);
     const dy = Math.max(rect.top - clientY, 0, clientY - rect.bottom);
     const dist = Math.hypot(dx, dy);
+
     if (dist < bestDist) {
       bestDist = dist;
       best = laid;
@@ -75,6 +79,7 @@ export function findDrop(
   }
   const target = best.node;
   const parent = target.parent;
+
   if (parent && canDropAsSibling(source, target)) {
     const sibs = parent.children;
     const isNoop = (before: MindNode | null): boolean => {
@@ -82,22 +87,26 @@ export function findDrop(
         return false;
       }
       const sourceIndex = sibs.indexOf(source);
+
       return (
         before === source ||
         sibs[sourceIndex + 1] === before ||
         (before === null && sourceIndex === sibs.length - 1)
       );
     };
+
     if (clientY < bestRect.top + bestRect.height / 3) {
       return isNoop(target) ? null : { laid: best, parent, before: target };
     }
     if (clientY > bestRect.bottom - bestRect.height / 3) {
       const before = sibs[sibs.indexOf(target) + 1] ?? null;
+
       return isNoop(before) ? null : { laid: best, parent, before };
     }
   }
   if (canDrop(source, target)) {
     return { laid: best, parent: null, before: null };
   }
+
   return null;
 }

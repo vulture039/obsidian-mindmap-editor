@@ -22,6 +22,7 @@ export function parsePalette(raw: string): string[] {
     .split('\n')
     .map((line) => line.trim())
     .filter((line) => line.length > 0);
+
   return colors.length > 0 ? colors : DEFAULT_PALETTE;
 }
 

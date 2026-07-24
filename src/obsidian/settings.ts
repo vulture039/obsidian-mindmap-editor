@@ -72,14 +72,17 @@ export class MindmapSettingTab extends PluginSettingTab {
   /** Fallback for Obsidian < 1.13, built from the same definitions. */
   display(): void {
     const { containerEl } = this;
+
     containerEl.empty();
     const str = (v: unknown): string => (typeof v === 'string' ? v : '');
+
     for (const def of this.getSettingDefinitions()) {
       if (!('control' in def) || !def.control) {
         continue;
       }
       const control = def.control;
       const setting = new Setting(containerEl).setName(def.name);
+
       if (typeof def.desc === 'string') {
         setting.setDesc(def.desc);
       }

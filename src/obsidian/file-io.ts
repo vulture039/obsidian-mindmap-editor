@@ -3,10 +3,12 @@ import { App, Editor, MarkdownView, TFile } from 'obsidian';
 export function findMarkdownView(app: App, file: TFile): MarkdownView | null {
   for (const leaf of app.workspace.getLeavesOfType('markdown')) {
     const view = leaf.view;
+
     if (view instanceof MarkdownView && view.file?.path === file.path) {
       return view;
     }
   }
+
   return null;
 }
 
@@ -21,9 +23,11 @@ export async function updateFileLines(
   mutate: (lines: string[]) => string[],
 ): Promise<void> {
   const mdView = findMarkdownView(app, file);
+
   if (mdView) {
     const oldLines = mdView.editor.getValue().split('\n');
     const newLines = mutate(oldLines.slice());
+
     applyLineDiff(mdView.editor, oldLines, newLines);
   } else {
     await app.vault.process(file, (data) =>
@@ -38,6 +42,7 @@ function applyLineDiff(
   newLines: string[],
 ): void {
   let start = 0;
+
   while (
     start < oldLines.length &&
     start < newLines.length &&
@@ -47,6 +52,7 @@ function applyLineDiff(
   }
   let endOld = oldLines.length - 1;
   let endNew = newLines.length - 1;
+
   while (
     endOld >= start &&
     endNew >= start &&
@@ -69,6 +75,7 @@ function applyLineDiff(
       { line: start, ch: 0 },
       { line: endOld, ch: lineLen(endOld) },
     );
+
     return;
   }
 
@@ -80,10 +87,12 @@ function applyLineDiff(
         { line: start - 1, ch: lineLen(start - 1) },
         { line: endOld, ch: lineLen(endOld) },
       );
+
       return;
     }
     if (endOld < oldLines.length - 1) {
       editor.replaceRange('', { line: 0, ch: 0 }, { line: endOld + 1, ch: 0 });
+
       return;
     }
     editor.replaceRange(
@@ -91,6 +100,7 @@ function applyLineDiff(
       { line: 0, ch: 0 },
       { line: endOld, ch: lineLen(endOld) },
     );
+
     return;
   }
 
@@ -100,6 +110,7 @@ function applyLineDiff(
       line: start,
       ch: 0,
     });
+
     return;
   }
 

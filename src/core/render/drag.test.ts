@@ -10,7 +10,9 @@ function tree(text: string): (line: number) => MindNode {
     byLine.set(n.line, n);
     n.children.forEach(walk);
   };
+
   walk(root);
+
   return (line) => byLine.get(line)!;
 }
 
@@ -19,6 +21,7 @@ describe('canDrop', () => {
     const at = tree('- a\n  - b');
     const a = at(0);
     const b = at(1);
+
     expect(canDrop(a, a)).toBe(false);
     expect(canDrop(a, b)).toBe(false);
     expect(canDrop(b, a)).toBe(true);
@@ -26,6 +29,7 @@ describe('canDrop', () => {
 
   it('rejects a heading dropped into a list item', () => {
     const at = tree('# H\n- a');
+
     expect(canDrop(at(0), at(1))).toBe(false);
   });
 
@@ -35,11 +39,13 @@ describe('canDrop', () => {
     const at = tree('# a\n## b\n### c\n#### d\n##### e');
     const h1 = at(0);
     const h5 = at(4);
+
     expect(canDrop(h1, h5)).toBe(false);
   });
 
   it('allows a normal reparent', () => {
     const at = tree('# a\n# b');
+
     expect(canDrop(at(1), at(0))).toBe(true);
   });
 });
@@ -47,11 +53,13 @@ describe('canDrop', () => {
 describe('canDropAsSibling', () => {
   it('allows a same-type sibling with a valid parent', () => {
     const at = tree('- a\n- b');
+
     expect(canDropAsSibling(at(1), at(0))).toBe(true);
   });
 
   it('rejects mixing types (heading next to a list item)', () => {
     const at = tree('# H\n- a');
+
     // Trying to place the heading as a sibling of the list item.
     expect(canDropAsSibling(at(0), at(1))).toBe(false);
   });

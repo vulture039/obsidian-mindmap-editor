@@ -15,6 +15,11 @@ Obsidian plugin "Mindmap Editor": shows a Markdown note as an editable mind map 
 - **Prefix the subject with a type** - `feat:`/`fix:`/`docs:`/`chore:`/`refactor:`/`test:`
   (Conventional Commits).
   Formatting-only changes (comment reflow, whitespace) count as `chore:`, not a separate `style:` type.
+- **Body only when it adds something** - Skip it when the subject already says
+  it all. When a change needs a _why_ or a non-obvious note, add a short body
+  (aim for a couple of lines, not a wall of text).
+- **Always end with** `Co-Authored-By: Claude <model> <noreply@anthropic.com>`,
+  naming the model that made the commit (e.g. `Claude Opus 4.8`) — don't hardcode one model.
 
 ## Layout
 

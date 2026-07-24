@@ -58,7 +58,10 @@ Settings → Hotkeys to jump between the two.
 - **Split direction** - Side by side / stacked; also updates itself when you rearrange the map pane.
 - **Branch colors** - Custom palette, one hex color per line.
 
-## Development
+---
+
+<details>
+<summary><strong>Development</strong></summary>
 
 ```bash
 npm install
@@ -68,15 +71,15 @@ npm run lint
 npm test       # run the Vitest unit tests (npm run test:watch to watch)
 ```
 
-Unit tests (Vitest) sit next to the modules they cover (`src/*.test.ts`) and
-exercise the pure logic — Markdown parsing (`parser.ts`), the line-editing ops
-(`markdown-ops.ts`), palette and drop-target rules. The Obsidian-API-facing
-view code is exercised manually in a vault rather than mocked.
+**Testing**
+Unit tests (Vitest) exercise the pure logic — Markdown parsing, the line-editing operations, palette and drop-target rules.
+The Obsidian-API-facing view code is exercised manually in a vault rather than mocked.
 
-To test the plugin in a vault, copy the following files into:
-
-`<Vault>/.obsidian/plugins/mindmap-editor/`
+To test the plugin in a vault, copy the following files into
+`<Vault>/.obsidian/plugins/mindmap-editor/`:
 
 - `main.js`
 - `manifest.json`
 - `styles.css`
+
+</details>

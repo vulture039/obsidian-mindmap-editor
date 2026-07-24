@@ -23,19 +23,25 @@ Obsidian plugin "Mindmap Editor": shows a Markdown note as an editable mind map 
 
 ## Layout
 
+Split by the axis that matters here: whether a file imports the `obsidian`
+package. Dependencies point one way: `main.ts` → `obsidian/` → `core/`. `core/`
+imports nothing from `obsidian/`.
+
 - **main.ts** - Plugin entry: view registration, commands, settings, openSplit
-- **mindmap-view.ts** - ItemView: rendering, selection, keyboard ops, inline edit, drag & drop, context menu, completed-task folding
-- **parser.ts** - Markdown → MindNode tree. lineMatchesNode
-- **patterns.ts** - Shared Markdown-structure regexes (heading/list/checkbox), so parser.ts and markdown-ops.ts agree on what each construct is
-- **markdown-ops.ts** - Pure line-editing ops (setText/setCheckbox/add/delete/move/reorder) over `string[]`; no Obsidian import, so they're unit-testable
-- **file-io.ts** - Obsidian file I/O: findMarkdownView, updateFileLines (editor open → replaceRange, else vault.process)
-- **layout.ts** - Left-to-right tree layout (measures real DOM offsetWidth/Height)
-- **drag.ts** - Pure drop-target resolution (canDrop/canDropAsSibling/findDrop); setupDrag's pointer handling stays in mindmap-view.ts
-- **colors.ts** - Per-branch colors, cycled by position from a user-configurable palette (settings)
-- **node-text.ts** - Node text rendering (wikilinks / md links become links)
-- **settings.ts** - Settings tab
+- **core/** - No `obsidian` import, so it's unit-testable in plain Node:
+  - **parser.ts** - Markdown → MindNode tree. lineMatchesNode
+  - **patterns.ts** - Shared Markdown-structure regexes (heading/list/checkbox), so parser.ts and markdown-ops.ts agree on what each construct is
+  - **markdown-ops.ts** - Pure line-editing ops (setText/setCheckbox/add/delete/move/reorder) over `string[]`
+  - **colors.ts** - Per-branch colors, cycled by position from a user-configurable palette (settings)
+  - **layout.ts** - Left-to-right tree layout (measures real DOM offsetWidth/Height — DOM-bound, so not unit-tested, but Obsidian-free)
+  - **drag.ts** - Pure drop-target resolution (canDrop/canDropAsSibling/findDrop); setupDrag's pointer handling stays in mindmap-view.ts
+- **obsidian/** - Everything that touches the Obsidian API:
+  - **mindmap-view.ts** - ItemView: rendering, selection, keyboard ops, inline edit, drag & drop, context menu, completed-task folding
+  - **node-text.ts** - Node text rendering (wikilinks / md links become links)
+  - **file-io.ts** - Obsidian file I/O: findMarkdownView, updateFileLines (editor open → replaceRange, else vault.process)
+  - **settings.ts** - Settings tab
 - **styles.css** - All styles
-- **\*.test.ts** - Vitest unit tests, co-located with the pure-logic modules they cover (parser, markdown-ops, colors, drag). These modules import no Obsidian API, so no mock is needed; the Obsidian-facing view/file-io code is exercised manually in a vault instead.
+- **\*.test.ts** - Vitest unit tests co-located under core/ (parser, markdown-ops, colors, drag). The obsidian/ modules need the Obsidian API, so no mock — they're exercised manually in a vault.
 
 ## Pitfalls (guards against past bugs)
 

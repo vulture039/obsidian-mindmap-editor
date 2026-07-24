@@ -10,12 +10,12 @@ import {
   ViewStateResult,
   WorkspaceLeaf,
 } from 'obsidian';
-import type MindmapPlugin from './main';
-import { findByLine, MindNode, parseMarkdown } from './parser';
-import { LaidNode, layoutTree, makeLaid } from './layout';
-import { branchColorFor, parsePalette } from './colors';
+import type MindmapPlugin from '../main';
+import { findByLine, MindNode, parseMarkdown } from '../core/parser';
+import { LaidNode, layoutTree, makeLaid } from '../core/layout';
+import { branchColorFor, parsePalette } from '../core/colors';
 import { renderNodeText } from './node-text';
-import { canDrop, canDropAsSibling, DropTarget, findDrop } from './drag';
+import { canDrop, canDropAsSibling, DropTarget, findDrop } from '../core/drag';
 import {
   addChildOp,
   addSiblingOp,
@@ -26,7 +26,7 @@ import {
   setCheckboxOp,
   setTextOp,
   toggleTaskOp,
-} from './markdown-ops';
+} from '../core/markdown-ops';
 import { findMarkdownView, updateFileLines } from './file-io';
 
 export const VIEW_TYPE_MINDMAP = 'mindmap-editor';

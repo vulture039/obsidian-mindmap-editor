@@ -1,10 +1,10 @@
 import { Notice, Plugin, WorkspaceLeaf } from 'obsidian';
-import { MindmapView, VIEW_TYPE_MINDMAP } from './mindmap-view';
+import { MindmapView, VIEW_TYPE_MINDMAP } from './obsidian/mindmap-view';
 import {
   DEFAULT_SETTINGS,
   MindmapSettings,
   MindmapSettingTab,
-} from './settings';
+} from './obsidian/settings';
 
 export default class MindmapPlugin extends Plugin {
   settings!: MindmapSettings;

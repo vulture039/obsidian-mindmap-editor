@@ -4,7 +4,7 @@ import {
   Setting,
   SettingDefinitionItem,
 } from 'obsidian';
-import type MindmapPlugin from './main';
+import type MindmapPlugin from '../main';
 
 export interface MindmapSettings {
   followActiveFile: boolean;

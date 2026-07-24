@@ -35,11 +35,12 @@ Obsidian part, the two live under the same basename in each dir (e.g.
   - **parser.ts** - Markdown → MindNode tree. lineMatchesNode
   - **patterns.ts** - Shared Markdown-structure regexes (heading/list/checkbox), so parser.ts and markdown-ops.ts agree on what each construct is
   - **markdown-ops.ts** - Pure line-editing ops (setText/setCheckbox/add/delete/move/reorder) over `string[]`
-  - **colors.ts** - Per-branch colors, cycled by position from a user-configurable palette (settings)
   - **node-text.ts** - Parses node text into link/plain segments (parseNodeText)
   - **settings.ts** - MindmapSettings shape and DEFAULT_SETTINGS
-  - **layout.ts** - Left-to-right tree layout (measures real DOM offsetWidth/Height — DOM-bound, so not unit-tested, but Obsidian-free)
-  - **drag.ts** - Pure drop-target resolution (canDrop/canDropAsSibling/findDrop); setupDrag's pointer handling stays in mindmap-view.ts
+  - **render/** - The visual/spatial layer (still Obsidian-free):
+    - **colors.ts** - Per-branch colors, cycled by position from a user-configurable palette (settings)
+    - **layout.ts** - Left-to-right tree layout (measures real DOM offsetWidth/Height — DOM-bound, so not unit-tested, but Obsidian-free)
+    - **drag.ts** - Pure drop-target resolution (canDrop/canDropAsSibling/findDrop); setupDrag's pointer handling stays in mindmap-view.ts
 - **obsidian/** - Everything that touches the Obsidian API:
   - **mindmap-view.ts** - ItemView: rendering, selection, keyboard ops, inline edit, drag & drop, context menu, completed-task folding
   - **node-text.ts** - Renders the parsed segments to DOM links (wikilink / md link)

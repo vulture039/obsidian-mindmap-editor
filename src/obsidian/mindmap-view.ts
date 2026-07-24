@@ -12,10 +12,15 @@ import {
 } from 'obsidian';
 import type MindmapPlugin from '../main';
 import { findByLine, MindNode, parseMarkdown } from '../core/parser';
-import { LaidNode, layoutTree, makeLaid } from '../core/layout';
-import { branchColorFor, parsePalette } from '../core/colors';
+import { LaidNode, layoutTree, makeLaid } from '../core/render/layout';
+import { branchColorFor, parsePalette } from '../core/render/colors';
 import { renderNodeText } from './node-text';
-import { canDrop, canDropAsSibling, DropTarget, findDrop } from '../core/drag';
+import {
+  canDrop,
+  canDropAsSibling,
+  DropTarget,
+  findDrop,
+} from '../core/render/drag';
 import {
   addChildOp,
   addSiblingOp,

@@ -308,15 +308,38 @@ export class MindmapView extends ItemView {
     const node = findEnclosing(this.root, mdView.editor.getCursor().line);
     const laid = node && this.laidByLine.get(node.line);
 
+    if (!laid) {
+      if (node?.parent && this.isHiddenDone(node.parent, node)) {
+        this.markDonePill(node.parent);
+      }
+
+      return;
+    }
     // Same node: nothing to do, and skipping the write is what keeps this
     // from bouncing against focusLineInEditor.
-    if (!laid || laid.node.line === this.selectedLine) {
+    if (laid.node.line === this.selectedLine) {
       return;
     }
     this.clearSelectionClass();
     laid.el.addClass('is-selected');
     this.selectedLine = laid.node.line;
     laid.el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
+
+  /**
+   * The caret is on a task hideCompleted folded away, so point at the pill
+   * that stands for it rather than unfolding. Nothing is selected: the pill
+   * is not a node, and the task itself is not on screen to act on.
+   */
+  private markDonePill(parent: MindNode): void {
+    const pill = this.canvasEl.querySelector<HTMLElement>(
+      `.mindmap-node-summary[data-parent-line="${parent.line}"]`,
+    );
+
+    this.clearSelectionClass();
+    this.selectedLine = null;
+    pill?.addClass('is-selected');
+    pill?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }
 
   /**
@@ -856,6 +879,10 @@ export class MindmapView extends ItemView {
     const el = this.canvasEl.createDiv({
       cls: 'mindmap-node mindmap-node-summary',
     });
+
+    // How followEditorCursor finds the pill: the tasks behind it have no
+    // element of their own.
+    el.dataset.parentLine = String(parent.line);
 
     if (color) {
       el.setCssProps({ '--branch-color': color });

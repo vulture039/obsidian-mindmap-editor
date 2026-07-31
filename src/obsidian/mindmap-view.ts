@@ -1026,22 +1026,27 @@ export class MindmapView extends ItemView {
   }
 
   /**
-   * Picks which Markdown pane to reuse: the linked tab when there is one,
-   * else the one the user was last actually looking at over an arbitrary open
-   * tab (getLeavesOfType's order is unrelated to focus), else any open
-   * Markdown leaf, else a new split.
+   * Where to show the map's file. The linked tab owns that job when there is
+   * one; otherwise a new tab beside the Markdown pane the user was last
+   * looking at (getLeavesOfType's order is unrelated to focus), since the
+   * note that pane is showing is not ours to replace. No pane, so a split.
    */
   private resolveEditorLeaf(): WorkspaceLeaf {
-    const markdownLeaves = this.app.workspace.getLeavesOfType('markdown');
+    const linked = this.linkedLeaf();
 
-    return (
-      this.linkedLeaf() ||
+    if (linked) {
+      return linked;
+    }
+    const markdownLeaves = this.app.workspace.getLeavesOfType('markdown');
+    const near =
       (this.lastActiveMarkdownLeaf &&
         markdownLeaves.includes(this.lastActiveMarkdownLeaf) &&
         this.lastActiveMarkdownLeaf) ||
-      markdownLeaves[0] ||
-      this.plugin.openSplit()
-    );
+      markdownLeaves[0];
+
+    return near
+      ? this.app.workspace.createLeafInParent(near.parent, -1)
+      : this.plugin.openSplit();
   }
 
   /**
@@ -1131,12 +1136,9 @@ export class MindmapView extends ItemView {
       mdView.setEphemeralState({ line: node.line });
       this.scrollerEl.focus({ preventScroll: true });
     } else {
-      const leaf = this.app.workspace.getLeaf(
-        'split',
-        this.plugin.settings.splitDirection,
-      );
-
-      await leaf.openFile(this.file, {
+      // resolveEditorLeaf, not a fresh split: splitting past a Markdown tab
+      // that is already there stacks up panes nobody asked for.
+      await this.resolveEditorLeaf().openFile(this.file, {
         active: false,
         eState: { line: node.line },
       });

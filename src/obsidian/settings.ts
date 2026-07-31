@@ -22,7 +22,7 @@ export class MindmapSettingTab extends PluginSettingTab {
     return [
       {
         name: 'Follow active file',
-        desc: 'Switch the mind map to whichever Markdown file becomes active.',
+        desc: 'Switch the mind map to whichever Markdown file becomes active. Ignored while the mind map tab is linked to another tab.',
         control: { type: 'toggle', key: 'followActiveFile' },
       },
       {

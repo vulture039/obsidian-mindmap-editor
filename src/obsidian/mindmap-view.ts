@@ -84,6 +84,13 @@ export class MindmapView extends ItemView {
    * (and possibly unfocused) open tab.
    */
   private lastActiveMarkdownLeaf: WorkspaceLeaf | null = null;
+  /**
+   * Linked-pane group ("Link with tab"), empty when unlinked. Read on demand:
+   * a cached copy would depend on when Obsidian assigns the group.
+   */
+  private get linkGroup(): string {
+    return (this.leaf as WorkspaceLeaf & { group?: string }).group ?? '';
+  }
 
   /**
    * Checked tasks collapse into one "✓ n done" pill per parent. Backed by
@@ -435,6 +442,13 @@ export class MindmapView extends ItemView {
     );
     this.registerEvent(
       this.app.workspace.on('file-open', (file) => {
+        // An explicit choice of source, so it wins over the active file and
+        // over followActiveFile. Nothing to track means nothing to win.
+        if (this.linkedLeaf()) {
+          this.followLinkedLeaf();
+
+          return;
+        }
         const shouldFollow =
           this.plugin.settings.followActiveFile &&
           file &&
@@ -445,6 +459,9 @@ export class MindmapView extends ItemView {
           void this.setFile(file);
         }
       }),
+    );
+    this.registerEvent(
+      this.leaf.on('group-change', () => this.followLinkedLeaf()),
     );
     this.registerDomEvent(this.scrollerEl, 'pointerdown', (e) =>
       this.onBackgroundPointerDown(e),
@@ -908,15 +925,53 @@ export class MindmapView extends ItemView {
     await this.followTo(from, dest);
   }
 
+  /** The Markdown tab this map is linked to, if any. */
+  private linkedLeaf(): WorkspaceLeaf | null {
+    if (!this.linkGroup) {
+      return null;
+    }
+    for (const leaf of this.app.workspace.getGroupLeaves(this.linkGroup)) {
+      if (leaf !== this.leaf && leaf.getViewState().type === 'markdown') {
+        return leaf;
+      }
+    }
+
+    return null;
+  }
+
   /**
-   * Picks which Markdown pane to reuse: the one the user was last actually
-   * looking at over an arbitrary open tab (getLeavesOfType's order is
-   * unrelated to focus), else any open Markdown leaf, else a new split.
+   * The linked tab's file, read from its view state so a tab that is still
+   * deferred (never opened in this session) counts too.
+   */
+  private linkedFile(): TFile | null {
+    const path = this.linkedLeaf()?.getViewState().state?.file;
+    const af =
+      typeof path === 'string'
+        ? this.app.vault.getAbstractFileByPath(path)
+        : null;
+
+    return af instanceof TFile ? af : null;
+  }
+
+  private followLinkedLeaf(): void {
+    const file = this.linkedFile();
+
+    if (file && file.path !== this.file?.path) {
+      void this.setFile(file);
+    }
+  }
+
+  /**
+   * Picks which Markdown pane to reuse: the linked tab when there is one,
+   * else the one the user was last actually looking at over an arbitrary open
+   * tab (getLeavesOfType's order is unrelated to focus), else any open
+   * Markdown leaf, else a new split.
    */
   private resolveEditorLeaf(): WorkspaceLeaf {
     const markdownLeaves = this.app.workspace.getLeavesOfType('markdown');
 
     return (
+      this.linkedLeaf() ||
       (this.lastActiveMarkdownLeaf &&
         markdownLeaves.includes(this.lastActiveMarkdownLeaf) &&
         this.lastActiveMarkdownLeaf) ||
@@ -931,6 +986,14 @@ export class MindmapView extends ItemView {
    * file the map is showing.
    */
   private async syncEditorTo(file: TFile): Promise<void> {
+    // The linked tab moves with the map even when another tab has the file.
+    if (this.linkedLeaf()) {
+      if (this.linkedFile()?.path !== file.path) {
+        await this.resolveEditorLeaf().openFile(file, { active: false });
+      }
+
+      return;
+    }
     if (findMarkdownView(this.app, file)) {
       return;
     }

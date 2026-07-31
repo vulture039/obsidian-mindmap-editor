@@ -95,10 +95,23 @@ export class MindmapView extends ItemView {
   }
 
   /**
-   * An interaction is in progress (inline edit or drag) that a re-render must
-   * not interrupt; render() defers into renderQueued while this is true.
+   * Whether an inline edit or drag is in progress; render() defers while one
+   * is. A flag whose element is gone is stale — clearing it unfreezes the map.
    */
-  private get isBusy(): boolean {
+  private isBusy(): boolean {
+    if (
+      this.isInlineEditing &&
+      !this.canvasEl.querySelector('.mindmap-edit-input')
+    ) {
+      this.isInlineEditing = false;
+    }
+    if (
+      this.isDragging &&
+      !this.canvasEl.querySelector('.mindmap-node.is-dragging')
+    ) {
+      this.isDragging = false;
+    }
+
     return this.isInlineEditing || this.isDragging;
   }
 
@@ -571,7 +584,7 @@ export class MindmapView extends ItemView {
   }
 
   private async render(): Promise<void> {
-    if (this.isBusy) {
+    if (this.isBusy()) {
       this.renderQueued = true;
 
       return;
@@ -598,7 +611,7 @@ export class MindmapView extends ItemView {
     if (seq !== this.renderSeq) {
       return;
     }
-    if (this.isBusy) {
+    if (this.isBusy()) {
       this.renderQueued = true;
 
       return;

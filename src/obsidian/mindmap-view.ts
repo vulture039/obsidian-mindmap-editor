@@ -6,6 +6,7 @@ import {
   Menu,
   Notice,
   Scope,
+  TAbstractFile,
   TFile,
   ViewStateResult,
   WorkspaceLeaf,
@@ -70,7 +71,6 @@ export class MindmapView extends ItemView {
   private isDragging = false;
   private renderQueued = false;
   private renderSeq = 0;
-  private renderedWhileHidden = false;
   private laidByLine = new Map<number, LaidNode>();
   private hideCompletedActionEl: HTMLElement | null = null;
   /**
@@ -94,10 +94,23 @@ export class MindmapView extends ItemView {
   }
 
   /**
-   * An interaction is in progress (inline edit or drag) that a re-render must
-   * not interrupt; render() defers into renderQueued while this is true.
+   * Whether an inline edit or drag is in progress; render() defers while one
+   * is. A flag whose element is gone is stale — clearing it unfreezes the map.
    */
-  private get isBusy(): boolean {
+  private isBusy(): boolean {
+    if (
+      this.isInlineEditing &&
+      !this.canvasEl.querySelector('.mindmap-edit-input')
+    ) {
+      this.isInlineEditing = false;
+    }
+    if (
+      this.isDragging &&
+      !this.canvasEl.querySelector('.mindmap-node.is-dragging')
+    ) {
+      this.isDragging = false;
+    }
+
     return this.isInlineEditing || this.isDragging;
   }
 
@@ -376,6 +389,9 @@ export class MindmapView extends ItemView {
       () => this.setHideCompleted(!this.hideCompleted),
     );
     this.hideCompletedActionEl.toggleClass('is-active', this.hideCompleted);
+    this.addAction('refresh-cw', 'Refresh from the Markdown', () => {
+      void this.forceRefresh();
+    });
     this.scrollerEl = this.contentEl.createDiv({
       cls: 'mindmap-scroller',
       attr: { tabindex: '0' },
@@ -398,14 +414,14 @@ export class MindmapView extends ItemView {
   private registerWorkspaceEvents(): void {
     this.registerEvent(
       this.app.vault.on('modify', (file) => {
-        if (file === this.file) {
+        if (this.isCurrentFile(file)) {
           this.requestRender();
         }
       }),
     );
     this.registerEvent(
       this.app.workspace.on('editor-change', (_editor, info) => {
-        if (info.file === this.file) {
+        if (this.isCurrentFile(info.file)) {
           this.requestRender();
         }
       }),
@@ -423,7 +439,7 @@ export class MindmapView extends ItemView {
           this.plugin.settings.followActiveFile &&
           file &&
           file.extension === 'md' &&
-          file !== this.file;
+          !this.isCurrentFile(file);
 
         if (shouldFollow) {
           void this.setFile(file);
@@ -461,7 +477,7 @@ export class MindmapView extends ItemView {
     ) {
       const af = this.app.vault.getAbstractFileByPath(state.file);
 
-      if (af instanceof TFile && af.path !== this.file?.path) {
+      if (af instanceof TFile && !this.isCurrentFile(af)) {
         // Switching between files (following a wikilink, or walking
         // history back/forward) is a navigation step: flag it so
         // Obsidian records it in the leaf history, and switch the
@@ -495,9 +511,27 @@ export class MindmapView extends ItemView {
     this.requestRender();
   }
 
+  /**
+   * Manual Markdown → map resync: skips the debounce and clears a stuck
+   * interaction flag, the state it exists to recover from. Notifies even
+   * when nothing changes — an up-to-date map redraws identically.
+   */
+  async forceRefresh(): Promise<void> {
+    this.requestRender.cancel();
+    this.isInlineEditing = false;
+    this.isDragging = false;
+    this.hideCompletedActionEl?.toggleClass('is-active', this.hideCompleted);
+    await this.render();
+    new Notice('Mind map refreshed.');
+  }
+
+  /**
+   * Picks up the render skipped while the pane was hidden, straight to
+   * render() — the debounce would leave the stale map up for its delay.
+   */
   onResize(): void {
-    if (this.renderedWhileHidden) {
-      this.requestRender();
+    if (this.renderQueued && this.contentEl.offsetHeight > 0) {
+      void this.render();
     }
   }
 
@@ -530,6 +564,15 @@ export class MindmapView extends ItemView {
     return null;
   }
 
+  /**
+   * Whether `file` is the one this map shows. By path, not identity: the
+   * vault can hand out a new TFile for the same path (a save that renames a
+   * temp file over the original), which identity would stop matching.
+   */
+  private isCurrentFile(file: TAbstractFile | null): boolean {
+    return !!file && file.path === this.file?.path;
+  }
+
   private async getFileText(): Promise<string> {
     if (!this.file) {
       return '';
@@ -544,7 +587,14 @@ export class MindmapView extends ItemView {
   }
 
   private async render(): Promise<void> {
-    if (this.isBusy) {
+    if (this.isBusy()) {
+      this.renderQueued = true;
+
+      return;
+    }
+    // A hidden pane measures every node as 0×0, and redrawing after it is
+    // shown can't beat the paint. Keep the last good layout for onResize.
+    if (this.contentEl.offsetHeight === 0) {
       this.renderQueued = true;
 
       return;
@@ -571,7 +621,7 @@ export class MindmapView extends ItemView {
     if (seq !== this.renderSeq) {
       return;
     }
-    if (this.isBusy) {
+    if (this.isBusy()) {
       this.renderQueued = true;
 
       return;
@@ -583,7 +633,6 @@ export class MindmapView extends ItemView {
     this.canvasEl.empty();
     this.laidByLine.clear();
     this.root = parseMarkdown(text, this.file.basename);
-    this.renderedWhileHidden = this.contentEl.offsetHeight === 0;
 
     const svg = this.canvasEl.createSvg('svg', { cls: 'mindmap-edges' });
     const palette = parsePalette(this.plugin.settings.palette);

@@ -29,6 +29,13 @@ export default class MindmapPlugin extends Plugin {
         void this.toggleMindmapFocus();
       },
     });
+    this.addCommand({
+      id: 'refresh-mindmap',
+      name: 'Refresh the mind map from the Markdown',
+      callback: () => {
+        void this.refreshMindmap();
+      },
+    });
     this.addSettingTab(new MindmapSettingTab(this.app, this));
   }
 
@@ -45,6 +52,17 @@ export default class MindmapPlugin extends Plugin {
       return;
     }
     await this.openMindmap();
+  }
+
+  private async refreshMindmap(): Promise<void> {
+    const view = this.app.workspace.getLeavesOfType(VIEW_TYPE_MINDMAP)[0]?.view;
+
+    if (!(view instanceof MindmapView)) {
+      new Notice('No mind map is open.');
+
+      return;
+    }
+    await view.forceRefresh();
   }
 
   private async openMindmap(): Promise<void> {

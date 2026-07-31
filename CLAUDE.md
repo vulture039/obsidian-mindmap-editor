@@ -59,7 +59,9 @@ Obsidian part, the two live under the same basename in each dir (e.g.
   renders cause double drawing and inconsistency.
 - **Checkboxes write the DOM state, not a toggle** - `writeCheckbox` converges under rapid clicking.
 - **Renders are deferred during `isInlineEditing`/`isDragging`** - Queued in `renderQueued`. Any path that sets
-  these flags must guarantee they are cleared — a stuck flag kills all interaction.
+  these flags must guarantee they are cleared — a stuck flag kills all interaction. As a net, `isBusy()` checks
+  each flag against the DOM its interaction owns (`.mindmap-edit-input`, `.is-dragging`) and clears one whose
+  element is gone, so an edit that never got its blur or a drag that lost its pointerup can't freeze the map.
 - **`startInlineEdit` re-resolves its element via `laidByLine`** - Aborts if focus can't be acquired. Esc is the
   forced-recovery failsafe.
 - **The inline editor is a contenteditable span styled like the node** - Keeps dimensions unchanged.

@@ -49,6 +49,10 @@ Back/forward use Obsidian's own Navigate back / forward command:
 `Toggle focus between mind map and Markdown editor` can be bound to one in
 Settings → Hotkeys to jump between the two.
 
+The `⟳` header button, and the command `Refresh the mind map from the Markdown`,
+rebuild the map from its file - the manual override for when the map and the
+text look out of sync.
+
 ## Settings
 
 **Settings → Mind map editor**:

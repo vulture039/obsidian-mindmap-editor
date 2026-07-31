@@ -6,6 +6,7 @@ import {
   Menu,
   Notice,
   Scope,
+  TAbstractFile,
   TFile,
   ViewStateResult,
   WorkspaceLeaf,
@@ -401,14 +402,14 @@ export class MindmapView extends ItemView {
   private registerWorkspaceEvents(): void {
     this.registerEvent(
       this.app.vault.on('modify', (file) => {
-        if (file === this.file) {
+        if (this.isCurrentFile(file)) {
           this.requestRender();
         }
       }),
     );
     this.registerEvent(
       this.app.workspace.on('editor-change', (_editor, info) => {
-        if (info.file === this.file) {
+        if (this.isCurrentFile(info.file)) {
           this.requestRender();
         }
       }),
@@ -426,7 +427,7 @@ export class MindmapView extends ItemView {
           this.plugin.settings.followActiveFile &&
           file &&
           file.extension === 'md' &&
-          file !== this.file;
+          !this.isCurrentFile(file);
 
         if (shouldFollow) {
           void this.setFile(file);
@@ -464,7 +465,7 @@ export class MindmapView extends ItemView {
     ) {
       const af = this.app.vault.getAbstractFileByPath(state.file);
 
-      if (af instanceof TFile && af.path !== this.file?.path) {
+      if (af instanceof TFile && !this.isCurrentFile(af)) {
         // Switching between files (following a wikilink, or walking
         // history back/forward) is a navigation step: flag it so
         // Obsidian records it in the leaf history, and switch the
@@ -545,6 +546,15 @@ export class MindmapView extends ItemView {
     }
 
     return null;
+  }
+
+  /**
+   * Whether `file` is the one this map shows. By path, not identity: the
+   * vault can hand out a new TFile for the same path (a save that renames a
+   * temp file over the original), which identity would stop matching.
+   */
+  private isCurrentFile(file: TAbstractFile | null): boolean {
+    return !!file && file.path === this.file?.path;
   }
 
   private async getFileText(): Promise<string> {

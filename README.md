@@ -64,27 +64,4 @@ text look out of sync.
 
 ---
 
-<details>
-<summary><strong>Development</strong></summary>
-
-```bash
-npm install
-npm run dev    # watch build
-npm run build  # type check + production build
-npm run lint
-npm test       # run the Vitest unit tests (npm run test:watch to watch)
-```
-
-**Testing**
-
-Unit tests (Vitest) exercise the pure logic — Markdown parsing, the line-editing operations, palette and drop-target rules.
-The Obsidian-API-facing view code is exercised manually in a vault rather than mocked.
-
-To test the plugin in a vault, copy the following files into
-`<Vault>/.obsidian/plugins/mindmap-editor/`:
-
-- `main.js`
-- `manifest.json`
-- `styles.css`
-
-</details>
+Building, testing and releasing the plugin: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).

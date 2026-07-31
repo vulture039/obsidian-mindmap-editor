@@ -22,7 +22,7 @@ No new file format, no markup to add.
 - **Collapse completed tasks** - The `✓✓` header button folds checked tasks into one `✓ n done` pill per parent.
   Click a pill to reveal just that parent (`− hide done` folds it back).
   Remembered across sessions.
-- **The editor always follows the selection** - Selecting a node (by click or arrow keys) moves the Markdown editor's cursor to its line and briefly highlights it, without stealing focus from the map.
+- **Map and editor follow each other** - Selecting a node (by click or arrow keys) moves the Markdown editor's cursor to its line and briefly highlights it; moving the cursor in the editor selects the node that line belongs to and scrolls it into view. Neither side steals focus from the other.
 - **Follow wikilinks** - Clicking a `[[wikilink]]` switches map and editor to the linked note together.
 - **Branch colors** - Each top-level branch gets a palette color by position and its subtree inherits it.
   Customize the palette in settings, one hex color per line.

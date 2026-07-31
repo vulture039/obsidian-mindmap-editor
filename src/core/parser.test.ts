@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   findByLine,
+  findEnclosing,
   isDescendantOrSelf,
   lineMatchesNode,
   maxHeadingLevel,
@@ -175,6 +176,20 @@ describe('tree helpers', () => {
 
     expect(findByLine(root, 1)!.text).toBe('B');
     expect(findByLine(root, 99)).toBe(null);
+  });
+
+  it('findEnclosing returns the deepest node covering a line', () => {
+    const root = parseMarkdown(
+      ['# A', 'text', '- one', '  cont', '  - deep', '## B'].join('\n'),
+      'Note',
+    );
+
+    expect(findEnclosing(root, 0)!.text).toBe('A');
+    expect(findEnclosing(root, 1)!.text).toBe('A');
+    expect(findEnclosing(root, 3)!.text).toBe('one');
+    expect(findEnclosing(root, 4)!.text).toBe('deep');
+    expect(findEnclosing(root, 5)!.text).toBe('B');
+    expect(findEnclosing(root, 99)).toBe(null);
   });
 
   it('isDescendantOrSelf walks the parent chain', () => {

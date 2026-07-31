@@ -12,7 +12,12 @@ import {
   WorkspaceLeaf,
 } from 'obsidian';
 import type MindmapPlugin from '../main';
-import { findByLine, MindNode, parseMarkdown } from '../core/parser';
+import {
+  findByLine,
+  findEnclosing,
+  MindNode,
+  parseMarkdown,
+} from '../core/parser';
 import { LaidNode, layoutTree, makeLaid } from '../core/render/layout';
 import { branchColorFor, parsePalette } from '../core/render/colors';
 import { renderNodeText } from './node-text';
@@ -84,6 +89,13 @@ export class MindmapView extends ItemView {
    * (and possibly unfocused) open tab.
    */
   private lastActiveMarkdownLeaf: WorkspaceLeaf | null = null;
+  /**
+   * Linked-pane group ("Link with tab"), empty when unlinked. Read on demand:
+   * a cached copy would depend on when Obsidian assigns the group.
+   */
+  private get linkGroup(): string {
+    return (this.leaf as WorkspaceLeaf & { group?: string }).group ?? '';
+  }
 
   /**
    * Checked tasks collapse into one "✓ n done" pill per parent. Backed by
@@ -281,6 +293,56 @@ export class MindmapView extends ItemView {
   }
 
   /**
+   * Selects the node the editor's caret sits in, the mirror of
+   * focusLineInEditor. Never takes focus: the user is typing over there.
+   */
+  private followEditorCursor(): void {
+    if (this.isBusy() || !this.root || !this.file) {
+      return;
+    }
+    const mdView = this.app.workspace.getActiveViewOfType(MarkdownView);
+
+    if (mdView?.file?.path !== this.file.path) {
+      return;
+    }
+    const node = findEnclosing(this.root, mdView.editor.getCursor().line);
+    const laid = node && this.laidByLine.get(node.line);
+
+    if (!laid) {
+      if (node?.parent && this.isHiddenDone(node.parent, node)) {
+        this.markDonePill(node.parent);
+      }
+
+      return;
+    }
+    // Same node: nothing to do, and skipping the write is what keeps this
+    // from bouncing against focusLineInEditor.
+    if (laid.node.line === this.selectedLine) {
+      return;
+    }
+    this.clearSelectionClass();
+    laid.el.addClass('is-selected');
+    this.selectedLine = laid.node.line;
+    laid.el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
+
+  /**
+   * The caret is on a task hideCompleted folded away, so point at the pill
+   * that stands for it rather than unfolding. Nothing is selected: the pill
+   * is not a node, and the task itself is not on screen to act on.
+   */
+  private markDonePill(parent: MindNode): void {
+    const pill = this.canvasEl.querySelector<HTMLElement>(
+      `.mindmap-node-summary[data-parent-line="${parent.line}"]`,
+    );
+
+    this.clearSelectionClass();
+    this.selectedLine = null;
+    pill?.addClass('is-selected');
+    pill?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
+
+  /**
    * The adjacent sibling a reorder would swap with. Same-type only: a
    * list item hopping over a sub-heading would reparse under it.
    */
@@ -435,6 +497,13 @@ export class MindmapView extends ItemView {
     );
     this.registerEvent(
       this.app.workspace.on('file-open', (file) => {
+        // An explicit choice of source, so it wins over the active file and
+        // over followActiveFile. Nothing to track means nothing to win.
+        if (this.linkedLeaf()) {
+          this.followLinkedLeaf();
+
+          return;
+        }
         const shouldFollow =
           this.plugin.settings.followActiveFile &&
           file &&
@@ -446,8 +515,16 @@ export class MindmapView extends ItemView {
         }
       }),
     );
+    this.registerEvent(
+      this.leaf.on('group-change', () => this.followLinkedLeaf()),
+    );
     this.registerDomEvent(this.scrollerEl, 'pointerdown', (e) =>
       this.onBackgroundPointerDown(e),
+    );
+    // The caret moving in an editor fires no workspace event, but it does
+    // move the document selection, which does.
+    this.registerDomEvent(document, 'selectionchange', () =>
+      this.followEditorCursor(),
     );
     // Remember how the user arranged the map pane (side by side vs
     // stacked), so reopening the view recreates the same split without
@@ -496,7 +573,7 @@ export class MindmapView extends ItemView {
     this.file = file;
     this.selectedLine = null;
     this.expandedDone.clear();
-    await this.render();
+    await this.render(true);
     const leaf = this.leaf as WorkspaceLeaf & {
       updateHeader?: () => void;
     };
@@ -573,9 +650,17 @@ export class MindmapView extends ItemView {
     return !!file && file.path === this.file?.path;
   }
 
-  private async getFileText(): Promise<string> {
+  /**
+   * The Markdown to project. `switched` skips the editor: a MarkdownView
+   * takes its new file before its editor swaps documents, so right after a
+   * switch it can still hand out the previous note's text.
+   */
+  private async getFileText(switched: boolean): Promise<string> {
     if (!this.file) {
       return '';
+    }
+    if (switched) {
+      return this.app.vault.cachedRead(this.file);
     }
     const mdView = findMarkdownView(this.app, this.file);
     // A workspace-restored MarkdownView can exist before its editor has
@@ -586,7 +671,7 @@ export class MindmapView extends ItemView {
     return editorText || this.app.vault.cachedRead(this.file);
   }
 
-  private async render(): Promise<void> {
+  private async render(switched = false): Promise<void> {
     if (this.isBusy()) {
       this.renderQueued = true;
 
@@ -613,7 +698,7 @@ export class MindmapView extends ItemView {
       return;
     }
 
-    const text = await this.getFileText();
+    const text = await this.getFileText(switched);
 
     // Renders can overlap across the await above (an op's render plus the
     // debounced editor-change render). Only the newest may touch the DOM;
@@ -803,6 +888,10 @@ export class MindmapView extends ItemView {
       cls: 'mindmap-node mindmap-node-summary',
     });
 
+    // How followEditorCursor finds the pill: the tasks behind it have no
+    // element of their own.
+    el.dataset.parentLine = String(parent.line);
+
     if (color) {
       el.setCssProps({ '--branch-color': color });
     }
@@ -908,21 +997,64 @@ export class MindmapView extends ItemView {
     await this.followTo(from, dest);
   }
 
+  /** The Markdown tab this map is linked to, if any. */
+  private linkedLeaf(): WorkspaceLeaf | null {
+    if (!this.linkGroup) {
+      return null;
+    }
+    for (const leaf of this.app.workspace.getGroupLeaves(this.linkGroup)) {
+      if (leaf !== this.leaf && leaf.getViewState().type === 'markdown') {
+        return leaf;
+      }
+    }
+
+    return null;
+  }
+
   /**
-   * Picks which Markdown pane to reuse: the one the user was last actually
-   * looking at over an arbitrary open tab (getLeavesOfType's order is
-   * unrelated to focus), else any open Markdown leaf, else a new split.
+   * The linked tab's file, read from its view state so a tab that is still
+   * deferred (never opened in this session) counts too.
+   */
+  private linkedFile(): TFile | null {
+    const path = this.linkedLeaf()?.getViewState().state?.file;
+    const af =
+      typeof path === 'string'
+        ? this.app.vault.getAbstractFileByPath(path)
+        : null;
+
+    return af instanceof TFile ? af : null;
+  }
+
+  private followLinkedLeaf(): void {
+    const file = this.linkedFile();
+
+    if (file && file.path !== this.file?.path) {
+      void this.setFile(file);
+    }
+  }
+
+  /**
+   * Where to show the map's file. The linked tab owns that job when there is
+   * one; otherwise a new tab beside the Markdown pane the user was last
+   * looking at (getLeavesOfType's order is unrelated to focus), since the
+   * note that pane is showing is not ours to replace. No pane, so a split.
    */
   private resolveEditorLeaf(): WorkspaceLeaf {
-    const markdownLeaves = this.app.workspace.getLeavesOfType('markdown');
+    const linked = this.linkedLeaf();
 
-    return (
+    if (linked) {
+      return linked;
+    }
+    const markdownLeaves = this.app.workspace.getLeavesOfType('markdown');
+    const near =
       (this.lastActiveMarkdownLeaf &&
         markdownLeaves.includes(this.lastActiveMarkdownLeaf) &&
         this.lastActiveMarkdownLeaf) ||
-      markdownLeaves[0] ||
-      this.plugin.openSplit()
-    );
+      markdownLeaves[0];
+
+    return near
+      ? this.app.workspace.createLeafInParent(near.parent, -1)
+      : this.plugin.openSplit();
   }
 
   /**
@@ -931,6 +1063,14 @@ export class MindmapView extends ItemView {
    * file the map is showing.
    */
   private async syncEditorTo(file: TFile): Promise<void> {
+    // The linked tab moves with the map even when another tab has the file.
+    if (this.linkedLeaf()) {
+      if (this.linkedFile()?.path !== file.path) {
+        await this.resolveEditorLeaf().openFile(file, { active: false });
+      }
+
+      return;
+    }
     if (findMarkdownView(this.app, file)) {
       return;
     }
@@ -1004,12 +1144,9 @@ export class MindmapView extends ItemView {
       mdView.setEphemeralState({ line: node.line });
       this.scrollerEl.focus({ preventScroll: true });
     } else {
-      const leaf = this.app.workspace.getLeaf(
-        'split',
-        this.plugin.settings.splitDirection,
-      );
-
-      await leaf.openFile(this.file, {
+      // resolveEditorLeaf, not a fresh split: splitting past a Markdown tab
+      // that is already there stacks up panes nobody asked for.
+      await this.resolveEditorLeaf().openFile(this.file, {
         active: false,
         eState: { line: node.line },
       });

@@ -71,7 +71,6 @@ export class MindmapView extends ItemView {
   private isDragging = false;
   private renderQueued = false;
   private renderSeq = 0;
-  private renderedWhileHidden = false;
   private laidByLine = new Map<number, LaidNode>();
   private hideCompletedActionEl: HTMLElement | null = null;
   /**
@@ -526,9 +525,13 @@ export class MindmapView extends ItemView {
     new Notice('Mind map refreshed.');
   }
 
+  /**
+   * Picks up the render skipped while the pane was hidden, straight to
+   * render() — the debounce would leave the stale map up for its delay.
+   */
   onResize(): void {
-    if (this.renderedWhileHidden) {
-      this.requestRender();
+    if (this.renderQueued && this.contentEl.offsetHeight > 0) {
+      void this.render();
     }
   }
 
@@ -589,6 +592,13 @@ export class MindmapView extends ItemView {
 
       return;
     }
+    // A hidden pane measures every node as 0×0, and redrawing after it is
+    // shown can't beat the paint. Keep the last good layout for onResize.
+    if (this.contentEl.offsetHeight === 0) {
+      this.renderQueued = true;
+
+      return;
+    }
     this.renderQueued = false;
     const seq = ++this.renderSeq;
 
@@ -623,7 +633,6 @@ export class MindmapView extends ItemView {
     this.canvasEl.empty();
     this.laidByLine.clear();
     this.root = parseMarkdown(text, this.file.basename);
-    this.renderedWhileHidden = this.contentEl.offsetHeight === 0;
 
     const svg = this.canvasEl.createSvg('svg', { cls: 'mindmap-edges' });
     const palette = parsePalette(this.plugin.settings.palette);

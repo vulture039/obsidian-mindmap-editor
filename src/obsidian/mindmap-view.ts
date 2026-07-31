@@ -376,6 +376,9 @@ export class MindmapView extends ItemView {
       () => this.setHideCompleted(!this.hideCompleted),
     );
     this.hideCompletedActionEl.toggleClass('is-active', this.hideCompleted);
+    this.addAction('refresh-cw', 'Refresh from the Markdown', () => {
+      void this.forceRefresh();
+    });
     this.scrollerEl = this.contentEl.createDiv({
       cls: 'mindmap-scroller',
       attr: { tabindex: '0' },
@@ -493,6 +496,20 @@ export class MindmapView extends ItemView {
     // tab or another view's header button); keep the action in sync.
     this.hideCompletedActionEl?.toggleClass('is-active', this.hideCompleted);
     this.requestRender();
+  }
+
+  /**
+   * Manual Markdown → map resync: skips the debounce and clears a stuck
+   * interaction flag, the state it exists to recover from. Notifies even
+   * when nothing changes — an up-to-date map redraws identically.
+   */
+  async forceRefresh(): Promise<void> {
+    this.requestRender.cancel();
+    this.isInlineEditing = false;
+    this.isDragging = false;
+    this.hideCompletedActionEl?.toggleClass('is-active', this.hideCompleted);
+    await this.render();
+    new Notice('Mind map refreshed.');
   }
 
   onResize(): void {

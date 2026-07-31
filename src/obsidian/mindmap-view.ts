@@ -573,7 +573,7 @@ export class MindmapView extends ItemView {
     this.file = file;
     this.selectedLine = null;
     this.expandedDone.clear();
-    await this.render();
+    await this.render(true);
     const leaf = this.leaf as WorkspaceLeaf & {
       updateHeader?: () => void;
     };
@@ -650,9 +650,17 @@ export class MindmapView extends ItemView {
     return !!file && file.path === this.file?.path;
   }
 
-  private async getFileText(): Promise<string> {
+  /**
+   * The Markdown to project. `switched` skips the editor: a MarkdownView
+   * takes its new file before its editor swaps documents, so right after a
+   * switch it can still hand out the previous note's text.
+   */
+  private async getFileText(switched: boolean): Promise<string> {
     if (!this.file) {
       return '';
+    }
+    if (switched) {
+      return this.app.vault.cachedRead(this.file);
     }
     const mdView = findMarkdownView(this.app, this.file);
     // A workspace-restored MarkdownView can exist before its editor has
@@ -663,7 +671,7 @@ export class MindmapView extends ItemView {
     return editorText || this.app.vault.cachedRead(this.file);
   }
 
-  private async render(): Promise<void> {
+  private async render(switched = false): Promise<void> {
     if (this.isBusy()) {
       this.renderQueued = true;
 
@@ -690,7 +698,7 @@ export class MindmapView extends ItemView {
       return;
     }
 
-    const text = await this.getFileText();
+    const text = await this.getFileText(switched);
 
     // Renders can overlap across the await above (an op's render plus the
     // debounced editor-change render). Only the newest may touch the DOM;

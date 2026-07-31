@@ -12,7 +12,12 @@ import {
   WorkspaceLeaf,
 } from 'obsidian';
 import type MindmapPlugin from '../main';
-import { findByLine, MindNode, parseMarkdown } from '../core/parser';
+import {
+  findByLine,
+  findEnclosing,
+  MindNode,
+  parseMarkdown,
+} from '../core/parser';
 import { LaidNode, layoutTree, makeLaid } from '../core/render/layout';
 import { branchColorFor, parsePalette } from '../core/render/colors';
 import { renderNodeText } from './node-text';
@@ -288,6 +293,33 @@ export class MindmapView extends ItemView {
   }
 
   /**
+   * Selects the node the editor's caret sits in, the mirror of
+   * focusLineInEditor. Never takes focus: the user is typing over there.
+   */
+  private followEditorCursor(): void {
+    if (this.isBusy() || !this.root || !this.file) {
+      return;
+    }
+    const mdView = this.app.workspace.getActiveViewOfType(MarkdownView);
+
+    if (mdView?.file?.path !== this.file.path) {
+      return;
+    }
+    const node = findEnclosing(this.root, mdView.editor.getCursor().line);
+    const laid = node && this.laidByLine.get(node.line);
+
+    // Same node: nothing to do, and skipping the write is what keeps this
+    // from bouncing against focusLineInEditor.
+    if (!laid || laid.node.line === this.selectedLine) {
+      return;
+    }
+    this.clearSelectionClass();
+    laid.el.addClass('is-selected');
+    this.selectedLine = laid.node.line;
+    laid.el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
+
+  /**
    * The adjacent sibling a reorder would swap with. Same-type only: a
    * list item hopping over a sub-heading would reparse under it.
    */
@@ -465,6 +497,11 @@ export class MindmapView extends ItemView {
     );
     this.registerDomEvent(this.scrollerEl, 'pointerdown', (e) =>
       this.onBackgroundPointerDown(e),
+    );
+    // The caret moving in an editor fires no workspace event, but it does
+    // move the document selection, which does.
+    this.registerDomEvent(document, 'selectionchange', () =>
+      this.followEditorCursor(),
     );
     // Remember how the user arranged the map pane (side by side vs
     // stacked), so reopening the view recreates the same split without

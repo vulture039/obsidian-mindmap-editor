@@ -240,6 +240,31 @@ export function findByLine(root: MindNode, line: number): MindNode | null {
   return null;
 }
 
+/**
+ * Deepest node whose line range covers `line`. Unlike findByLine this also
+ * answers for lines that are not a node's own first line - a heading's body,
+ * a wrapped list item, a description paragraph - which is what an editor
+ * cursor usually sits on.
+ */
+export function findEnclosing(root: MindNode, line: number): MindNode | null {
+  let found: MindNode | null = null;
+  const visit = (n: MindNode): void => {
+    if (line < n.line || line > n.endLine) {
+      return;
+    }
+    if (n.type !== 'root') {
+      found = n;
+    }
+    for (const c of n.children) {
+      visit(c);
+    }
+  };
+
+  visit(root);
+
+  return found;
+}
+
 export function isDescendantOrSelf(
   node: MindNode,
   ancestor: MindNode,

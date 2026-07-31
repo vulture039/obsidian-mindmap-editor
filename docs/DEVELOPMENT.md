@@ -39,3 +39,4 @@ git push origin 1.0.1      # push the tag → CI builds and drafts a release
 - GitHub → Releases → open the "1.0.1" draft
 - Write the description
 - Click Publish release
+- [Plugin page](https://community.obsidian.md/account/plugins/mindmap-editor) → click "Check for new releases"

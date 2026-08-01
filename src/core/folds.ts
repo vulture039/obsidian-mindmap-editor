@@ -6,9 +6,9 @@ export interface FoldRange {
 
 import { MindNode } from './parser';
 
-/** Hides children, and has a line of its own to fold. */
+/** Hides something (children or body text), and has a line to fold. */
 export function isCollapsible(node: MindNode): boolean {
-  return node.type !== 'root' && node.children.length > 0;
+  return node.type !== 'root' && node.foldable;
 }
 
 /** Lines of every node that can be collapsed. */

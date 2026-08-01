@@ -69,6 +69,7 @@ const SUMMARY_NODE: MindNode = {
   text: '',
   line: -2,
   endLine: -2,
+  foldable: false,
   level: 0,
   indent: '',
   marker: '',
@@ -1057,14 +1058,26 @@ export class MindmapView extends ItemView {
     return outlets;
   }
 
-  /** The handle a foldable node carries: "−" open, "+n" folded. */
+  /** A body-only node folds text the map never draws, so name the editor. */
+  private collapseLabel(body: boolean, collapsed: boolean): string {
+    if (body) {
+      return collapsed
+        ? 'Unfold text in the editor'
+        : 'Fold text in the editor';
+    }
+
+    return collapsed ? 'Expand branch' : 'Collapse branch';
+  }
+
+  /** "−"/"+n" for a branch, "≡" for a node that only hides text. */
   private addCollapseToggle(laid: LaidNode): HTMLElement {
     const node = laid.node;
     const collapsed = this.collapsed.has(node.line);
+    const body = node.children.length === 0;
     const toggle = this.canvasEl.createDiv({
       cls: 'mindmap-collapse',
-      text: collapsed ? `+${node.children.length}` : '−',
-      attr: { 'aria-label': collapsed ? 'Expand branch' : 'Collapse branch' },
+      text: body ? '≡' : collapsed ? `+${node.children.length}` : '−',
+      attr: { 'aria-label': this.collapseLabel(body, collapsed) },
     });
 
     if (laid.color) {
@@ -1075,6 +1088,7 @@ export class MindmapView extends ItemView {
       left: `${laid.x + laid.w + COLLAPSE_HANDLE_GAP}px`,
       top: `${laid.y + laid.h / 2}px`,
     });
+    toggle.toggleClass('is-body', body);
     toggle.toggleClass('is-collapsed', collapsed);
     // The handle sits on the canvas: an escaping press would pan the map.
     for (const type of ['pointerdown', 'dblclick'] as const) {
@@ -1177,7 +1191,7 @@ export class MindmapView extends ItemView {
   /**
    * Draws the branch curves. A handle hands out its right side as the start
    * (`outlets`) and gets a stub across its gap, so it reads as the joint the
-   * branch hangs from.
+   * branch hangs from; a body-only handle gets neither, having no branch.
    */
   private drawEdges(
     svg: SVGSVGElement,
@@ -1193,7 +1207,7 @@ export class MindmapView extends ItemView {
       });
     };
 
-    if (outlet !== undefined) {
+    if (outlet !== undefined && laid.node.children.length > 0) {
       line(`M ${laid.x + laid.w} ${y1} H ${outlet}`, laid.color);
     }
     for (const child of laid.children) {
@@ -1435,7 +1449,7 @@ export class MindmapView extends ItemView {
       const collapsed = this.collapsed.has(node.line);
 
       add(
-        collapsed ? 'Expand branch' : 'Collapse branch',
+        this.collapseLabel(node.children.length === 0, collapsed),
         collapsed ? 'chevron-down' : 'chevron-right',
         () => this.toggleCollapse(node),
       );

@@ -25,6 +25,25 @@ describe('isCollapsible', () => {
     expect(isCollapsible(a)).toBe(true);
     expect(isCollapsible(a.children[0]!.children[0]!)).toBe(false);
   });
+
+  it('is true for a node whose only content is body text', () => {
+    const root = parseMarkdown(NOTE, 'Note');
+    const b = root.children[1]!;
+
+    // "# B" has no child node, just the paragraph under it.
+    expect(b.children).toHaveLength(0);
+    expect(isCollapsible(b)).toBe(true);
+    // A bullet's indented description counts the same way.
+    expect(
+      isCollapsible(parseMarkdown('- a\n  detail', 'N').children[0]!),
+    ).toBe(true);
+  });
+
+  it('is false when only blank lines follow', () => {
+    const root = parseMarkdown('# A\n\n\n# B', 'Note');
+
+    expect(isCollapsible(root.children[0]!)).toBe(false);
+  });
 });
 
 describe('collapsedFromFolds', () => {
@@ -39,14 +58,20 @@ describe('collapsedFromFolds', () => {
     ]).toEqual([0, 1]);
   });
 
+  it('collapses a node folded for its body text alone', () => {
+    const root = parseMarkdown(NOTE, 'Note');
+
+    expect([...collapsedFromFolds(root, [{ from: 3, to: 4 }])]).toEqual([3]);
+  });
+
   it('ignores folds with no node to collapse', () => {
     const root = parseMarkdown(NOTE, 'Note');
 
-    // "# B" holds body text but no child node, and line 2 is a leaf.
+    // Line 2 is a leaf bullet and line 4 is body text, not a node.
     expect(
       collapsedFromFolds(root, [
-        { from: 3, to: 4 },
         { from: 2, to: 2 },
+        { from: 4, to: 4 },
       ]).size,
     ).toBe(0);
   });
@@ -69,9 +94,16 @@ describe('mergeFolds', () => {
   it('passes through folds the map has no node for', () => {
     const root = parseMarkdown(NOTE, 'Note');
 
-    expect(mergeFolds(root, new Set(), [{ from: 3, to: 4 }])).toEqual([
-      { from: 3, to: 4 },
+    // Line 4 is body text: no node starts there, so the fold is not ours.
+    expect(mergeFolds(root, new Set(), [{ from: 4, to: 4 }])).toEqual([
+      { from: 4, to: 4 },
     ]);
+  });
+
+  it('folds a body-only node with no children', () => {
+    const root = parseMarkdown(NOTE, 'Note');
+
+    expect(mergeFolds(root, new Set([3]), [])).toEqual([{ from: 3, to: 4 }]);
   });
 
   it('drops the fold of a branch that is no longer collapsed', () => {

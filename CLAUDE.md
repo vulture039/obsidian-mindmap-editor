@@ -39,7 +39,7 @@ Obsidian part, the two live under the same basename in each dir (e.g.
 
 - **main.ts** - Plugin entry: view registration, commands, settings, openSplit
 - **core/** - No `obsidian` import, so it's unit-testable in plain Node:
-  - **parser.ts** - Markdown → MindNode tree. lineMatchesNode
+  - **parser.ts** - Markdown → MindNode tree. lineMatchesNode; `foldable` marks nodes with children or body text
   - **patterns.ts** - Shared Markdown-structure regexes (heading/list/checkbox), so parser.ts and markdown-ops.ts agree on what each construct is
   - **markdown-ops.ts** - Pure line-editing ops (setText/setCheckbox/add/delete/move/reorder) over `string[]`
   - **node-text.ts** - Parses node text into link/plain segments (parseNodeText)
@@ -92,6 +92,10 @@ Obsidian part, the two live under the same basename in each dir (e.g.
   still fires a real `keydown` with `key === 'Enter'`, but `ev.isComposing` is true — treating it as "commit and
   exit" ends the edit mid-input. Guard on `isComposing` before acting, but keep `stopPropagation()` unconditional
   so the composing Enter can't leak to the view's global Enter shortcut either.
+- **A node with no children can still be collapsible** - `foldable` (parser) is what Obsidian can fold: child
+  nodes _or_ body text with no node of its own, trailing blank lines excluded. Collapsing a body-only node
+  hides nothing on the map, so its handle is `≡` rather than `−`/`+n`, and its label names the editor. Keep
+  `isCollapsible` the single gate for handle, menu, hotkeys and fold mapping, or the two views' fold sets drift.
 - **Fold sync has no event to hang on** - Obsidian fires nothing when the user folds a heading, so the view
   re-reads `getFoldInfo` after the interactions that can fold (document `click`/`keyup`, `active-leaf-change`)
   and compares `foldsKey`. That key is also set to whatever the map itself just wrote, so an echo of our own

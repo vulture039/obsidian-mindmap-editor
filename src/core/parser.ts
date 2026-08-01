@@ -9,6 +9,11 @@ export interface MindNode {
   line: number;
   /** Last 0-based line of this node's subtree. */
   endLine: number;
+  /**
+   * Whether anything but blank lines sits under this node's own line - child
+   * nodes or body text. What Obsidian can fold, so what the map can collapse.
+   */
+  foldable: boolean;
   /** Heading level (1-6) or list nesting depth (0-based). 0 for root. */
   level: number;
   /** Leading whitespace (list items only). */
@@ -39,6 +44,7 @@ export function parseMarkdown(text: string, rootText: string): MindNode {
     text: rootText,
     line: -1,
     endLine: lastLine,
+    foldable: false,
     level: 0,
     indent: '',
     marker: '',
@@ -90,6 +96,7 @@ export function parseMarkdown(text: string, rootText: string): MindNode {
         text: (headingMatch[2] ?? '').trim(),
         line: i,
         endLine: i,
+        foldable: false,
         level,
         indent: '',
         marker: '',
@@ -124,6 +131,7 @@ export function parseMarkdown(text: string, rootText: string): MindNode {
         text: (listMatch[4] ?? '').trim(),
         line: i,
         endLine: i,
+        foldable: false,
         level: listStack.length,
         indent,
         marker: listMatch[2] ?? '-',
@@ -150,6 +158,7 @@ export function parseMarkdown(text: string, rootText: string): MindNode {
   }
 
   computeEndLines(root, lastLine);
+  markFoldable(root, lines);
 
   return root;
 }
@@ -197,6 +206,22 @@ function computeEndLines(root: MindNode, lastLine: number): void {
   };
 
   fixLists(root);
+}
+
+/** Marks the nodes that hide something; blank lines alone do not count. */
+function markFoldable(root: MindNode, lines: string[]): void {
+  const visit = (n: MindNode): void => {
+    for (let i = n.line + 1; i <= n.endLine && !n.foldable; i++) {
+      n.foldable = (lines[i] ?? '').trim() !== '';
+    }
+    for (const c of n.children) {
+      visit(c);
+    }
+  };
+
+  for (const c of root.children) {
+    visit(c);
+  }
 }
 
 /**

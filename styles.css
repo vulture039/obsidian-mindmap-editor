@@ -60,6 +60,43 @@
   );
 }
 
+/* Collapse handle: grey chrome, so the branch colors stay the nodes'. The
+   view positions it; translate only centers it on the node. */
+.mindmap-collapse {
+  position: absolute;
+  z-index: 1;
+  transform: translateY(-50%);
+  min-width: 18px;
+  padding: 0 4px;
+  border: 1px solid var(--text-faint);
+  border-radius: 999px;
+  background: var(--background-primary);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.5;
+  text-align: center;
+  cursor: pointer;
+  user-select: none;
+}
+
+/* Hover stays grey too: the branch color is not a hover cue here. */
+.mindmap-collapse:hover {
+  border-color: var(--text-muted);
+  color: var(--text-normal);
+}
+
+/* The only branch color on a handle, so color means "folded". A tint, not a
+   fill: a control must stay quieter than a heading node's 30%. */
+.mindmap-collapse.is-collapsed {
+  border-color: var(--branch-color, var(--text-faint));
+  background: color-mix(
+    in srgb,
+    var(--branch-color, var(--text-faint)) 20%,
+    var(--background-primary)
+  );
+  color: var(--text-normal);
+}
+
 /* Read-only "✓ n done" pill standing in for hidden completed tasks. */
 .mindmap-node-summary {
   border-style: dotted;

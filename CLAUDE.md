@@ -10,6 +10,15 @@ Obsidian plugin "Mindmap Editor": shows a Markdown note as an editable mind map 
   Ops check `lineMatchesNode` before running and throw on mismatch → notice + re-render.
 - **Nodes are HTML elements, edges are SVG** - Checkboxes are real `<input>`s.
 
+## Comments and docs
+
+- **Say why, not what** - The code says what. A comment that restates it is noise.
+- **One or two lines** - Trim to the load-bearing sentence. Needing a paragraph
+  usually means the name or the split is wrong. Long-form context belongs in
+  the Pitfalls section below, not in the file.
+- **README entries are one to three lines** - It is a feature list, not a
+  manual. Say what the user gets; mechanics belong here, not there.
+
 ## Commit messages
 
 - **Prefix the subject with a type** - `feat:`/`fix:`/`docs:`/`chore:`/`refactor:`/`test:`
@@ -32,10 +41,11 @@ Obsidian part, the two live under the same basename in each dir (e.g.
 
 - **main.ts** - Plugin entry: view registration, commands, settings, openSplit
 - **core/** - No `obsidian` import, so it's unit-testable in plain Node:
-  - **parser.ts** - Markdown → MindNode tree. lineMatchesNode
+  - **parser.ts** - Markdown → MindNode tree. lineMatchesNode; `foldable` marks nodes with children or body text
   - **patterns.ts** - Shared Markdown-structure regexes (heading/list/checkbox), so parser.ts and markdown-ops.ts agree on what each construct is
   - **markdown-ops.ts** - Pure line-editing ops (setText/setCheckbox/add/delete/move/reorder) over `string[]`
   - **node-text.ts** - Parses node text into link/plain segments (parseNodeText)
+  - **folds.ts** - Maps Obsidian fold ranges ⇄ collapsed node lines (collapsedFromFolds/mergeFolds), and drops collapsed lines a re-parse invalidated
   - **settings.ts** - MindmapSettings shape and DEFAULT_SETTINGS
   - **render/** - The visual/spatial layer:
     - **colors.ts** - Per-branch colors, cycled by position from a user-configurable palette (settings)
@@ -45,6 +55,7 @@ Obsidian part, the two live under the same basename in each dir (e.g.
   - **mindmap-view.ts** - ItemView: rendering, selection, keyboard ops, inline edit, drag & drop, context menu, completed-task folding
   - **node-text.ts** - Renders the parsed segments to DOM links (wikilink / md link)
   - **file-io.ts** - Obsidian file I/O: findMarkdownView, updateFileLines (editor open → replaceRange, else vault.process)
+  - **folds.ts** - Reads/writes the editor's fold state (`currentMode.get/applyFoldInfo`, `app.foldManager.load`), all of it non-public API and feature-detected
   - **settings.ts** - Settings tab (MindmapSettingTab)
 - **styles.css** - All styles
 - **\*.test.ts** - Vitest unit tests co-located under core/ (parser, markdown-ops, colors, drag, node-text). The obsidian/ modules need the Obsidian API, so no mock — they're exercised manually in a vault.
@@ -83,6 +94,26 @@ Obsidian part, the two live under the same basename in each dir (e.g.
   still fires a real `keydown` with `key === 'Enter'`, but `ev.isComposing` is true — treating it as "commit and
   exit" ends the edit mid-input. Guard on `isComposing` before acting, but keep `stopPropagation()` unconditional
   so the composing Enter can't leak to the view's global Enter shortcut either.
+- **A node with no children can still be collapsible** - `foldable` (parser) is what Obsidian can fold: child
+  nodes _or_ body text with no node of its own, trailing blank lines excluded. Collapsing a body-only node
+  hides nothing on the map, so its handle is `≡` rather than `−`/`+n`, and its label names the editor. Keep
+  `isCollapsible` the single gate for handle, menu, hotkeys and fold mapping, or the two views' fold sets drift.
+- **Fold sync has no event to hang on** - Obsidian fires nothing when the user folds a heading, so the view
+  re-reads `getFoldInfo` after the interactions that can fold (document `click`/`keyup`, `active-leaf-change`)
+  and compares `foldsKey`. That check may only re-render, never adopt: the editor moves its folds the moment an
+  edit lands, while `root` is still the parse from before it, so mapping there would drop the collapse.
+  Adoption belongs in `render()`, right after the re-parse - which is also what keeps line-keyed collapse
+  correct across edits, since Obsidian moves its folds with the text.
+- **`lastEditorFoldsKey` holds what the editor has, not what we asked for** - It is read back after a write, so
+  the map does not mistake its own fold for the user's, and a fold Obsidian silently refused (a list fold with
+  Editor → Fold indent off) does not expand the branch again. If writing fails outright, `foldSyncOff` stops
+  _both_ directions — reading alone would let the next render undo every collapse made on the map. Writing must
+  also save and restore the editor's scroll (`get/applyScroll`): `applyFoldInfo` unfolds everything and re-folds
+  in a second transaction, and the editor creeps upward on every toggle otherwise.
+- **Collapse handles are canvas elements, not node children** - Placed after `applyPositions` (their x needs the
+  layout), so they leave node widths to the text. Each must stop its own pointerdown — reaching the canvas
+  would start a pan. `drawEdges` takes a handle's right edge as that node's branch start (`outlets`) and spans
+  the gap with a stub, so the handle reads as the joint the curves hang from instead of a badge beside them.
 - **Split direction: vertical = side by side, horizontal = stacked** - Opposite of intuition — don't use axis
   names in UI labels. Auto-saved on layout-change from the DOM's mod-vertical/mod-horizontal classes (not
   overwritten when the map is the only pane).

@@ -18,6 +18,17 @@ import {
   MindNode,
   parseMarkdown,
 } from '../core/parser';
+import {
+  collapsedFromFolds,
+  FoldRange,
+  foldsKey,
+  foldTargets,
+  isCollapsible,
+  mergeFolds,
+  pruneCollapsed,
+  sameLines,
+} from '../core/folds';
+import { applyEditorFolds, loadStoredFolds, readEditorFolds } from './folds';
 import { LaidNode, layoutTree, makeLaid } from '../core/render/layout';
 import { branchColorFor, parsePalette } from '../core/render/colors';
 import { renderNodeText } from './node-text';
@@ -38,12 +49,15 @@ import {
   setTextOp,
   toggleTaskOp,
 } from '../core/markdown-ops';
-import { findMarkdownView, updateFileLines } from './file-io';
+import { findEditingView, findMarkdownView, updateFileLines } from './file-io';
 
 export const VIEW_TYPE_MINDMAP = 'mindmap-editor';
 
 /** Pointer travel (px) before a press on a node turns into a drag. */
 const DRAG_START_THRESHOLD = 6;
+
+/** Gap (px) between a node's right edge and its collapse handle. */
+const COLLAPSE_HANDLE_GAP = 4;
 
 /** A completed task node ('- [x]'), the unit hidden by hideCompleted. */
 function isCompletedTask(node: MindNode): boolean {
@@ -56,6 +70,7 @@ const SUMMARY_NODE: MindNode = {
   text: '',
   line: -2,
   endLine: -2,
+  foldable: false,
   level: 0,
   indent: '',
   marker: '',
@@ -78,11 +93,25 @@ export class MindmapView extends ItemView {
   private renderSeq = 0;
   private laidByLine = new Map<number, LaidNode>();
   private hideCompletedActionEl: HTMLElement | null = null;
+  /** Bulk-fold buttons, keyed by bodyOnly: false = branches, true = "≡". */
+  private foldAllActionEls = new Map<boolean, HTMLElement>();
   /**
    * Parents (by line) whose completed tasks are shown despite
    * hideCompleted, via a click on their "✓ n done" pill.
    */
   private expandedDone = new Set<number>();
+  /**
+   * Collapsed nodes, by line. Mirrors the editor's folds while syncFolds is
+   * on; otherwise it lives here only.
+   */
+  private collapsed = new Set<number>();
+  /** Folds last read from or written to the editor, to spot user folds. */
+  private lastEditorFoldsKey: string | null = null;
+  /**
+   * Set once folding the editor fails (the API is not public). Sync then stops
+   * both ways: reading alone would let the next render undo the map's folds.
+   */
+  private foldSyncOff = false;
   /**
    * Most recently focused Markdown leaf, so syncEditorTo reuses the
    * editor the user was actually looking at instead of an arbitrary
@@ -103,6 +132,11 @@ export class MindmapView extends ItemView {
    */
   private get hideCompleted(): boolean {
     return this.plugin.settings.hideCompleted;
+  }
+
+  /** Whether collapsed branches and the editor's folds track each other. */
+  private get syncFolds(): boolean {
+    return this.plugin.settings.syncFolds && !this.foldSyncOff;
   }
 
   /**
@@ -200,22 +234,17 @@ export class MindmapView extends ItemView {
 
       return false;
     });
-    // Navigate visible nodes only: with hideCompleted on, checked tasks
-    // have no element (laidByLine misses them), so stepping onto one
-    // would silently strand the selection.
-    const visibleChildren = (n: MindNode): MindNode[] =>
-      n.children.filter((c) => !this.isHiddenDone(n, c));
     const sibling = (n: MindNode, delta: number): MindNode | null => {
       if (!n.parent) {
         return null;
       }
-      const sibs = visibleChildren(n.parent);
+      const sibs = this.visibleChildren(n.parent);
 
       return sibs[sibs.indexOf(n) + delta] ?? null;
     };
     const nav: [string, (n: MindNode) => MindNode | null][] = [
       ['ArrowLeft', (n) => n.parent],
-      ['ArrowRight', (n) => visibleChildren(n)[0] ?? null],
+      ['ArrowRight', (n) => this.visibleChildren(n)[0] ?? null],
       ['ArrowUp', (n) => sibling(n, -1)],
       ['ArrowDown', (n) => sibling(n, 1)],
     ];
@@ -255,6 +284,24 @@ export class MindmapView extends ItemView {
           return true;
         }
         void this.reorderNode(node, delta);
+
+        return false;
+      });
+    }
+    // Mod+Left/Right fold the selection; plain arrows stay navigation.
+    for (const [key, collapse] of [
+      ['ArrowLeft', true],
+      ['ArrowRight', false],
+    ] as const) {
+      this.scope.register(['Mod'], key, () => {
+        const node = this.selectedNode();
+
+        if (!node || !isCollapsible(node)) {
+          return true;
+        }
+        if (this.collapsed.has(node.line) !== collapse) {
+          this.toggleCollapse(node);
+        }
 
         return false;
       });
@@ -306,7 +353,9 @@ export class MindmapView extends ItemView {
       return;
     }
     const node = findEnclosing(this.root, mdView.editor.getCursor().line);
-    const laid = node && this.laidByLine.get(node.line);
+    // Inside a collapsed branch, the branch stands in for the caret's node.
+    const shown = node && (this.collapsedAncestor(node) ?? node);
+    const laid = shown && this.laidByLine.get(shown.line);
 
     if (!laid) {
       if (node?.parent && this.isHiddenDone(node.parent, node)) {
@@ -432,6 +481,181 @@ export class MindmapView extends ItemView {
     );
   }
 
+  /**
+   * The children a node draws: none while collapsed, no checked tasks under
+   * hideCompleted. Navigation walks this too, or the selection strands.
+   */
+  private visibleChildren(node: MindNode): MindNode[] {
+    if (this.collapsed.has(node.line)) {
+      return [];
+    }
+
+    return node.children.filter((c) => !this.isHiddenDone(node, c));
+  }
+
+  /** The outermost collapsed ancestor - the one still on screen. */
+  private collapsedAncestor(node: MindNode): MindNode | null {
+    let outermost: MindNode | null = null;
+
+    for (let cur = node.parent; cur; cur = cur.parent) {
+      if (this.collapsed.has(cur.line)) {
+        outermost = cur;
+      }
+    }
+
+    return outermost;
+  }
+
+  /** Moves a selection that just folded away up to the node standing in. */
+  private keepSelectionVisible(): void {
+    const selected = this.selectedNode();
+    const standIn = selected && this.collapsedAncestor(selected);
+
+    if (standIn) {
+      this.selectedLine = standIn.line;
+    }
+  }
+
+  /** Collapses or expands `node`'s branch, and folds the editor to match. */
+  private toggleCollapse(node: MindNode): void {
+    if (!isCollapsible(node)) {
+      return;
+    }
+    if (this.collapsed.has(node.line)) {
+      this.collapsed.delete(node.line);
+    } else {
+      this.collapsed.add(node.line);
+      this.keepSelectionVisible();
+    }
+    this.syncCollapseToEditor();
+    void this.render();
+  }
+
+  /**
+   * Folds every handle of one kind, and unfolds them once all are folded.
+   * Mixed state folds the rest, so the first click always tidies up.
+   */
+  private toggleAllCollapse(bodyOnly: boolean): void {
+    const targets = this.root ? foldTargets(this.root, bodyOnly) : [];
+
+    if (!targets.length) {
+      return;
+    }
+    const collapseAll = targets.some((line) => !this.collapsed.has(line));
+
+    for (const line of targets) {
+      if (collapseAll) {
+        this.collapsed.add(line);
+      } else {
+        this.collapsed.delete(line);
+      }
+    }
+    if (collapseAll) {
+      this.keepSelectionVisible();
+    }
+    this.syncCollapseToEditor();
+    void this.render();
+  }
+
+  /** Lights up a bulk-fold button while everything it folds is folded. */
+  private updateFoldActions(): void {
+    for (const [bodyOnly, el] of this.foldAllActionEls) {
+      const targets = this.root ? foldTargets(this.root, bodyOnly) : [];
+
+      el.toggleClass(
+        'is-active',
+        targets.length > 0 && targets.every((line) => this.collapsed.has(line)),
+      );
+    }
+  }
+
+  /** Adopts `folds`; true if the collapse state changed. */
+  private adoptFolds(root: MindNode, folds: FoldRange[]): boolean {
+    this.lastEditorFoldsKey = foldsKey(folds);
+    const next = collapsedFromFolds(root, folds);
+    const changed = !sameLines(next, this.collapsed);
+
+    this.collapsed = next;
+
+    return changed;
+  }
+
+  /**
+   * Adopts the editor's folds, unless they are the set last seen - so the map
+   * never reads back its own write, while an edit, which does move them, keeps
+   * the collapsed lines on the text.
+   */
+  private pullEditorFolds(root: MindNode): boolean {
+    const folds =
+      this.syncFolds && this.file ? readEditorFolds(this.app, this.file) : null;
+
+    if (!folds || foldsKey(folds) === this.lastEditorFoldsKey) {
+      return false;
+    }
+
+    return this.adoptFolds(root, folds);
+  }
+
+  /**
+   * Obsidian fires no fold event, so this runs after what can fold. It only
+   * spots the change and re-renders: adopting here would land the editor's
+   * lines, already moved by the edit, on the parse from before it.
+   */
+  private syncCollapseFromEditor(): void {
+    const folds =
+      this.syncFolds && this.file && !this.isBusy()
+        ? readEditorFolds(this.app, this.file)
+        : null;
+
+    if (folds && foldsKey(folds) !== this.lastEditorFoldsKey) {
+      void this.render();
+    }
+  }
+
+  /** Folds the Markdown pane to match the map's collapsed branches. */
+  private syncCollapseToEditor(): void {
+    if (!this.syncFolds || !this.root || !this.file) {
+      return;
+    }
+    const current = readEditorFolds(this.app, this.file);
+
+    if (!current) {
+      return;
+    }
+    const folds = mergeFolds(this.root, this.collapsed, current);
+
+    if (!applyEditorFolds(this.app, this.file, folds)) {
+      this.foldSyncOff = true;
+
+      return;
+    }
+    // What the editor took, not what we asked for: Obsidian drops a fold it
+    // will not make (a list fold with "Fold indent" off), and reading our own
+    // ask back as the user's would expand the branch again.
+    this.lastEditorFoldsKey = foldsKey(
+      readEditorFolds(this.app, this.file) ?? folds,
+    );
+  }
+
+  /**
+   * Seeds a just-opened file from Obsidian's stored folds. Only when no pane
+   * has it: render() already takes a live editor's, which are newer.
+   */
+  private async loadStoredCollapse(): Promise<void> {
+    if (!this.syncFolds || !this.file || readEditorFolds(this.app, this.file)) {
+      return;
+    }
+    const file = this.file;
+    const folds = await loadStoredFolds(this.app, file);
+
+    if (!folds || !this.root || this.file?.path !== file.path) {
+      return;
+    }
+    if (this.adoptFolds(this.root, folds)) {
+      await this.render();
+    }
+  }
+
   private setHideCompleted(value: boolean): void {
     if (this.hideCompleted === value) {
       return;
@@ -451,6 +675,20 @@ export class MindmapView extends ItemView {
       () => this.setHideCompleted(!this.hideCompleted),
     );
     this.hideCompletedActionEl.toggleClass('is-active', this.hideCompleted);
+    this.foldAllActionEls.set(
+      false,
+      this.addAction(
+        'chevrons-down-up',
+        'Collapse or expand all branches',
+        () => this.toggleAllCollapse(false),
+      ),
+    );
+    this.foldAllActionEls.set(
+      true,
+      this.addAction('align-justify', 'Fold or unfold all text', () =>
+        this.toggleAllCollapse(true),
+      ),
+    );
     this.addAction('refresh-cw', 'Refresh from the Markdown', () => {
       void this.forceRefresh();
     });
@@ -526,6 +764,15 @@ export class MindmapView extends ItemView {
     this.registerDomEvent(document, 'selectionchange', () =>
       this.followEditorCursor(),
     );
+    // Nothing fires on a fold, so check once clicks and keys settle.
+    const checkFolds = debounce(() => this.syncCollapseFromEditor(), 120);
+
+    for (const type of ['click', 'keyup'] as const) {
+      this.registerDomEvent(document, type, () => checkFolds());
+    }
+    this.registerEvent(
+      this.app.workspace.on('active-leaf-change', () => checkFolds()),
+    );
     // Remember how the user arranged the map pane (side by side vs
     // stacked), so reopening the view recreates the same split without
     // touching the settings dropdown.
@@ -573,7 +820,10 @@ export class MindmapView extends ItemView {
     this.file = file;
     this.selectedLine = null;
     this.expandedDone.clear();
+    this.collapsed.clear();
+    this.lastEditorFoldsKey = null;
     await this.render(true);
+    void this.loadStoredCollapse();
     const leaf = this.leaf as WorkspaceLeaf & {
       updateHeader?: () => void;
     };
@@ -662,11 +912,10 @@ export class MindmapView extends ItemView {
     if (switched) {
       return this.app.vault.cachedRead(this.file);
     }
-    const mdView = findMarkdownView(this.app, this.file);
-    // A workspace-restored MarkdownView can exist before its editor has
-    // loaded the file's content; treat an empty editor as not-loaded and
-    // read the vault instead (equivalent for a truly empty file).
-    const editorText = mdView?.editor.getValue();
+    // Only an editing pane's text leads the file; a reading pane's editor is
+    // not where the user types. A workspace-restored view can also exist
+    // before its editor loaded, so an empty one falls back to the vault too.
+    const editorText = findEditingView(this.app, this.file)?.editor.getValue();
 
     return editorText || this.app.vault.cachedRead(this.file);
   }
@@ -718,6 +967,11 @@ export class MindmapView extends ItemView {
     this.canvasEl.empty();
     this.laidByLine.clear();
     this.root = parseMarkdown(text, this.file.basename);
+    // Keyed by line, so re-derive: the editor's folds, else prune.
+    if (!this.pullEditorFolds(this.root)) {
+      this.collapsed = pruneCollapsed(this.root, this.collapsed);
+    }
+    this.updateFoldActions();
 
     const svg = this.canvasEl.createSvg('svg', { cls: 'mindmap-edges' });
     const palette = parsePalette(this.plugin.settings.palette);
@@ -725,7 +979,7 @@ export class MindmapView extends ItemView {
     const { width, height } = layoutTree(laidRoot);
 
     this.applyPositions(laidRoot);
-    this.drawEdges(svg, laidRoot);
+    this.drawEdges(svg, laidRoot, this.addCollapseToggles(laidRoot));
     this.canvasEl.setCssStyles({
       width: `${width}px`,
       height: `${height}px`,
@@ -840,10 +1094,83 @@ export class MindmapView extends ItemView {
     return inherited;
   }
 
+  /** A body-only node folds text the map never draws, so name the editor. */
+  private collapseLabel(body: boolean, collapsed: boolean): string {
+    if (body) {
+      return collapsed
+        ? 'Unfold text in the editor'
+        : 'Fold text in the editor';
+    }
+
+    return collapsed ? 'Expand branch' : 'Collapse branch';
+  }
+
   /**
-   * Builds the visible children under `laid`. With hideCompleted on, checked
-   * tasks are skipped and collapsed into one "✓ n done" pill per parent (or a
-   * "− hide done" pill when the parent is currently expanded).
+   * Hangs a handle outside every foldable node and returns where each one's
+   * branch now starts. Widths are read in one pass, after every placement.
+   */
+  private addCollapseToggles(laid: LaidNode): Map<LaidNode, number> {
+    const handles: [LaidNode, HTMLElement][] = [];
+    const visit = (l: LaidNode): void => {
+      if (isCollapsible(l.node)) {
+        handles.push([l, this.addCollapseToggle(l)]);
+      }
+      for (const child of l.children) {
+        visit(child);
+      }
+    };
+
+    visit(laid);
+    const outlets = new Map<LaidNode, number>();
+
+    for (const [l, el] of handles) {
+      outlets.set(l, l.x + l.w + COLLAPSE_HANDLE_GAP + el.offsetWidth);
+    }
+
+    return outlets;
+  }
+
+  /** "−"/"+n" for a branch, "≡" for a node that only hides text. */
+  private addCollapseToggle(laid: LaidNode): HTMLElement {
+    const node = laid.node;
+    const collapsed = this.collapsed.has(node.line);
+    const body = node.children.length === 0;
+    const toggle = this.canvasEl.createDiv({
+      cls: 'mindmap-collapse',
+      text: body ? '≡' : collapsed ? `+${node.children.length}` : '−',
+      attr: { 'aria-label': this.collapseLabel(body, collapsed) },
+    });
+
+    if (laid.color) {
+      toggle.setCssProps({ '--branch-color': laid.color });
+    }
+    // Clear of the node's edge; CSS does the vertical half, so no measuring.
+    toggle.setCssStyles({
+      left: `${laid.x + laid.w + COLLAPSE_HANDLE_GAP}px`,
+      top: `${laid.y + laid.h / 2}px`,
+    });
+    toggle.toggleClass('is-body', body);
+    toggle.toggleClass('is-collapsed', collapsed);
+    // The handle sits on the canvas: an escaping press would pan the map.
+    for (const type of ['pointerdown', 'dblclick'] as const) {
+      toggle.addEventListener(type, (e) => e.stopPropagation());
+    }
+    toggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      // Moves the editor like a click on the node. Selecting last, so the
+      // fold write's scroll restore cannot race the jump.
+      this.toggleCollapse(node);
+      this.selectNode(node, laid.el);
+    });
+
+    return toggle;
+  }
+
+  /**
+   * Builds the visible children under `laid`: none while the branch is
+   * collapsed. With hideCompleted on, checked tasks are skipped and collapsed
+   * into one "✓ n done" pill per parent (or a "− hide done" pill when the
+   * parent is currently expanded).
    */
   private buildChildNodes(
     node: MindNode,
@@ -851,6 +1178,9 @@ export class MindmapView extends ItemView {
     own: string,
     palette: string[],
   ): void {
+    if (this.collapsed.has(node.line)) {
+      return;
+    }
     let hiddenDone = 0;
     let shownDone = 0;
 
@@ -919,24 +1249,39 @@ export class MindmapView extends ItemView {
     }
   }
 
-  private drawEdges(svg: SVGSVGElement, laid: LaidNode): void {
+  /**
+   * Draws the branch curves. A handle hands out its right side as the start
+   * (`outlets`) and gets a stub across its gap, so it reads as the joint the
+   * branch hangs from; a body-only handle gets neither, having no branch.
+   */
+  private drawEdges(
+    svg: SVGSVGElement,
+    laid: LaidNode,
+    outlets: Map<LaidNode, number>,
+  ): void {
+    const y1 = laid.y + laid.h / 2;
+    const outlet = outlets.get(laid);
+    const stroke = (color: string): string => color || 'var(--text-faint)';
+    const line = (d: string, color: string): void => {
+      svg.createSvg('path', {
+        attr: { d, stroke: stroke(color), fill: 'none', 'stroke-width': '1.5' },
+      });
+    };
+
+    if (outlet !== undefined && laid.node.children.length > 0) {
+      line(`M ${laid.x + laid.w} ${y1} H ${outlet}`, laid.color);
+    }
     for (const child of laid.children) {
-      const x1 = laid.x + laid.w;
-      const y1 = laid.y + laid.h / 2;
+      const x1 = outlet ?? laid.x + laid.w;
       const x2 = child.x;
       const y2 = child.y + child.h / 2;
       const dx = Math.max(16, (x2 - x1) / 2);
-      const d = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
 
-      svg.createSvg('path', {
-        attr: {
-          d,
-          stroke: child.color || 'var(--text-faint)',
-          fill: 'none',
-          'stroke-width': '1.5',
-        },
-      });
-      this.drawEdges(svg, child);
+      line(
+        `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`,
+        child.color,
+      );
+      this.drawEdges(svg, child, outlets);
     }
   }
 
@@ -1161,6 +1506,15 @@ export class MindmapView extends ItemView {
       );
     };
 
+    if (isCollapsible(node)) {
+      const collapsed = this.collapsed.has(node.line);
+
+      add(
+        this.collapseLabel(node.children.length === 0, collapsed),
+        collapsed ? 'chevron-down' : 'chevron-right',
+        () => this.toggleCollapse(node),
+      );
+    }
     add('Add child', 'plus', () => void this.addChildNode(node));
     // A forced task child is always a list item, so skip it only where a
     // child cannot be one: the root once it already has heading children.
@@ -1293,6 +1647,8 @@ export class MindmapView extends ItemView {
 
     input.contentEditable = 'plaintext-only';
     input.textContent = node.text;
+    // Exactly the label's place, so the node's contents do not shift.
+    textEl.after(input);
     textEl.hide();
     let done = false;
     const finish = (save: boolean): void => {

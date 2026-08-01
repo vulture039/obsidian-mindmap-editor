@@ -19,6 +19,9 @@ No new file format, no markup to add.
 - **Edit on the map** - Rename, add, delete, drag & drop. Dropping on a node's middle makes it a child;
   dropping near a sibling's top/bottom edge inserts it there.
 - **Working checkboxes** - Clicking toggles `[ ]` ⇄ `[x]` in the file.
+- **Collapse branches, in sync with the editor** - A handle on each node folds its branch (`−` / `+3`), and the
+  Markdown pane folds with it - both ways, and after a restart. `≡` folds text that lives only in the editor;
+  the header buttons fold everything at once.
 - **Collapse completed tasks** - The `✓✓` header button folds checked tasks into one `✓ n done` pill per parent.
   Click a pill to reveal just that parent (`− hide done` folds it back).
   Remembered across sessions.
@@ -31,17 +34,18 @@ No new file format, no markup to add.
 
 Active while the mind map pane is focused.
 
-| Key                    | Action                                                          |
-| ---------------------- | --------------------------------------------------------------- |
-| `↑` / `↓`              | Select previous / next sibling                                  |
-| `←` / `→`              | Select parent / first child                                     |
-| `Shift + ↑/↓`          | Move the node among its siblings (also in the right-click menu) |
-| `Enter`                | Add a sibling (a child on the root)                             |
-| `Tab`                  | Add a child                                                     |
-| `F2`                   | Rename (same as double-click); `Enter` saves, `Esc` cancels     |
-| `Space`                | Toggle the selected task's checkbox                             |
-| `Delete` / `Backspace` | Delete the node and its subtree                                 |
-| `Esc`                  | Clear the selection                                             |
+| Key                    | Action                                                               |
+| ---------------------- | -------------------------------------------------------------------- |
+| `↑` / `↓`              | Select previous / next sibling                                       |
+| `←` / `→`              | Select parent / first child                                          |
+| `Ctrl/Cmd + ←/→`       | Collapse / expand the selected branch (also in the right-click menu) |
+| `Shift + ↑/↓`          | Move the node among its siblings (also in the right-click menu)      |
+| `Enter`                | Add a sibling (a child on the root)                                  |
+| `Tab`                  | Add a child                                                          |
+| `F2`                   | Rename (same as double-click); `Enter` saves, `Esc` cancels          |
+| `Space`                | Toggle the selected task's checkbox                                  |
+| `Delete` / `Backspace` | Delete the node and its subtree                                      |
+| `Esc`                  | Clear the selection                                                  |
 
 Back/forward use Obsidian's own Navigate back / forward command:
 `Ctrl + Alt + ←/→` (`Cmd + Option + ←/→` on macOS).
@@ -59,6 +63,8 @@ text look out of sync.
 
 - **Follow active file** (default on)
 - **Hide completed tasks**
+- **Sync collapse state with Markdown folding** (default on) - Needs an editor pane; list folding also follows
+  Obsidian's Editor → Fold settings.
 - **Split direction** - Side by side / stacked; also updates itself when you rearrange the map pane.
 - **Branch colors** - Custom palette, one hex color per line.
 

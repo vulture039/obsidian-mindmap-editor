@@ -128,6 +128,36 @@ describe('parseMarkdown - endLine', () => {
   });
 });
 
+describe('parseMarkdown - foldable', () => {
+  it('marks nodes that hide children or body text', () => {
+    const root = parseMarkdown('# A\n- a\n  - b\n# B\nbody', 'Note');
+    const nodeA = root.children[0]!;
+    const itemA = nodeA.children[0]!;
+    const itemB = itemA.children[0]!;
+    const nodeB = root.children[1]!;
+
+    expect(nodeA.foldable).toBe(true);
+    expect(itemA.foldable).toBe(true);
+    // A leaf bullet hides nothing.
+    expect(itemB.foldable).toBe(false);
+    // A heading with body text but no child node still folds.
+    expect(nodeB.foldable).toBe(true);
+  });
+
+  it('ignores trailing blank lines and the root', () => {
+    const root = parseMarkdown('# A\n\n\n# B\nbody', 'Note');
+
+    expect(root.foldable).toBe(false);
+    expect(root.children[0]!.foldable).toBe(false);
+  });
+
+  it('counts an indented description under a bullet', () => {
+    const root = parseMarkdown('- a\n  more text', 'Note');
+
+    expect(root.children[0]!.foldable).toBe(true);
+  });
+});
+
 describe('parseMarkdown - skipped regions', () => {
   it('skips YAML frontmatter', () => {
     const root = parseMarkdown('---\ntitle: x\n---\n# A', 'Note');

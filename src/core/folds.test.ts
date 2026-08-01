@@ -4,6 +4,7 @@ import {
   collapsedFromFolds,
   foldsKey,
   isCollapsible,
+  mergeFolds,
   pruneCollapsed,
   sameLines,
 } from './folds';
@@ -48,6 +49,44 @@ describe('collapsedFromFolds', () => {
         { from: 2, to: 2 },
       ]).size,
     ).toBe(0);
+  });
+});
+
+describe('mergeFolds', () => {
+  it('folds the collapsed branches, deriving the range from endLine', () => {
+    const root = parseMarkdown(NOTE, 'Note');
+
+    expect(mergeFolds(root, new Set([0]), [])).toEqual([{ from: 0, to: 2 }]);
+  });
+
+  it("keeps the editor's own range for a line it already folds", () => {
+    const root = parseMarkdown(NOTE, 'Note');
+    const existing = [{ from: 0, to: 1 }];
+
+    expect(mergeFolds(root, new Set([0]), existing)).toEqual(existing);
+  });
+
+  it('passes through folds the map has no node for', () => {
+    const root = parseMarkdown(NOTE, 'Note');
+
+    expect(mergeFolds(root, new Set(), [{ from: 3, to: 4 }])).toEqual([
+      { from: 3, to: 4 },
+    ]);
+  });
+
+  it('drops the fold of a branch that is no longer collapsed', () => {
+    const root = parseMarkdown(NOTE, 'Note');
+
+    expect(mergeFolds(root, new Set(), [{ from: 1, to: 2 }])).toEqual([]);
+  });
+
+  it('keeps a nested fold under a collapsed parent, in line order', () => {
+    const root = parseMarkdown(NOTE, 'Note');
+
+    expect(mergeFolds(root, new Set([1, 0]), [])).toEqual([
+      { from: 0, to: 2 },
+      { from: 1, to: 2 },
+    ]);
   });
 });
 

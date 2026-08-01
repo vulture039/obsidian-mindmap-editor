@@ -45,6 +45,32 @@ export function collapsedFromFolds(
   return collapsed;
 }
 
+/**
+ * The fold set the editor should show. Obsidian's own range beats one derived
+ * from `endLine`; folds with no node behind them pass through untouched.
+ */
+export function mergeFolds(
+  root: MindNode,
+  collapsed: Set<number>,
+  existing: FoldRange[],
+): FoldRange[] {
+  const known = collapsibleLines(root);
+  const byStart = new Map(existing.map((f) => [f.from, f]));
+  const merged = existing.filter((f) => !known.has(f.from));
+  const visit = (n: MindNode): void => {
+    if (isCollapsible(n) && collapsed.has(n.line)) {
+      merged.push(byStart.get(n.line) ?? { from: n.line, to: n.endLine });
+    }
+    for (const c of n.children) {
+      visit(c);
+    }
+  };
+
+  visit(root);
+
+  return merged.sort((a, b) => a.from - b.from);
+}
+
 /** Drops collapsed lines that no longer start a collapsible node. */
 export function pruneCollapsed(
   root: MindNode,

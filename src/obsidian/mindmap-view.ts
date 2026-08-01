@@ -23,10 +23,11 @@ import {
   FoldRange,
   foldsKey,
   isCollapsible,
+  mergeFolds,
   pruneCollapsed,
   sameLines,
 } from '../core/folds';
-import { readEditorFolds } from './folds';
+import { applyEditorFolds, readEditorFolds } from './folds';
 import { LaidNode, layoutTree, makeLaid } from '../core/render/layout';
 import { branchColorFor, parsePalette } from '../core/render/colors';
 import { renderNodeText } from './node-text';
@@ -100,8 +101,13 @@ export class MindmapView extends ItemView {
    * on; otherwise it lives here only.
    */
   private collapsed = new Set<number>();
-  /** Folds last read from the editor, to spot the ones the user made. */
+  /** Folds last read from or written to the editor, to spot user folds. */
   private lastEditorFoldsKey: string | null = null;
+  /**
+   * Set once folding the editor fails (the API is not public). Sync then stops
+   * both ways: reading alone would let the next render undo the map's folds.
+   */
+  private foldSyncOff = false;
   /**
    * Most recently focused Markdown leaf, so syncEditorTo reuses the
    * editor the user was actually looking at instead of an arbitrary
@@ -124,9 +130,9 @@ export class MindmapView extends ItemView {
     return this.plugin.settings.hideCompleted;
   }
 
-  /** Whether the map's collapsed branches follow the editor's folds. */
+  /** Whether collapsed branches and the editor's folds track each other. */
   private get syncFolds(): boolean {
-    return this.plugin.settings.syncFolds;
+    return this.plugin.settings.syncFolds && !this.foldSyncOff;
   }
 
   /**
@@ -517,6 +523,7 @@ export class MindmapView extends ItemView {
       this.collapsed.add(node.line);
       this.keepSelectionVisible();
     }
+    this.syncCollapseToEditor();
     void this.render();
   }
 
@@ -554,6 +561,31 @@ export class MindmapView extends ItemView {
     if (root && !this.isBusy() && this.pullEditorFolds(root)) {
       void this.render();
     }
+  }
+
+  /** Folds the Markdown pane to match the map's collapsed branches. */
+  private syncCollapseToEditor(): void {
+    if (!this.syncFolds || !this.root || !this.file) {
+      return;
+    }
+    const current = readEditorFolds(this.app, this.file);
+
+    if (!current) {
+      return;
+    }
+    const folds = mergeFolds(this.root, this.collapsed, current);
+
+    if (!applyEditorFolds(this.app, this.file, folds)) {
+      this.foldSyncOff = true;
+
+      return;
+    }
+    // What the editor took, not what we asked for: Obsidian drops a fold it
+    // will not make (a list fold with "Fold indent" off), and reading our own
+    // ask back as the user's would expand the branch again.
+    this.lastEditorFoldsKey = foldsKey(
+      readEditorFolds(this.app, this.file) ?? folds,
+    );
   }
 
   private setHideCompleted(value: boolean): void {

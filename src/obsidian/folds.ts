@@ -9,11 +9,12 @@ interface FoldInfo {
 }
 
 /**
- * Not public API: `currentMode` carries getFoldInfo. Feature-detected, so
- * losing it costs fold sync only.
+ * Not public API: `currentMode` carries get/applyFoldInfo. Feature-detected,
+ * so losing them costs fold sync only.
  */
 interface FoldCapableMode extends MarkdownSubView {
   getFoldInfo?: () => FoldInfo | null;
+  applyFoldInfo?: (info: FoldInfo) => void;
 }
 
 /** Keeps only well-formed ranges, whatever the untyped call returned. */
@@ -50,5 +51,33 @@ export function readEditorFolds(app: App, file: TFile): FoldRange[] | null {
     console.error('Mindmap: could not read the editor fold state', err);
 
     return null;
+  }
+}
+
+/** Folds `file`'s Markdown pane to exactly `folds`. False if it could not. */
+export function applyEditorFolds(
+  app: App,
+  file: TFile,
+  folds: FoldRange[],
+): boolean {
+  const view = findMarkdownView(app, file);
+  const mode = foldMode(view);
+
+  if (!view || typeof mode?.applyFoldInfo !== 'function') {
+    return false;
+  }
+  try {
+    // applyFoldInfo unfolds and re-folds in two transactions, losing the
+    // scroll anchor in between; getScroll is line-based, so it pins it back.
+    const scroll = mode.getScroll();
+
+    mode.applyFoldInfo({ folds, lines: view.editor.lineCount() });
+    mode.applyScroll(scroll);
+
+    return true;
+  } catch (err) {
+    console.error('Mindmap: could not apply the editor fold state', err);
+
+    return false;
   }
 }

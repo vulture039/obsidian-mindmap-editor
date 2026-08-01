@@ -31,6 +31,11 @@ export class MindmapSettingTab extends PluginSettingTab {
         control: { type: 'toggle', key: 'hideCompleted' },
       },
       {
+        name: 'Sync collapse state with Markdown folding',
+        desc: 'Collapsing a branch on the map folds the same heading or list item in the Markdown editor, and folding it there collapses the branch here. Needs the file open in an editor pane.',
+        control: { type: 'toggle', key: 'syncFolds' },
+      },
+      {
         name: 'Split direction',
         desc: 'How the workspace splits when the plugin opens a new pane (mind map or editor). Updates automatically when you rearrange the mind map pane.',
         control: {

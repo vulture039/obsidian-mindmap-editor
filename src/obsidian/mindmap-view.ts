@@ -18,7 +18,15 @@ import {
   MindNode,
   parseMarkdown,
 } from '../core/parser';
-import { isCollapsible, pruneCollapsed } from '../core/folds';
+import {
+  collapsedFromFolds,
+  FoldRange,
+  foldsKey,
+  isCollapsible,
+  pruneCollapsed,
+  sameLines,
+} from '../core/folds';
+import { readEditorFolds } from './folds';
 import { LaidNode, layoutTree, makeLaid } from '../core/render/layout';
 import { branchColorFor, parsePalette } from '../core/render/colors';
 import { renderNodeText } from './node-text';
@@ -87,8 +95,13 @@ export class MindmapView extends ItemView {
    * hideCompleted, via a click on their "✓ n done" pill.
    */
   private expandedDone = new Set<number>();
-  /** Collapsed nodes, by line. */
+  /**
+   * Collapsed nodes, by line. Mirrors the editor's folds while syncFolds is
+   * on; otherwise it lives here only.
+   */
   private collapsed = new Set<number>();
+  /** Folds last read from the editor, to spot the ones the user made. */
+  private lastEditorFoldsKey: string | null = null;
   /**
    * Most recently focused Markdown leaf, so syncEditorTo reuses the
    * editor the user was actually looking at instead of an arbitrary
@@ -109,6 +122,11 @@ export class MindmapView extends ItemView {
    */
   private get hideCompleted(): boolean {
     return this.plugin.settings.hideCompleted;
+  }
+
+  /** Whether the map's collapsed branches follow the editor's folds. */
+  private get syncFolds(): boolean {
+    return this.plugin.settings.syncFolds;
   }
 
   /**
@@ -502,6 +520,42 @@ export class MindmapView extends ItemView {
     void this.render();
   }
 
+  /** Adopts `folds`; true if the collapse state changed. */
+  private adoptFolds(root: MindNode, folds: FoldRange[]): boolean {
+    this.lastEditorFoldsKey = foldsKey(folds);
+    const next = collapsedFromFolds(root, folds);
+    const changed = !sameLines(next, this.collapsed);
+
+    this.collapsed = next;
+
+    return changed;
+  }
+
+  /**
+   * Adopts the editor's folds, unless they are the set last seen - so the map
+   * never reads back its own write, while an edit, which does move them, keeps
+   * the collapsed lines on the text.
+   */
+  private pullEditorFolds(root: MindNode): boolean {
+    const folds =
+      this.syncFolds && this.file ? readEditorFolds(this.app, this.file) : null;
+
+    if (!folds || foldsKey(folds) === this.lastEditorFoldsKey) {
+      return false;
+    }
+
+    return this.adoptFolds(root, folds);
+  }
+
+  /** Obsidian fires no fold event, so this runs after what can fold. */
+  private syncCollapseFromEditor(): void {
+    const root = this.root;
+
+    if (root && !this.isBusy() && this.pullEditorFolds(root)) {
+      void this.render();
+    }
+  }
+
   private setHideCompleted(value: boolean): void {
     if (this.hideCompleted === value) {
       return;
@@ -596,6 +650,16 @@ export class MindmapView extends ItemView {
     this.registerDomEvent(document, 'selectionchange', () =>
       this.followEditorCursor(),
     );
+    // Nothing fires on a fold, so check once clicks and keys settle.
+    const checkFolds = debounce(() => this.syncCollapseFromEditor(), 120);
+
+    for (const type of ['click', 'keyup'] as const) {
+      this.registerDomEvent(document, type, () => checkFolds());
+    }
+    this.registerEvent(
+      this.app.workspace.on('active-leaf-change', () => checkFolds()),
+    );
+
     // Remember how the user arranged the map pane (side by side vs
     // stacked), so reopening the view recreates the same split without
     // touching the settings dropdown.
@@ -644,6 +708,7 @@ export class MindmapView extends ItemView {
     this.selectedLine = null;
     this.expandedDone.clear();
     this.collapsed.clear();
+    this.lastEditorFoldsKey = null;
     await this.render(true);
     const leaf = this.leaf as WorkspaceLeaf & {
       updateHeader?: () => void;
@@ -789,8 +854,10 @@ export class MindmapView extends ItemView {
     this.canvasEl.empty();
     this.laidByLine.clear();
     this.root = parseMarkdown(text, this.file.basename);
-    // Collapse state is keyed by line: drop what no longer starts a branch.
-    this.collapsed = pruneCollapsed(this.root, this.collapsed);
+    // Keyed by line, so re-derive: the editor's folds, else prune.
+    if (!this.pullEditorFolds(this.root)) {
+      this.collapsed = pruneCollapsed(this.root, this.collapsed);
+    }
 
     const svg = this.canvasEl.createSvg('svg', { cls: 'mindmap-edges' });
     const palette = parsePalette(this.plugin.settings.palette);

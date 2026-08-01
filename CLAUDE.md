@@ -43,7 +43,7 @@ Obsidian part, the two live under the same basename in each dir (e.g.
   - **patterns.ts** - Shared Markdown-structure regexes (heading/list/checkbox), so parser.ts and markdown-ops.ts agree on what each construct is
   - **markdown-ops.ts** - Pure line-editing ops (setText/setCheckbox/add/delete/move/reorder) over `string[]`
   - **node-text.ts** - Parses node text into link/plain segments (parseNodeText)
-  - **folds.ts** - Which nodes can be collapsed, and dropping collapsed lines a re-parse invalidated
+  - **folds.ts** - Maps Obsidian fold ranges → collapsed node lines (collapsedFromFolds), and drops collapsed lines a re-parse invalidated
   - **settings.ts** - MindmapSettings shape and DEFAULT_SETTINGS
   - **render/** - The visual/spatial layer:
     - **colors.ts** - Per-branch colors, cycled by position from a user-configurable palette (settings)
@@ -53,6 +53,7 @@ Obsidian part, the two live under the same basename in each dir (e.g.
   - **mindmap-view.ts** - ItemView: rendering, selection, keyboard ops, inline edit, drag & drop, context menu, completed-task folding
   - **node-text.ts** - Renders the parsed segments to DOM links (wikilink / md link)
   - **file-io.ts** - Obsidian file I/O: findMarkdownView, updateFileLines (editor open → replaceRange, else vault.process)
+  - **folds.ts** - Reads the editor's fold state (`currentMode.getFoldInfo`), non-public API and feature-detected
   - **settings.ts** - Settings tab (MindmapSettingTab)
 - **styles.css** - All styles
 - **\*.test.ts** - Vitest unit tests co-located under core/ (parser, markdown-ops, colors, drag, node-text). The obsidian/ modules need the Obsidian API, so no mock — they're exercised manually in a vault.
@@ -91,6 +92,10 @@ Obsidian part, the two live under the same basename in each dir (e.g.
   still fires a real `keydown` with `key === 'Enter'`, but `ev.isComposing` is true — treating it as "commit and
   exit" ends the edit mid-input. Guard on `isComposing` before acting, but keep `stopPropagation()` unconditional
   so the composing Enter can't leak to the view's global Enter shortcut either.
+- **Fold sync has no event to hang on** - Obsidian fires nothing when the user folds a heading, so the view
+  re-reads `getFoldInfo` after the interactions that can fold (document `click`/`keyup`, `active-leaf-change`)
+  and compares `foldsKey`. The editor leads: `render()` re-derives `collapsed` from the live folds, which is
+  what keeps line-keyed collapse state correct across edits (Obsidian moves its folds with the text).
 - **Collapse handles are canvas elements, not node children** - Placed after `applyPositions` (their x needs the
   layout), so they leave node widths to the text. Each must stop its own pointerdown — reaching the canvas
   would start a pan. `drawEdges` takes a handle's right edge as that node's branch start (`outlets`) and spans

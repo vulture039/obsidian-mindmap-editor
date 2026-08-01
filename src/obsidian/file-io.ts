@@ -1,10 +1,18 @@
 import { App, Editor, MarkdownView, TFile } from 'obsidian';
 
-export function findMarkdownView(app: App, file: TFile): MarkdownView | null {
+function findView(
+  app: App,
+  file: TFile,
+  sourceOnly: boolean,
+): MarkdownView | null {
   for (const leaf of app.workspace.getLeavesOfType('markdown')) {
     const view = leaf.view;
 
-    if (view instanceof MarkdownView && view.file?.path === file.path) {
+    if (
+      view instanceof MarkdownView &&
+      view.file?.path === file.path &&
+      (!sourceOnly || view.getMode() === 'source')
+    ) {
       return view;
     }
   }
@@ -12,17 +20,29 @@ export function findMarkdownView(app: App, file: TFile): MarkdownView | null {
   return null;
 }
 
+export function findMarkdownView(app: App, file: TFile): MarkdownView | null {
+  return findView(app, file, false);
+}
+
 /**
- * Applies a line-based mutation to the file. When the file is open in an
- * editor, the change goes through the editor (minimal replaceRange, so undo
- * history is preserved); otherwise it is written via vault.process.
+ * Only a pane in source mode. A reading pane keeps an editor too, but it is
+ * not the surface the user sees and a write there never reaches the file.
+ */
+export function findEditingView(app: App, file: TFile): MarkdownView | null {
+  return findView(app, file, true);
+}
+
+/**
+ * Applies a line-based mutation to the file. When the file is being edited,
+ * the change goes through the editor (minimal replaceRange, so undo history is
+ * preserved); otherwise it is written via vault.process.
  */
 export async function updateFileLines(
   app: App,
   file: TFile,
   mutate: (lines: string[]) => string[],
 ): Promise<void> {
-  const mdView = findMarkdownView(app, file);
+  const mdView = findEditingView(app, file);
 
   if (mdView) {
     const oldLines = mdView.editor.getValue().split('\n');

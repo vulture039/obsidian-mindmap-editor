@@ -49,7 +49,7 @@ import {
   setTextOp,
   toggleTaskOp,
 } from '../core/markdown-ops';
-import { findMarkdownView, updateFileLines } from './file-io';
+import { findEditingView, findMarkdownView, updateFileLines } from './file-io';
 
 export const VIEW_TYPE_MINDMAP = 'mindmap-editor';
 
@@ -912,11 +912,10 @@ export class MindmapView extends ItemView {
     if (switched) {
       return this.app.vault.cachedRead(this.file);
     }
-    const mdView = findMarkdownView(this.app, this.file);
-    // A workspace-restored MarkdownView can exist before its editor has
-    // loaded the file's content; treat an empty editor as not-loaded and
-    // read the vault instead (equivalent for a truly empty file).
-    const editorText = mdView?.editor.getValue();
+    // Only an editing pane's text leads the file; a reading pane's editor is
+    // not where the user types. A workspace-restored view can also exist
+    // before its editor loaded, so an empty one falls back to the vault too.
+    const editorText = findEditingView(this.app, this.file)?.editor.getValue();
 
     return editorText || this.app.vault.cachedRead(this.file);
   }

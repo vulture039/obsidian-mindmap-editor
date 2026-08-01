@@ -98,14 +98,16 @@ Obsidian part, the two live under the same basename in each dir (e.g.
   `isCollapsible` the single gate for handle, menu, hotkeys and fold mapping, or the two views' fold sets drift.
 - **Fold sync has no event to hang on** - Obsidian fires nothing when the user folds a heading, so the view
   re-reads `getFoldInfo` after the interactions that can fold (document `click`/`keyup`, `active-leaf-change`)
-  and compares `foldsKey`. That key is also set to whatever the map itself just wrote, so an echo of our own
-  fold is not read back as a user action - to what the editor _took_, since Obsidian silently drops a fold it
-  will not make (a list fold with Editor → Fold indent off). The editor leads: `render()` re-derives `collapsed` from the live
-  folds, which is what keeps line-keyed collapse state correct across edits (Obsidian moves its folds with the
-  text). Writing folds must save and restore the editor's scroll (`get/applyScroll`): `applyFoldInfo` unfolds
-  everything and re-folds in a second transaction, and the editor creeps upward on every toggle otherwise. If
-  writing ever fails, `foldSyncOff` stops _both_ directions — reading alone would let the next render undo
-  every collapse made on the map.
+  and compares `foldsKey`. That check may only re-render, never adopt: the editor moves its folds the moment an
+  edit lands, while `root` is still the parse from before it, so mapping there would drop the collapse.
+  Adoption belongs in `render()`, right after the re-parse - which is also what keeps line-keyed collapse
+  correct across edits, since Obsidian moves its folds with the text.
+- **`lastEditorFoldsKey` holds what the editor has, not what we asked for** - It is read back after a write, so
+  the map does not mistake its own fold for the user's, and a fold Obsidian silently refused (a list fold with
+  Editor → Fold indent off) does not expand the branch again. If writing fails outright, `foldSyncOff` stops
+  _both_ directions — reading alone would let the next render undo every collapse made on the map. Writing must
+  also save and restore the editor's scroll (`get/applyScroll`): `applyFoldInfo` unfolds everything and re-folds
+  in a second transaction, and the editor creeps upward on every toggle otherwise.
 - **Collapse handles are canvas elements, not node children** - Placed after `applyPositions` (their x needs the
   layout), so they leave node widths to the text. Each must stop its own pointerdown — reaching the canvas
   would start a pan. `drawEdges` takes a handle's right edge as that node's branch start (`outlets`) and spans

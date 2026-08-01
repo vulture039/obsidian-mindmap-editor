@@ -596,11 +596,18 @@ export class MindmapView extends ItemView {
     return this.adoptFolds(root, folds);
   }
 
-  /** Obsidian fires no fold event, so this runs after what can fold. */
+  /**
+   * Obsidian fires no fold event, so this runs after what can fold. It only
+   * spots the change and re-renders: adopting here would land the editor's
+   * lines, already moved by the edit, on the parse from before it.
+   */
   private syncCollapseFromEditor(): void {
-    const root = this.root;
+    const folds =
+      this.syncFolds && this.file && !this.isBusy()
+        ? readEditorFolds(this.app, this.file)
+        : null;
 
-    if (root && !this.isBusy() && this.pullEditorFolds(root)) {
+    if (folds && foldsKey(folds) !== this.lastEditorFoldsKey) {
       void this.render();
     }
   }

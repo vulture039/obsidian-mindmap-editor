@@ -19,15 +19,9 @@ No new file format, no markup to add.
 - **Edit on the map** - Rename, add, delete, drag & drop. Dropping on a node's middle makes it a child;
   dropping near a sibling's top/bottom edge inserts it there.
 - **Working checkboxes** - Clicking toggles `[ ]` ⇄ `[x]` in the file.
-- **Collapse branches, in sync with the editor** - Every node with children gets a handle on the branch line at
-  its right edge: `−` folds the branch away, `+3` brings it back (also in the right-click menu and on
-  `Ctrl/Cmd + ←/→`). Folding a heading or list item in the Markdown pane collapses the same branch on the map,
-  and collapsing on the map folds it in the editor - so a note folded down to its outline looks the same on
-  both sides, and stays that way after a restart. A node with only text under it (a heading's paragraphs, a
-  bullet's description) shows `≡` instead: it folds in the editor, where that text actually lives.
-  The two header buttons fold everything at once - `⌄⌃` every branch, `≡` every node's text - and unfold it
-  again once it is all folded.
-  Turn it off with **Sync collapse state with Markdown folding** to keep collapsing to the map only.
+- **Collapse branches, in sync with the editor** - A handle on each node folds its branch (`−` / `+3`), and the
+  Markdown pane folds with it - both ways, and after a restart. `≡` folds text that lives only in the editor;
+  the header buttons fold everything at once.
 - **Collapse completed tasks** - The `✓✓` header button folds checked tasks into one `✓ n done` pill per parent.
   Click a pill to reveal just that parent (`− hide done` folds it back).
   Remembered across sessions.
@@ -69,8 +63,8 @@ text look out of sync.
 
 - **Follow active file** (default on)
 - **Hide completed tasks**
-- **Sync collapse state with Markdown folding** (default on) - Needs the file open in an editor pane; whether a
-  list item folds there also depends on Obsidian's own Editor → Fold settings.
+- **Sync collapse state with Markdown folding** (default on) - Needs an editor pane; list folding also follows
+  Obsidian's Editor → Fold settings.
 - **Split direction** - Side by side / stacked; also updates itself when you rearrange the map pane.
 - **Branch colors** - Custom palette, one hex color per line.
 

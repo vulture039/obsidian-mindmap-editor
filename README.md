@@ -23,7 +23,7 @@ No new file format, no markup to add.
   its right edge: `−` folds the branch away, `+3` brings it back (also in the right-click menu and on
   `Ctrl/Cmd + ←/→`). Folding a heading or list item in the Markdown pane collapses the same branch on the map,
   and collapsing on the map folds it in the editor - so a note folded down to its outline looks the same on
-  both sides.
+  both sides, and stays that way after a restart.
   Turn it off with **Sync collapse state with Markdown folding** to keep collapsing to the map only.
 - **Collapse completed tasks** - The `✓✓` header button folds checked tasks into one `✓ n done` pill per parent.
   Click a pill to reveal just that parent (`− hide done` folds it back).

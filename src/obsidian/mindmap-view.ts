@@ -27,7 +27,7 @@ import {
   pruneCollapsed,
   sameLines,
 } from '../core/folds';
-import { applyEditorFolds, readEditorFolds } from './folds';
+import { applyEditorFolds, loadStoredFolds, readEditorFolds } from './folds';
 import { LaidNode, layoutTree, makeLaid } from '../core/render/layout';
 import { branchColorFor, parsePalette } from '../core/render/colors';
 import { renderNodeText } from './node-text';
@@ -588,6 +588,25 @@ export class MindmapView extends ItemView {
     );
   }
 
+  /**
+   * Seeds a just-opened file from Obsidian's stored folds. Only when no pane
+   * has it: render() already takes a live editor's, which are newer.
+   */
+  private async loadStoredCollapse(): Promise<void> {
+    if (!this.syncFolds || !this.file || readEditorFolds(this.app, this.file)) {
+      return;
+    }
+    const file = this.file;
+    const folds = await loadStoredFolds(this.app, file);
+
+    if (!folds || !this.root || this.file?.path !== file.path) {
+      return;
+    }
+    if (this.adoptFolds(this.root, folds)) {
+      await this.render();
+    }
+  }
+
   private setHideCompleted(value: boolean): void {
     if (this.hideCompleted === value) {
       return;
@@ -742,6 +761,7 @@ export class MindmapView extends ItemView {
     this.collapsed.clear();
     this.lastEditorFoldsKey = null;
     await this.render(true);
+    void this.loadStoredCollapse();
     const leaf = this.leaf as WorkspaceLeaf & {
       updateHeader?: () => void;
     };

@@ -53,7 +53,7 @@ Obsidian part, the two live under the same basename in each dir (e.g.
   - **mindmap-view.ts** - ItemView: rendering, selection, keyboard ops, inline edit, drag & drop, context menu, completed-task folding
   - **node-text.ts** - Renders the parsed segments to DOM links (wikilink / md link)
   - **file-io.ts** - Obsidian file I/O: findMarkdownView, updateFileLines (editor open → replaceRange, else vault.process)
-  - **folds.ts** - Reads/writes the editor's fold state (`currentMode.get/applyFoldInfo`), non-public API and feature-detected
+  - **folds.ts** - Reads/writes the editor's fold state (`currentMode.get/applyFoldInfo`, `app.foldManager.load`), all of it non-public API and feature-detected
   - **settings.ts** - Settings tab (MindmapSettingTab)
 - **styles.css** - All styles
 - **\*.test.ts** - Vitest unit tests co-located under core/ (parser, markdown-ops, colors, drag, node-text). The obsidian/ modules need the Obsidian API, so no mock — they're exercised manually in a vault.

@@ -9,12 +9,16 @@ interface FoldInfo {
 }
 
 /**
- * Not public API: `currentMode` carries get/applyFoldInfo. Feature-detected,
- * so losing them costs fold sync only.
+ * Not public API: `currentMode` carries get/applyFoldInfo, `app.foldManager`
+ * stores them per file. Feature-detected, so losing them costs fold sync only.
  */
 interface FoldCapableMode extends MarkdownSubView {
   getFoldInfo?: () => FoldInfo | null;
   applyFoldInfo?: (info: FoldInfo) => void;
+}
+
+interface FoldStore {
+  load?: (file: TFile) => Promise<FoldInfo | null>;
 }
 
 /** Keeps only well-formed ranges, whatever the untyped call returned. */
@@ -79,5 +83,24 @@ export function applyEditorFolds(
     console.error('Mindmap: could not apply the editor fold state', err);
 
     return false;
+  }
+}
+
+/** Where folds survive a restart. Only for a file with no pane open. */
+export async function loadStoredFolds(
+  app: App,
+  file: TFile,
+): Promise<FoldRange[] | null> {
+  const store = (app as App & { foldManager?: FoldStore }).foldManager;
+
+  if (typeof store?.load !== 'function') {
+    return null;
+  }
+  try {
+    return sanitize(await store.load(file));
+  } catch (err) {
+    console.error('Mindmap: could not read the stored fold state', err);
+
+    return null;
   }
 }

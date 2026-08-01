@@ -10,6 +10,13 @@ Obsidian plugin "Mindmap Editor": shows a Markdown note as an editable mind map 
   Ops check `lineMatchesNode` before running and throw on mismatch → notice + re-render.
 - **Nodes are HTML elements, edges are SVG** - Checkboxes are real `<input>`s.
 
+## Comments
+
+- **Say why, not what** - The code says what. A comment that restates it is noise.
+- **One or two lines** - Trim to the load-bearing sentence. Needing a paragraph
+  usually means the name or the split is wrong. Long-form context belongs in
+  the Pitfalls section below, not in the file.
+
 ## Commit messages
 
 - **Prefix the subject with a type** - `feat:`/`fix:`/`docs:`/`chore:`/`refactor:`/`test:`

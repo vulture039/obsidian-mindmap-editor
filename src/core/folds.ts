@@ -1,10 +1,10 @@
+import { MindNode } from './parser';
+
 /** One folded region as Obsidian stores it: 0-based lines, both inclusive. */
 export interface FoldRange {
   from: number;
   to: number;
 }
-
-import { MindNode } from './parser';
 
 /** Hides something (children or body text), and has a line to fold. */
 export function isCollapsible(node: MindNode): boolean {
@@ -17,6 +17,23 @@ function collapsibleLines(root: MindNode): Set<number> {
   const visit = (n: MindNode): void => {
     if (isCollapsible(n)) {
       lines.add(n.line);
+    }
+    for (const c of n.children) {
+      visit(c);
+    }
+  };
+
+  visit(root);
+
+  return lines;
+}
+
+/** Lines the bulk fold acts on: body-only handles, or branch ones. */
+export function foldTargets(root: MindNode, bodyOnly: boolean): number[] {
+  const lines: number[] = [];
+  const visit = (n: MindNode): void => {
+    if (isCollapsible(n) && (n.children.length === 0) === bodyOnly) {
+      lines.push(n.line);
     }
     for (const c of n.children) {
       visit(c);

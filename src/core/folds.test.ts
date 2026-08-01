@@ -3,6 +3,7 @@ import { parseMarkdown } from './parser';
 import {
   collapsedFromFolds,
   foldsKey,
+  foldTargets,
   isCollapsible,
   mergeFolds,
   pruneCollapsed,
@@ -43,6 +44,23 @@ describe('isCollapsible', () => {
     const root = parseMarkdown('# A\n\n\n# B', 'Note');
 
     expect(isCollapsible(root.children[0]!)).toBe(false);
+  });
+});
+
+describe('foldTargets', () => {
+  it('splits the branch handles from the body-only ones', () => {
+    const root = parseMarkdown(NOTE, 'Note');
+
+    // 0 "# A" and 1 "- a" have children; 3 "# B" only body text.
+    expect(foldTargets(root, false)).toEqual([0, 1]);
+    expect(foldTargets(root, true)).toEqual([3]);
+  });
+
+  it('skips nodes that hide nothing', () => {
+    const root = parseMarkdown('- a\n- b', 'Note');
+
+    expect(foldTargets(root, false)).toEqual([]);
+    expect(foldTargets(root, true)).toEqual([]);
   });
 });
 

@@ -25,6 +25,8 @@ No new file format, no markup to add.
   and collapsing on the map folds it in the editor - so a note folded down to its outline looks the same on
   both sides, and stays that way after a restart. A node with only text under it (a heading's paragraphs, a
   bullet's description) shows `≡` instead: it folds in the editor, where that text actually lives.
+  The two header buttons fold everything at once - `⌄⌃` every branch, `≡` every node's text - and unfold it
+  again once it is all folded.
   Turn it off with **Sync collapse state with Markdown folding** to keep collapsing to the map only.
 - **Collapse completed tasks** - The `✓✓` header button folds checked tasks into one `✓ n done` pill per parent.
   Click a pill to reveal just that parent (`− hide done` folds it back).

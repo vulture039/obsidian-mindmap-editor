@@ -22,6 +22,7 @@ import {
   collapsedFromFolds,
   FoldRange,
   foldsKey,
+  foldTargets,
   isCollapsible,
   mergeFolds,
   pruneCollapsed,
@@ -92,6 +93,8 @@ export class MindmapView extends ItemView {
   private renderSeq = 0;
   private laidByLine = new Map<number, LaidNode>();
   private hideCompletedActionEl: HTMLElement | null = null;
+  /** Bulk-fold buttons, keyed by bodyOnly: false = branches, true = "≡". */
+  private foldAllActionEls = new Map<boolean, HTMLElement>();
   /**
    * Parents (by line) whose completed tasks are shown despite
    * hideCompleted, via a click on their "✓ n done" pill.
@@ -528,6 +531,44 @@ export class MindmapView extends ItemView {
     void this.render();
   }
 
+  /**
+   * Folds every handle of one kind, and unfolds them once all are folded.
+   * Mixed state folds the rest, so the first click always tidies up.
+   */
+  private toggleAllCollapse(bodyOnly: boolean): void {
+    const targets = this.root ? foldTargets(this.root, bodyOnly) : [];
+
+    if (!targets.length) {
+      return;
+    }
+    const collapseAll = targets.some((line) => !this.collapsed.has(line));
+
+    for (const line of targets) {
+      if (collapseAll) {
+        this.collapsed.add(line);
+      } else {
+        this.collapsed.delete(line);
+      }
+    }
+    if (collapseAll) {
+      this.keepSelectionVisible();
+    }
+    this.syncCollapseToEditor();
+    void this.render();
+  }
+
+  /** Lights up a bulk-fold button while everything it folds is folded. */
+  private updateFoldActions(): void {
+    for (const [bodyOnly, el] of this.foldAllActionEls) {
+      const targets = this.root ? foldTargets(this.root, bodyOnly) : [];
+
+      el.toggleClass(
+        'is-active',
+        targets.length > 0 && targets.every((line) => this.collapsed.has(line)),
+      );
+    }
+  }
+
   /** Adopts `folds`; true if the collapse state changed. */
   private adoptFolds(root: MindNode, folds: FoldRange[]): boolean {
     this.lastEditorFoldsKey = foldsKey(folds);
@@ -627,6 +668,20 @@ export class MindmapView extends ItemView {
       () => this.setHideCompleted(!this.hideCompleted),
     );
     this.hideCompletedActionEl.toggleClass('is-active', this.hideCompleted);
+    this.foldAllActionEls.set(
+      false,
+      this.addAction(
+        'chevrons-down-up',
+        'Collapse or expand all branches',
+        () => this.toggleAllCollapse(false),
+      ),
+    );
+    this.foldAllActionEls.set(
+      true,
+      this.addAction('align-justify', 'Fold or unfold all text', () =>
+        this.toggleAllCollapse(true),
+      ),
+    );
     this.addAction('refresh-cw', 'Refresh from the Markdown', () => {
       void this.forceRefresh();
     });
@@ -711,7 +766,6 @@ export class MindmapView extends ItemView {
     this.registerEvent(
       this.app.workspace.on('active-leaf-change', () => checkFolds()),
     );
-
     // Remember how the user arranged the map pane (side by side vs
     // stacked), so reopening the view recreates the same split without
     // touching the settings dropdown.
@@ -911,6 +965,7 @@ export class MindmapView extends ItemView {
     if (!this.pullEditorFolds(this.root)) {
       this.collapsed = pruneCollapsed(this.root, this.collapsed);
     }
+    this.updateFoldActions();
 
     const svg = this.canvasEl.createSvg('svg', { cls: 'mindmap-edges' });
     const palette = parsePalette(this.plugin.settings.palette);
@@ -1033,6 +1088,17 @@ export class MindmapView extends ItemView {
     return inherited;
   }
 
+  /** A body-only node folds text the map never draws, so name the editor. */
+  private collapseLabel(body: boolean, collapsed: boolean): string {
+    if (body) {
+      return collapsed
+        ? 'Unfold text in the editor'
+        : 'Fold text in the editor';
+    }
+
+    return collapsed ? 'Expand branch' : 'Collapse branch';
+  }
+
   /**
    * Hangs a handle outside every foldable node and returns where each one's
    * branch now starts. Widths are read in one pass, after every placement.
@@ -1056,17 +1122,6 @@ export class MindmapView extends ItemView {
     }
 
     return outlets;
-  }
-
-  /** A body-only node folds text the map never draws, so name the editor. */
-  private collapseLabel(body: boolean, collapsed: boolean): string {
-    if (body) {
-      return collapsed
-        ? 'Unfold text in the editor'
-        : 'Fold text in the editor';
-    }
-
-    return collapsed ? 'Expand branch' : 'Collapse branch';
   }
 
   /** "−"/"+n" for a branch, "≡" for a node that only hides text. */

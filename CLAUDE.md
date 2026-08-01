@@ -43,6 +43,7 @@ Obsidian part, the two live under the same basename in each dir (e.g.
   - **patterns.ts** - Shared Markdown-structure regexes (heading/list/checkbox), so parser.ts and markdown-ops.ts agree on what each construct is
   - **markdown-ops.ts** - Pure line-editing ops (setText/setCheckbox/add/delete/move/reorder) over `string[]`
   - **node-text.ts** - Parses node text into link/plain segments (parseNodeText)
+  - **folds.ts** - Which nodes can be collapsed, and dropping collapsed lines a re-parse invalidated
   - **settings.ts** - MindmapSettings shape and DEFAULT_SETTINGS
   - **render/** - The visual/spatial layer:
     - **colors.ts** - Per-branch colors, cycled by position from a user-configurable palette (settings)
@@ -90,6 +91,10 @@ Obsidian part, the two live under the same basename in each dir (e.g.
   still fires a real `keydown` with `key === 'Enter'`, but `ev.isComposing` is true — treating it as "commit and
   exit" ends the edit mid-input. Guard on `isComposing` before acting, but keep `stopPropagation()` unconditional
   so the composing Enter can't leak to the view's global Enter shortcut either.
+- **Collapse handles are canvas elements, not node children** - Placed after `applyPositions` (their x needs the
+  layout), so they leave node widths to the text. Each must stop its own pointerdown — reaching the canvas
+  would start a pan. `drawEdges` takes a handle's right edge as that node's branch start (`outlets`) and spans
+  the gap with a stub, so the handle reads as the joint the curves hang from instead of a badge beside them.
 - **Split direction: vertical = side by side, horizontal = stacked** - Opposite of intuition — don't use axis
   names in UI labels. Auto-saved on layout-change from the DOM's mod-vertical/mod-horizontal classes (not
   overwritten when the map is the only pane).

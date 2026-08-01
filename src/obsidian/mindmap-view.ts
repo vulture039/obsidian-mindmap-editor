@@ -18,6 +18,7 @@ import {
   MindNode,
   parseMarkdown,
 } from '../core/parser';
+import { isCollapsible, pruneCollapsed } from '../core/folds';
 import { LaidNode, layoutTree, makeLaid } from '../core/render/layout';
 import { branchColorFor, parsePalette } from '../core/render/colors';
 import { renderNodeText } from './node-text';
@@ -44,6 +45,9 @@ export const VIEW_TYPE_MINDMAP = 'mindmap-editor';
 
 /** Pointer travel (px) before a press on a node turns into a drag. */
 const DRAG_START_THRESHOLD = 6;
+
+/** Gap (px) between a node's right edge and its collapse handle. */
+const COLLAPSE_HANDLE_GAP = 4;
 
 /** A completed task node ('- [x]'), the unit hidden by hideCompleted. */
 function isCompletedTask(node: MindNode): boolean {
@@ -83,6 +87,8 @@ export class MindmapView extends ItemView {
    * hideCompleted, via a click on their "✓ n done" pill.
    */
   private expandedDone = new Set<number>();
+  /** Collapsed nodes, by line. */
+  private collapsed = new Set<number>();
   /**
    * Most recently focused Markdown leaf, so syncEditorTo reuses the
    * editor the user was actually looking at instead of an arbitrary
@@ -200,22 +206,17 @@ export class MindmapView extends ItemView {
 
       return false;
     });
-    // Navigate visible nodes only: with hideCompleted on, checked tasks
-    // have no element (laidByLine misses them), so stepping onto one
-    // would silently strand the selection.
-    const visibleChildren = (n: MindNode): MindNode[] =>
-      n.children.filter((c) => !this.isHiddenDone(n, c));
     const sibling = (n: MindNode, delta: number): MindNode | null => {
       if (!n.parent) {
         return null;
       }
-      const sibs = visibleChildren(n.parent);
+      const sibs = this.visibleChildren(n.parent);
 
       return sibs[sibs.indexOf(n) + delta] ?? null;
     };
     const nav: [string, (n: MindNode) => MindNode | null][] = [
       ['ArrowLeft', (n) => n.parent],
-      ['ArrowRight', (n) => visibleChildren(n)[0] ?? null],
+      ['ArrowRight', (n) => this.visibleChildren(n)[0] ?? null],
       ['ArrowUp', (n) => sibling(n, -1)],
       ['ArrowDown', (n) => sibling(n, 1)],
     ];
@@ -255,6 +256,24 @@ export class MindmapView extends ItemView {
           return true;
         }
         void this.reorderNode(node, delta);
+
+        return false;
+      });
+    }
+    // Mod+Left/Right fold the selection; plain arrows stay navigation.
+    for (const [key, collapse] of [
+      ['ArrowLeft', true],
+      ['ArrowRight', false],
+    ] as const) {
+      this.scope.register(['Mod'], key, () => {
+        const node = this.selectedNode();
+
+        if (!node || !isCollapsible(node)) {
+          return true;
+        }
+        if (this.collapsed.has(node.line) !== collapse) {
+          this.toggleCollapse(node);
+        }
 
         return false;
       });
@@ -306,7 +325,9 @@ export class MindmapView extends ItemView {
       return;
     }
     const node = findEnclosing(this.root, mdView.editor.getCursor().line);
-    const laid = node && this.laidByLine.get(node.line);
+    // Inside a collapsed branch, the branch stands in for the caret's node.
+    const shown = node && (this.collapsedAncestor(node) ?? node);
+    const laid = shown && this.laidByLine.get(shown.line);
 
     if (!laid) {
       if (node?.parent && this.isHiddenDone(node.parent, node)) {
@@ -430,6 +451,55 @@ export class MindmapView extends ItemView {
       !this.expandedDone.has(parent.line) &&
       isCompletedTask(child)
     );
+  }
+
+  /**
+   * The children a node draws: none while collapsed, no checked tasks under
+   * hideCompleted. Navigation walks this too, or the selection strands.
+   */
+  private visibleChildren(node: MindNode): MindNode[] {
+    if (this.collapsed.has(node.line)) {
+      return [];
+    }
+
+    return node.children.filter((c) => !this.isHiddenDone(node, c));
+  }
+
+  /** The outermost collapsed ancestor - the one still on screen. */
+  private collapsedAncestor(node: MindNode): MindNode | null {
+    let outermost: MindNode | null = null;
+
+    for (let cur = node.parent; cur; cur = cur.parent) {
+      if (this.collapsed.has(cur.line)) {
+        outermost = cur;
+      }
+    }
+
+    return outermost;
+  }
+
+  /** Moves a selection that just folded away up to the node standing in. */
+  private keepSelectionVisible(): void {
+    const selected = this.selectedNode();
+    const standIn = selected && this.collapsedAncestor(selected);
+
+    if (standIn) {
+      this.selectedLine = standIn.line;
+    }
+  }
+
+  /** Collapses or expands `node`'s branch, and folds the editor to match. */
+  private toggleCollapse(node: MindNode): void {
+    if (!isCollapsible(node)) {
+      return;
+    }
+    if (this.collapsed.has(node.line)) {
+      this.collapsed.delete(node.line);
+    } else {
+      this.collapsed.add(node.line);
+      this.keepSelectionVisible();
+    }
+    void this.render();
   }
 
   private setHideCompleted(value: boolean): void {
@@ -573,6 +643,7 @@ export class MindmapView extends ItemView {
     this.file = file;
     this.selectedLine = null;
     this.expandedDone.clear();
+    this.collapsed.clear();
     await this.render(true);
     const leaf = this.leaf as WorkspaceLeaf & {
       updateHeader?: () => void;
@@ -718,6 +789,8 @@ export class MindmapView extends ItemView {
     this.canvasEl.empty();
     this.laidByLine.clear();
     this.root = parseMarkdown(text, this.file.basename);
+    // Collapse state is keyed by line: drop what no longer starts a branch.
+    this.collapsed = pruneCollapsed(this.root, this.collapsed);
 
     const svg = this.canvasEl.createSvg('svg', { cls: 'mindmap-edges' });
     const palette = parsePalette(this.plugin.settings.palette);
@@ -725,7 +798,7 @@ export class MindmapView extends ItemView {
     const { width, height } = layoutTree(laidRoot);
 
     this.applyPositions(laidRoot);
-    this.drawEdges(svg, laidRoot);
+    this.drawEdges(svg, laidRoot, this.addCollapseToggles(laidRoot));
     this.canvasEl.setCssStyles({
       width: `${width}px`,
       height: `${height}px`,
@@ -841,9 +914,69 @@ export class MindmapView extends ItemView {
   }
 
   /**
-   * Builds the visible children under `laid`. With hideCompleted on, checked
-   * tasks are skipped and collapsed into one "✓ n done" pill per parent (or a
-   * "− hide done" pill when the parent is currently expanded).
+   * Hangs a handle outside every foldable node and returns where each one's
+   * branch now starts. Widths are read in one pass, after every placement.
+   */
+  private addCollapseToggles(laid: LaidNode): Map<LaidNode, number> {
+    const handles: [LaidNode, HTMLElement][] = [];
+    const visit = (l: LaidNode): void => {
+      if (isCollapsible(l.node)) {
+        handles.push([l, this.addCollapseToggle(l)]);
+      }
+      for (const child of l.children) {
+        visit(child);
+      }
+    };
+
+    visit(laid);
+    const outlets = new Map<LaidNode, number>();
+
+    for (const [l, el] of handles) {
+      outlets.set(l, l.x + l.w + COLLAPSE_HANDLE_GAP + el.offsetWidth);
+    }
+
+    return outlets;
+  }
+
+  /** The handle a foldable node carries: "−" open, "+n" folded. */
+  private addCollapseToggle(laid: LaidNode): HTMLElement {
+    const node = laid.node;
+    const collapsed = this.collapsed.has(node.line);
+    const toggle = this.canvasEl.createDiv({
+      cls: 'mindmap-collapse',
+      text: collapsed ? `+${node.children.length}` : '−',
+      attr: { 'aria-label': collapsed ? 'Expand branch' : 'Collapse branch' },
+    });
+
+    if (laid.color) {
+      toggle.setCssProps({ '--branch-color': laid.color });
+    }
+    // Clear of the node's edge; CSS does the vertical half, so no measuring.
+    toggle.setCssStyles({
+      left: `${laid.x + laid.w + COLLAPSE_HANDLE_GAP}px`,
+      top: `${laid.y + laid.h / 2}px`,
+    });
+    toggle.toggleClass('is-collapsed', collapsed);
+    // The handle sits on the canvas: an escaping press would pan the map.
+    for (const type of ['pointerdown', 'dblclick'] as const) {
+      toggle.addEventListener(type, (e) => e.stopPropagation());
+    }
+    toggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      // Moves the editor like a click on the node. Selecting last, so the
+      // fold write's scroll restore cannot race the jump.
+      this.toggleCollapse(node);
+      this.selectNode(node, laid.el);
+    });
+
+    return toggle;
+  }
+
+  /**
+   * Builds the visible children under `laid`: none while the branch is
+   * collapsed. With hideCompleted on, checked tasks are skipped and collapsed
+   * into one "✓ n done" pill per parent (or a "− hide done" pill when the
+   * parent is currently expanded).
    */
   private buildChildNodes(
     node: MindNode,
@@ -851,6 +984,9 @@ export class MindmapView extends ItemView {
     own: string,
     palette: string[],
   ): void {
+    if (this.collapsed.has(node.line)) {
+      return;
+    }
     let hiddenDone = 0;
     let shownDone = 0;
 
@@ -919,24 +1055,39 @@ export class MindmapView extends ItemView {
     }
   }
 
-  private drawEdges(svg: SVGSVGElement, laid: LaidNode): void {
+  /**
+   * Draws the branch curves. A handle hands out its right side as the start
+   * (`outlets`) and gets a stub across its gap, so it reads as the joint the
+   * branch hangs from.
+   */
+  private drawEdges(
+    svg: SVGSVGElement,
+    laid: LaidNode,
+    outlets: Map<LaidNode, number>,
+  ): void {
+    const y1 = laid.y + laid.h / 2;
+    const outlet = outlets.get(laid);
+    const stroke = (color: string): string => color || 'var(--text-faint)';
+    const line = (d: string, color: string): void => {
+      svg.createSvg('path', {
+        attr: { d, stroke: stroke(color), fill: 'none', 'stroke-width': '1.5' },
+      });
+    };
+
+    if (outlet !== undefined) {
+      line(`M ${laid.x + laid.w} ${y1} H ${outlet}`, laid.color);
+    }
     for (const child of laid.children) {
-      const x1 = laid.x + laid.w;
-      const y1 = laid.y + laid.h / 2;
+      const x1 = outlet ?? laid.x + laid.w;
       const x2 = child.x;
       const y2 = child.y + child.h / 2;
       const dx = Math.max(16, (x2 - x1) / 2);
-      const d = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
 
-      svg.createSvg('path', {
-        attr: {
-          d,
-          stroke: child.color || 'var(--text-faint)',
-          fill: 'none',
-          'stroke-width': '1.5',
-        },
-      });
-      this.drawEdges(svg, child);
+      line(
+        `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`,
+        child.color,
+      );
+      this.drawEdges(svg, child, outlets);
     }
   }
 
@@ -1161,6 +1312,15 @@ export class MindmapView extends ItemView {
       );
     };
 
+    if (isCollapsible(node)) {
+      const collapsed = this.collapsed.has(node.line);
+
+      add(
+        collapsed ? 'Expand branch' : 'Collapse branch',
+        collapsed ? 'chevron-down' : 'chevron-right',
+        () => this.toggleCollapse(node),
+      );
+    }
     add('Add child', 'plus', () => void this.addChildNode(node));
     // A forced task child is always a list item, so skip it only where a
     // child cannot be one: the root once it already has heading children.
@@ -1293,6 +1453,8 @@ export class MindmapView extends ItemView {
 
     input.contentEditable = 'plaintext-only';
     input.textContent = node.text;
+    // Exactly the label's place, so the node's contents do not shift.
+    textEl.after(input);
     textEl.hide();
     let done = false;
     const finish = (save: boolean): void => {

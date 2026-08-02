@@ -15,17 +15,21 @@ No new file format, no markup to add.
 
 - **Automatic mind map** - Headings and bullet lists become nodes, with the note title as the root;
   heading depth and list indentation define the hierarchy.
-  Headings are bold pills with a color-tinted fill; list items are plain pills.
+  Headings stand out by weight and a color-tinted fill; list items are plain.
 - **Edit on the map** - Rename, add, delete, drag & drop. Dropping on a node's middle makes it a child;
   dropping near a sibling's top/bottom edge inserts it there.
 - **Working checkboxes** - Clicking toggles `[ ]` ⇄ `[x]` in the file.
 - **Collapse branches, in sync with the editor** - A handle on each node folds its branch (`−` / `+3`), and the
-  Markdown pane folds with it - both ways, and after a restart. `≡` folds text that lives only in the editor;
-  the header buttons fold everything at once.
-- **Collapse completed tasks** - The `✓✓` header button folds checked tasks into one `✓ n done` pill per parent.
-  Click a pill to reveal just that parent (`− hide done` folds it back).
+  Markdown pane folds with it - both ways, and after a restart. The header buttons and the fold commands do the
+  whole map at once.
+- **Show and edit a node's own text** - Off by default. The `¶` header button draws the lines under a node that
+  are no node of their own inside it, and `≡` on the node's corner folds that text away on its own, apart from
+  the branch. Double-click a line to edit it right there: `Enter` makes a new line, the `✓`/`✕` buttons save and
+  discard (as do `Ctrl/Cmd + Enter` and `Esc`), and `Ctrl/Cmd + double-click` opens the line in the editor.
+- **Hide completed tasks** - The `✓✓` header button hides checked tasks behind one `✓ n done` node per parent.
+  Click it to reveal just that parent (`− hide done` puts them back).
   Remembered across sessions.
-- **Map and editor follow each other** - Selecting a node (by click or arrow keys) moves the Markdown editor's cursor to its line and briefly highlights it; moving the cursor in the editor selects the node that line belongs to and scrolls it into view. Neither side steals focus from the other.
+- **Map and editor follow each other** - Selecting a node (by click or arrow keys) moves the Markdown editor's cursor to its line and briefly highlights it; moving the cursor in the editor selects the node that line belongs to and scrolls it into view, down to the exact line when the node's text is drawn. Neither side steals focus from the other.
 - **Follow wikilinks** - Clicking a `[[wikilink]]` switches map and editor to the linked note together.
 - **Branch colors** - Each top-level branch gets a palette color by position and its subtree inherits it.
   Customize the palette in settings, one hex color per line.
@@ -50,12 +54,18 @@ Active while the mind map pane is focused.
 Back/forward use Obsidian's own Navigate back / forward command:
 `Ctrl + Alt + ←/→` (`Cmd + Option + ←/→` on macOS).
 
-`Toggle focus between mind map and Markdown editor` can be bound to one in
-Settings → Hotkeys to jump between the two.
+## Commands
 
-The `⟳` header button, and the command `Refresh the mind map from the Markdown`,
-rebuild the map from its file - the manual override for when the map and the
-text look out of sync.
+None of these come with a hotkey; bind the ones you want in Settings → Hotkeys.
+
+| Command                                             | What it does                                          |
+| --------------------------------------------------- | ----------------------------------------------------- |
+| `Open mind map for the active file`                 | Same as the ribbon icon                               |
+| `Toggle focus between mind map and Markdown editor` | Jumps between the two panes                           |
+| `Collapse all branches` / `Expand all branches`     | The `⌄⌃` header button, one direction at a time       |
+| `Fold all node text` / `Unfold all node text`       | The `≡` header button, likewise                       |
+| `Show or hide node text on the map`                 | The `¶` header button                                 |
+| `Refresh the mind map from the Markdown`            | The `⟳` header button: rebuilds the map from its file |
 
 ## Settings
 
@@ -65,6 +75,7 @@ text look out of sync.
 - **Hide completed tasks**
 - **Sync collapse state with Markdown folding** (default on) - Needs an editor pane; list folding also follows
   Obsidian's Editor → Fold settings.
+- **Show node text on the map** - Draw a node's own text inside the node; also the `¶` header button.
 - **Split direction** - Side by side / stacked; also updates itself when you rearrange the map pane.
 - **Branch colors** - Custom palette, one hex color per line.
 

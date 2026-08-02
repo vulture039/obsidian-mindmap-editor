@@ -3,3 +3,6 @@ dist
 main.js
 package-lock.json
 docs
+
+# Fixtures: their exact indentation and casing is what they test
+dev-vault

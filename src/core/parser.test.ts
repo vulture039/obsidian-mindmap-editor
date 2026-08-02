@@ -128,33 +128,67 @@ describe('parseMarkdown - endLine', () => {
   });
 });
 
-describe('parseMarkdown - foldable', () => {
-  it('marks nodes that hide children or body text', () => {
+describe('parseMarkdown - what a node hides', () => {
+  it('is children, body text, or neither', () => {
     const root = parseMarkdown('# A\n- a\n  - b\n# B\nbody', 'Note');
     const nodeA = root.children[0]!;
     const itemA = nodeA.children[0]!;
     const itemB = itemA.children[0]!;
     const nodeB = root.children[1]!;
 
-    expect(nodeA.foldable).toBe(true);
-    expect(itemA.foldable).toBe(true);
+    expect(nodeA.children).toHaveLength(1);
+    expect(itemA.children).toHaveLength(1);
     // A leaf bullet hides nothing.
-    expect(itemB.foldable).toBe(false);
-    // A heading with body text but no child node still folds.
-    expect(nodeB.foldable).toBe(true);
+    expect(itemB.children).toHaveLength(0);
+    expect(itemB.body).toEqual([]);
+    // A heading with body text but no child node still has something.
+    expect(nodeB.body.map((b) => b.text)).toEqual(['body']);
   });
 
   it('ignores trailing blank lines and the root', () => {
     const root = parseMarkdown('# A\n\n\n# B\nbody', 'Note');
 
-    expect(root.foldable).toBe(false);
-    expect(root.children[0]!.foldable).toBe(false);
+    expect(root.body).toEqual([]);
+    expect(root.children[0]!.body).toEqual([]);
   });
 
   it('counts an indented description under a bullet', () => {
     const root = parseMarkdown('- a\n  more text', 'Note');
 
-    expect(root.children[0]!.foldable).toBe(true);
+    expect(root.children[0]!.body.map((b) => b.text)).toEqual(['more text']);
+  });
+});
+
+describe('parseMarkdown - body text', () => {
+  it('takes the lines under a node that no child covers, with their line', () => {
+    const root = parseMarkdown('# A\nintro\n- a\n  detail\n- b', 'Note');
+    const [a, b] = root.children[0]!.children;
+
+    expect(root.children[0]!.body).toEqual([{ line: 1, text: 'intro' }]);
+    expect(a!.body).toEqual([{ line: 3, text: 'detail' }]);
+    expect(b!.body).toEqual([]);
+  });
+
+  it('keeps a paragraph break and drops the indent', () => {
+    const root = parseMarkdown('# A\n  one\n\n  two\n\n', 'Note');
+
+    expect(root.children[0]!.body.map((b) => b.text)).toEqual([
+      'one',
+      '',
+      'two',
+    ]);
+  });
+
+  it('leaves the root alone, frontmatter included', () => {
+    const root = parseMarkdown('---\ntitle: x\n---\nloose\n# A', 'Note');
+
+    expect(root.body).toEqual([]);
+  });
+
+  it('reads body text that follows a child', () => {
+    const root = parseMarkdown('# A\n- a\nafter', 'Note');
+
+    expect(root.children[0]!.body).toEqual([{ line: 2, text: 'after' }]);
   });
 });
 

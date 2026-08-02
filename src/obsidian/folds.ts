@@ -1,6 +1,6 @@
 import { App, MarkdownSubView, MarkdownView, TFile } from 'obsidian';
 import { FoldRange } from '../core/folds';
-import { findMarkdownView } from './file-io';
+import { findEditingView, findMarkdownView } from './file-io';
 
 /** Obsidian's fold state: the ranges plus the line count they were taken at. */
 interface FoldInfo {
@@ -21,7 +21,10 @@ interface FoldStore {
   load?: (file: TFile) => Promise<FoldInfo | null>;
 }
 
-/** Keeps only well-formed ranges, whatever the untyped call returned. */
+/**
+ * Keeps every fold that names a line. Reading view puts a count where the
+ * editor puts an end line, and dropping those lost the fold altogether.
+ */
 function sanitize(info: unknown): FoldRange[] | null {
   const folds = (info as FoldInfo | null)?.folds;
 
@@ -29,22 +32,25 @@ function sanitize(info: unknown): FoldRange[] | null {
     return null;
   }
 
-  return folds.filter(
-    (f) =>
-      typeof f?.from === 'number' &&
-      typeof f?.to === 'number' &&
-      f.from >= 0 &&
-      f.to >= f.from,
-  );
+  return folds
+    .filter((f) => typeof f?.from === 'number' && f.from >= 0)
+    .map((f) => ({
+      from: f.from,
+      to: typeof f.to === 'number' && f.to > f.from ? f.to : f.from,
+    }));
 }
 
 function foldMode(view: MarkdownView | null): FoldCapableMode | undefined {
   return view?.currentMode;
 }
 
-/** The folds `file`'s pane shows; null (no pane, no API) is not "none". */
+/**
+ * The folds `file`'s pane holds; null (no pane, no API) is not "none". The
+ * editing pane wins: its ranges are real, and only it can be written to.
+ */
 export function readEditorFolds(app: App, file: TFile): FoldRange[] | null {
-  const mode = foldMode(findMarkdownView(app, file));
+  const view = findEditingView(app, file) ?? findMarkdownView(app, file);
+  const mode = foldMode(view);
 
   if (typeof mode?.getFoldInfo !== 'function') {
     return null;
@@ -58,17 +64,24 @@ export function readEditorFolds(app: App, file: TFile): FoldRange[] | null {
   }
 }
 
-/** Folds `file`'s Markdown pane to exactly `folds`. False if it could not. */
+/** How a write went. Only `Failed` means the API itself let us down. */
+export enum FoldWrite {
+  Applied = 'applied',
+  Unsupported = 'unsupported',
+  Failed = 'failed',
+}
+
+/** Folds `file`'s editing pane to exactly `folds`. */
 export function applyEditorFolds(
   app: App,
   file: TFile,
   folds: FoldRange[],
-): boolean {
-  const view = findMarkdownView(app, file);
+): FoldWrite {
+  const view = findEditingView(app, file);
   const mode = foldMode(view);
 
   if (!view || typeof mode?.applyFoldInfo !== 'function') {
-    return false;
+    return FoldWrite.Unsupported;
   }
   try {
     // applyFoldInfo unfolds and re-folds in two transactions, losing the
@@ -78,11 +91,11 @@ export function applyEditorFolds(
     mode.applyFoldInfo({ folds, lines: view.editor.lineCount() });
     mode.applyScroll(scroll);
 
-    return true;
+    return FoldWrite.Applied;
   } catch (err) {
     console.error('Mindmap: could not apply the editor fold state', err);
 
-    return false;
+    return FoldWrite.Failed;
   }
 }
 

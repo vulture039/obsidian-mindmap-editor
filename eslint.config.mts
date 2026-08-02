@@ -9,6 +9,8 @@ export default defineConfig(
   globalIgnores([
     'node_modules',
     'dist',
+    // The dev vault holds fixtures and a third-party plugin, neither ours.
+    'dev-vault',
     'esbuild.config.mjs',
     'version-bump.mjs',
     'versions.json',

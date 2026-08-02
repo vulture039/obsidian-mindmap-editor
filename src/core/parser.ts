@@ -2,6 +2,12 @@ import { FENCE_RE, HEADING_RE, LIST_RE } from './patterns';
 
 export type NodeType = 'root' | 'heading' | 'list';
 
+/** One line of a node's own text, keyed to the file line it came from. */
+export interface BodyLine {
+  line: number;
+  text: string;
+}
+
 export interface MindNode {
   type: NodeType;
   text: string;
@@ -10,10 +16,11 @@ export interface MindNode {
   /** Last 0-based line of this node's subtree. */
   endLine: number;
   /**
-   * Whether anything but blank lines sits under this node's own line - child
-   * nodes or body text. What Obsidian can fold, so what the map can collapse.
+   * The node's own text: the lines under it that no child covers, trimmed and
+   * still carrying their file line, so the map can jump back to one. Lives
+   * only in the editor unless the map draws it.
    */
-  foldable: boolean;
+  body: BodyLine[];
   /** Heading level (1-6) or list nesting depth (0-based). 0 for root. */
   level: number;
   /** Leading whitespace (list items only). */
@@ -44,7 +51,7 @@ export function parseMarkdown(text: string, rootText: string): MindNode {
     text: rootText,
     line: -1,
     endLine: lastLine,
-    foldable: false,
+    body: [],
     level: 0,
     indent: '',
     marker: '',
@@ -58,14 +65,11 @@ export function parseMarkdown(text: string, rootText: string): MindNode {
   let start = 0;
 
   if (lines[0] === '---') {
-    for (let j = 1; j < lines.length; j++) {
-      const line = lines[j];
+    const close = lines.findIndex(
+      (line, j) => j > 0 && (line === '---' || line === '...'),
+    );
 
-      if (line === '---' || line === '...') {
-        start = j + 1;
-        break;
-      }
-    }
+    start = close > 0 ? close + 1 : 0;
   }
 
   for (let i = start; i < lines.length; i++) {
@@ -96,7 +100,7 @@ export function parseMarkdown(text: string, rootText: string): MindNode {
         text: (headingMatch[2] ?? '').trim(),
         line: i,
         endLine: i,
-        foldable: false,
+        body: [],
         level,
         indent: '',
         marker: '',
@@ -131,7 +135,7 @@ export function parseMarkdown(text: string, rootText: string): MindNode {
         text: (listMatch[4] ?? '').trim(),
         line: i,
         endLine: i,
-        foldable: false,
+        body: [],
         level: listStack.length,
         indent,
         marker: listMatch[2] ?? '-',
@@ -158,7 +162,7 @@ export function parseMarkdown(text: string, rootText: string): MindNode {
   }
 
   computeEndLines(root, lastLine);
-  markFoldable(root, lines);
+  collectBodies(root, lines);
 
   return root;
 }
@@ -208,12 +212,66 @@ function computeEndLines(root: MindNode, lastLine: number): void {
   fixLists(root);
 }
 
-/** Marks the nodes that hide something; blank lines alone do not count. */
-function markFoldable(root: MindNode, lines: string[]): void {
-  const visit = (n: MindNode): void => {
-    for (let i = n.line + 1; i <= n.endLine && !n.foldable; i++) {
-      n.foldable = (lines[i] ?? '').trim() !== '';
+/**
+ * The whitespace every non-blank line starts with. Body text is stored with
+ * it removed, so what the map shows keeps the relative indentation inside a
+ * description (a nested code block, say) and can be written back unchanged.
+ */
+export function commonIndent(texts: string[]): string {
+  let common: string | null = null;
+
+  for (const text of texts) {
+    if (text.trim() === '') {
+      continue;
     }
+    const ws = /^\s*/.exec(text)?.[0] ?? '';
+
+    if (common === null) {
+      common = ws;
+      continue;
+    }
+    let i = 0;
+
+    while (i < common.length && i < ws.length && common[i] === ws[i]) {
+      i++;
+    }
+    common = common.slice(0, i);
+  }
+
+  return common ?? '';
+}
+
+/**
+ * Fills in each node's own text: its range minus every child's, blank lines at
+ * either end dropped. What is left is what the map can fold and edit.
+ */
+function collectBodies(root: MindNode, lines: string[]): void {
+  const visit = (n: MindNode): void => {
+    const own: BodyLine[] = [];
+    const take = (from: number, to: number): void => {
+      for (let i = from; i <= to; i++) {
+        own.push({ line: i, text: (lines[i] ?? '').trimEnd() });
+      }
+    };
+    let next = n.line + 1;
+
+    for (const c of n.children) {
+      take(next, c.line - 1);
+      next = Math.max(next, c.endLine + 1);
+    }
+    take(next, n.endLine);
+    while (own.length && own[own.length - 1]?.text === '') {
+      own.pop();
+    }
+    while (own.length && own[0]?.text === '') {
+      own.shift();
+    }
+    const indent = commonIndent(own.map((b) => b.text));
+
+    for (const b of own) {
+      b.text = b.text.startsWith(indent) ? b.text.slice(indent.length) : b.text;
+    }
+    n.body = own;
     for (const c of n.children) {
       visit(c);
     }

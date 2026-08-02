@@ -1,13 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { parseMarkdown } from './parser';
 import {
+  branchTargets,
   collapsedFromFolds,
   foldsKey,
-  foldTargets,
-  isCollapsible,
   mergeFolds,
-  pruneCollapsed,
+  pruneLines,
   sameLines,
+  textTargets,
 } from './folds';
 
 // 0 '# A'
@@ -17,134 +17,137 @@ import {
 // 4 'text under B'
 const NOTE = '# A\n- a\n  - a1\n# B\ntext under B';
 
-describe('isCollapsible', () => {
-  it('is true for nodes with children, never the root', () => {
-    const root = parseMarkdown(NOTE, 'Note');
-    const a = root.children[0]!;
-
-    expect(isCollapsible(root)).toBe(false);
-    expect(isCollapsible(a)).toBe(true);
-    expect(isCollapsible(a.children[0]!.children[0]!)).toBe(false);
-  });
-
-  it('is true for a node whose only content is body text', () => {
-    const root = parseMarkdown(NOTE, 'Note');
-    const b = root.children[1]!;
-
-    // "# B" has no child node, just the paragraph under it.
-    expect(b.children).toHaveLength(0);
-    expect(isCollapsible(b)).toBe(true);
-    // A bullet's indented description counts the same way.
-    expect(
-      isCollapsible(parseMarkdown('- a\n  detail', 'N').children[0]!),
-    ).toBe(true);
-  });
-
-  it('is false when only blank lines follow', () => {
-    const root = parseMarkdown('# A\n\n\n# B', 'Note');
-
-    expect(isCollapsible(root.children[0]!)).toBe(false);
-  });
-});
-
-describe('foldTargets', () => {
-  it('splits the branch handles from the body-only ones', () => {
+describe('branchTargets / textTargets', () => {
+  it('splits the nodes with children from the ones with text', () => {
     const root = parseMarkdown(NOTE, 'Note');
 
     // 0 "# A" and 1 "- a" have children; 3 "# B" only body text.
-    expect(foldTargets(root, false)).toEqual([0, 1]);
-    expect(foldTargets(root, true)).toEqual([3]);
+    expect(branchTargets(root)).toEqual([0, 1]);
+    expect(textTargets(root)).toEqual([3]);
   });
 
-  it('skips nodes that hide nothing', () => {
-    const root = parseMarkdown('- a\n- b', 'Note');
+  it('counts a node that has both, and never the root', () => {
+    const root = parseMarkdown('# A\nintro\n- a', 'Note');
 
-    expect(foldTargets(root, false)).toEqual([]);
-    expect(foldTargets(root, true)).toEqual([]);
+    expect(branchTargets(root)).toEqual([0]);
+    expect(textTargets(root)).toEqual([0]);
+  });
+
+  it('skips nodes that hide nothing, blank lines included', () => {
+    const root = parseMarkdown('- a\n- b\n\n', 'Note');
+
+    expect(branchTargets(root)).toEqual([]);
+    expect(textTargets(root)).toEqual([]);
   });
 });
 
 describe('collapsedFromFolds', () => {
-  it('collapses the nodes the folds start on', () => {
+  it('reads a fold as a branch fold where there are children', () => {
     const root = parseMarkdown(NOTE, 'Note');
+    const { branches, text } = collapsedFromFolds(root, [
+      { from: 0, to: 2 },
+      { from: 1, to: 2 },
+    ]);
 
-    expect([
-      ...collapsedFromFolds(root, [
-        { from: 0, to: 2 },
-        { from: 1, to: 2 },
-      ]),
-    ]).toEqual([0, 1]);
+    expect([...branches]).toEqual([0, 1]);
+    expect(text.size).toBe(0);
   });
 
-  it('collapses a node folded for its body text alone', () => {
+  it('reads it as a text fold where there are none', () => {
     const root = parseMarkdown(NOTE, 'Note');
+    const { branches, text } = collapsedFromFolds(root, [{ from: 3, to: 4 }]);
 
-    expect([...collapsedFromFolds(root, [{ from: 3, to: 4 }])]).toEqual([3]);
+    expect(branches.size).toBe(0);
+    expect([...text]).toEqual([3]);
+  });
+
+  it('reads a node with both as folded branch only', () => {
+    const root = parseMarkdown('# A\nintro\n- a', 'Note');
+    const { branches, text } = collapsedFromFolds(root, [{ from: 0, to: 2 }]);
+
+    // Obsidian's fold hides the text too, but the map has no way back from
+    // that to "the text is folded" - unfolding the branch shows both again.
+    expect([...branches]).toEqual([0]);
+    expect(text.size).toBe(0);
   });
 
   it('ignores folds with no node to collapse', () => {
     const root = parseMarkdown(NOTE, 'Note');
+    const { branches, text } = collapsedFromFolds(root, [
+      { from: 2, to: 2 },
+      { from: 4, to: 4 },
+    ]);
 
-    // Line 2 is a leaf bullet and line 4 is body text, not a node.
-    expect(
-      collapsedFromFolds(root, [
-        { from: 2, to: 2 },
-        { from: 4, to: 4 },
-      ]).size,
-    ).toBe(0);
+    expect(branches.size + text.size).toBe(0);
   });
 });
 
 describe('mergeFolds', () => {
+  const none = new Set<number>();
+
   it('folds the collapsed branches, deriving the range from endLine', () => {
     const root = parseMarkdown(NOTE, 'Note');
 
-    expect(mergeFolds(root, new Set([0]), [])).toEqual([{ from: 0, to: 2 }]);
+    expect(mergeFolds(root, new Set([0]), none, [])).toEqual([
+      { from: 0, to: 2 },
+    ]);
   });
 
   it("keeps the editor's own range for a line it already folds", () => {
     const root = parseMarkdown(NOTE, 'Note');
     const existing = [{ from: 0, to: 1 }];
 
-    expect(mergeFolds(root, new Set([0]), existing)).toEqual(existing);
+    expect(mergeFolds(root, new Set([0]), none, existing)).toEqual(existing);
   });
 
   it('passes through folds the map has no node for', () => {
     const root = parseMarkdown(NOTE, 'Note');
 
     // Line 4 is body text: no node starts there, so the fold is not ours.
-    expect(mergeFolds(root, new Set(), [{ from: 4, to: 4 }])).toEqual([
+    expect(mergeFolds(root, none, none, [{ from: 4, to: 4 }])).toEqual([
       { from: 4, to: 4 },
     ]);
   });
 
-  it('folds a body-only node with no children', () => {
+  it('writes the text fold of a node with no children', () => {
     const root = parseMarkdown(NOTE, 'Note');
 
-    expect(mergeFolds(root, new Set([3]), [])).toEqual([{ from: 3, to: 4 }]);
+    expect(mergeFolds(root, none, new Set([3]), [])).toEqual([
+      { from: 3, to: 4 },
+    ]);
+  });
+
+  it('leaves the text fold of a node with children in the map', () => {
+    const root = parseMarkdown('# A\nintro\n- a', 'Note');
+
+    // Folding it in the editor would take the child with it, which is not
+    // what the map is showing.
+    expect(mergeFolds(root, none, new Set([0]), [])).toEqual([]);
   });
 
   it('drops the fold of a branch that is no longer collapsed', () => {
     const root = parseMarkdown(NOTE, 'Note');
 
-    expect(mergeFolds(root, new Set(), [{ from: 1, to: 2 }])).toEqual([]);
+    expect(mergeFolds(root, none, none, [{ from: 1, to: 2 }])).toEqual([]);
   });
 
   it('keeps a nested fold under a collapsed parent, in line order', () => {
     const root = parseMarkdown(NOTE, 'Note');
 
-    expect(mergeFolds(root, new Set([1, 0]), [])).toEqual([
+    expect(mergeFolds(root, new Set([1, 0]), none, [])).toEqual([
       { from: 0, to: 2 },
       { from: 1, to: 2 },
     ]);
   });
 });
 
-describe('pruneCollapsed', () => {
-  it('drops lines that no longer start a branch', () => {
+describe('pruneLines', () => {
+  it('drops lines that are no longer a target', () => {
     const root = parseMarkdown(NOTE, 'Note');
 
-    expect([...pruneCollapsed(root, new Set([0, 2, 42]))]).toEqual([0]);
+    expect([...pruneLines(new Set([0, 2, 42]), branchTargets(root))]).toEqual([
+      0,
+    ]);
   });
 });
 

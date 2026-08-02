@@ -1,4 +1,4 @@
-import { lineMatchesNode, MindNode } from './parser';
+import { BodyLine, commonIndent, lineMatchesNode, MindNode } from './parser';
 import {
   CHECKBOX_RE,
   HEADING_SHIFT_RE,
@@ -97,6 +97,107 @@ export function setTextOp(
   }
 
   return lines;
+}
+
+/**
+ * A node's own text, split into consecutive runs. A child sitting between two
+ * of them keeps them apart in the file, so each is written back on its own -
+ * one rewrite spanning both would move text across the child.
+ */
+function bodyRuns(node: MindNode): BodyLine[][] {
+  const runs: BodyLine[][] = [];
+
+  for (const b of node.body) {
+    const last = runs[runs.length - 1];
+    const end = last?.[last.length - 1];
+
+    if (last && end && b.line === end.line + 1) {
+      last.push(b);
+    } else {
+      runs.push([b]);
+    }
+  }
+
+  return runs;
+}
+
+/** The run an edit anchored at `line` belongs to; empty for a node with no text. */
+export function bodyRunOf(node: MindNode, line: number): BodyLine[] {
+  const runs = bodyRuns(node);
+
+  return (
+    runs.find(
+      (run) => line >= run[0]!.line && line <= run[run.length - 1]!.line,
+    ) ??
+    runs[0] ??
+    []
+  );
+}
+
+/**
+ * Replaces the run of a node's own text holding `anchor`; an empty string
+ * removes it. Every body line is checked first, so the edit lands on the text
+ * it was made against or not at all.
+ */
+export function setBodyOp(
+  lines: string[],
+  node: MindNode,
+  text: string,
+  anchor: number,
+): string[] {
+  requireNodeLine(lines, node);
+  const raw = node.body.map((b) => lines[b.line] ?? '');
+  const indent = node.body.length
+    ? commonIndent(raw)
+    : node.type === 'list'
+      ? node.indent + detectIndentUnit(lines)
+      : '';
+
+  const stale = node.body.find(
+    (b, i) => (raw[i] ?? '').trimEnd() !== indent + b.text,
+  );
+
+  if (stale) {
+    throw new Error(
+      `Mindmap: line ${stale.line} no longer matches the text of "${node.text}"`,
+    );
+  }
+  const body = text.split('\n').map((line) => {
+    const trimmed = line.trimEnd();
+
+    return trimmed === '' ? '' : indent + trimmed;
+  });
+
+  while (body.length && body[body.length - 1] === '') {
+    body.pop();
+  }
+  while (body.length && body[0] === '') {
+    body.shift();
+  }
+  const run = bodyRunOf(node, anchor);
+  const from = run[0]?.line ?? node.line + 1;
+  // Blank lines at the edges of the run are what hold it apart from the node
+  // above and the child below; editing the text is no reason to close either
+  // gap. They go back only around text - emptying it takes them too.
+  const pad = (blanks: number): string[] =>
+    body.length ? Array<string>(blanks).fill('') : [];
+
+  lines.splice(
+    from,
+    run.length,
+    ...pad(blankRun(run)),
+    ...body,
+    ...pad(blankRun([...run].reverse())),
+  );
+
+  return lines;
+}
+
+/** How many of these lines are blank before the first line of text. */
+function blankRun(run: BodyLine[]): number {
+  const text = run.findIndex((b) => b.text !== '');
+
+  return text < 0 ? 0 : text;
 }
 
 function detectIndentUnit(lines: string[]): string {

@@ -1,4 +1,9 @@
-import { BodyLine, commonIndent, lineMatchesNode, MindNode } from './parser';
+import {
+  BodyLine,
+  commonIndent,
+  lineMatchesNode,
+  MindNode,
+} from '../parse/parser';
 import {
   CHECKBOX_RE,
   HEADING_SHIFT_RE,
@@ -6,7 +11,7 @@ import {
   LIST_PREFIX_RE,
   MARKER_PREFIX_RE,
   TASK_BOX_RE,
-} from './patterns';
+} from '../parse/patterns';
 
 export interface InsertResult {
   lines: string[];
@@ -146,15 +151,100 @@ export function setBodyOp(
   anchor: number,
 ): string[] {
   requireNodeLine(lines, node);
+  const indent = requireFreshBody(lines, node);
+  // Empty is no lines at all, not one blank one: this is how the text goes.
+  const body =
+    text === ''
+      ? []
+      : text.split('\n').map((line) => {
+          const trimmed = line.trimEnd();
+
+          return trimmed === '' ? '' : indent + trimmed;
+        });
+
+  const run = bodyRunOf(node, anchor);
+  const from = run[0]?.line ?? node.line + 1;
+  // The editor trims the end of what it hands back, so a blank line the run
+  // ended on - which is what holds it apart from whatever follows - goes back
+  // in. Text that already ends blank says its own last word, and text that is
+  // gone entirely takes the gap with it.
+  // A run that is nothing but blank lines has no gap to hold: its own lines
+  // are the gap, and the text just typed into them stands where they stood.
+  const gap = run.every((b) => b.text === '')
+    ? 0
+    : blankRun([...run].reverse());
+  const keepsGap = body.length > 0 && body[body.length - 1] !== '';
+  const next = keepsGap ? [...body, ...Array<string>(gap).fill('')] : body;
+  const was = run.map((b) => lines[b.line] ?? '');
+
+  lines.splice(from, run.length, ...keepUntouched(next, was));
+
+  return lines;
+}
+
+/**
+ * Removes one line of a node's own text and nothing else. Its own op, because
+ * an edit cannot tell a line the user deleted from one the editor trimmed,
+ * and here there is nothing to guess.
+ */
+export function deleteBodyLineOp(
+  lines: string[],
+  node: MindNode,
+  line: number,
+): string[] {
+  requireNodeLine(lines, node);
+  requireFreshBody(lines, node);
+  if (!node.body.some((b) => b.line === line)) {
+    throw new Error(`Mindmap: line ${line} is not text of "${node.text}"`);
+  }
+  lines.splice(line, 1);
+
+  return lines;
+}
+
+/**
+ * Swaps one line of a node's own text with the one above or below it, inside
+ * the same run: the lines move as they are, indent and all.
+ */
+export function moveBodyLineOp(
+  lines: string[],
+  node: MindNode,
+  line: number,
+  delta: -1 | 1,
+): string[] {
+  requireNodeLine(lines, node);
+  requireFreshBody(lines, node);
+  const run = bodyRunOf(node, line);
+  const at = run.findIndex((b) => b.line === line);
+  const other = run[at + delta];
+
+  if (at < 0 || !other) {
+    throw new Error(`Mindmap: line ${line} has nowhere to go`);
+  }
+  const moved = lines[line] ?? '';
+
+  lines[line] = lines[other.line] ?? '';
+  lines[other.line] = moved;
+
+  return lines;
+}
+
+/**
+ * Proves every body line is still what the map showed, and answers with the
+ * indent they carry. A blank line is compared as the empty line it is:
+ * `indent + ''` matches nothing, and would refuse every edit to a body with a
+ * paragraph break in it.
+ */
+function requireFreshBody(lines: string[], node: MindNode): string {
   const raw = node.body.map((b) => lines[b.line] ?? '');
   const indent = node.body.length
     ? commonIndent(raw)
     : node.type === 'list'
       ? node.indent + detectIndentUnit(lines)
       : '';
-
   const stale = node.body.find(
-    (b, i) => (raw[i] ?? '').trimEnd() !== indent + b.text,
+    (b, i) =>
+      (raw[i] ?? '').trimEnd() !== (b.text === '' ? '' : indent + b.text),
   );
 
   if (stale) {
@@ -162,35 +252,24 @@ export function setBodyOp(
       `Mindmap: line ${stale.line} no longer matches the text of "${node.text}"`,
     );
   }
-  const body = text.split('\n').map((line) => {
-    const trimmed = line.trimEnd();
 
-    return trimmed === '' ? '' : indent + trimmed;
-  });
+  return indent;
+}
 
-  while (body.length && body[body.length - 1] === '') {
-    body.pop();
+/**
+ * Puts back the line exactly as the file had it wherever the text is the same
+ * - trailing spaces are a hard line break in Markdown, and the indent on a
+ * blank line is the file's business. Only line for line: once the count has
+ * changed, which line is which is no longer a question this can answer.
+ */
+function keepUntouched(next: string[], was: string[]): string[] {
+  if (next.length !== was.length) {
+    return next;
   }
-  while (body.length && body[0] === '') {
-    body.shift();
-  }
-  const run = bodyRunOf(node, anchor);
-  const from = run[0]?.line ?? node.line + 1;
-  // Blank lines at the edges of the run are what hold it apart from the node
-  // above and the child below; editing the text is no reason to close either
-  // gap. They go back only around text - emptying it takes them too.
-  const pad = (blanks: number): string[] =>
-    body.length ? Array<string>(blanks).fill('') : [];
 
-  lines.splice(
-    from,
-    run.length,
-    ...pad(blankRun(run)),
-    ...body,
-    ...pad(blankRun([...run].reverse())),
+  return next.map((line, i) =>
+    line.trim() === (was[i] ?? '').trim() ? (was[i] ?? line) : line,
   );
-
-  return lines;
 }
 
 /** How many of these lines are blank before the first line of text. */

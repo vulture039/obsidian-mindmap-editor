@@ -1,6 +1,6 @@
-import { setIcon } from 'obsidian';
-import { multiLineValue, singleLineValue } from '../core/edit-value';
-import { BodyLine } from '../core/parser';
+import { Platform, setIcon } from 'obsidian';
+import { multiLineValue, singleLineValue } from '../../core/write/edit-value';
+import { BodyLine } from '../../core/parse/parser';
 
 /** Caret position meaning "past the last character". */
 export const CARET_AT_END = -1;
@@ -24,6 +24,12 @@ export interface EditSession {
   reflow: () => void;
   /** Runs a render the edit held off; true when it did. */
   settle: () => boolean;
+  /**
+   * Registers the save shortcut through Obsidian's own keymap and returns the
+   * undo. macOS hands Mod+Enter to the app, not to the page, so a DOM listener
+   * never sees it.
+   */
+  bindSave: (save: () => void) => () => void;
 }
 
 /**
@@ -37,7 +43,7 @@ export function runEditor(session: EditSession): void {
   input.contentEditable = 'plaintext-only';
   // Multi-line text has no Enter to leave by, so it gets buttons - a
   // double-click would have to take word selection away to serve as one.
-  const controls = multiline ? addControls(input, session.reflow) : null;
+  const controls = multiline ? addControls(input) : null;
   const read = multiline ? multiLineValue : singleLineValue;
   let done = false;
   const finish = (save: boolean): void => {
@@ -46,9 +52,13 @@ export function runEditor(session: EditSession): void {
     }
     done = true;
     session.setEditing(false);
+    unbindSave?.();
+    input.doc.removeEventListener('keydown', onKey, true);
     controls?.el.remove();
 
-    if (save && commit(read(input.textContent ?? ''))) {
+    // innerText, not textContent: a line the user made with Enter is a new
+    // element, and textContent runs the two together as one line.
+    if (save && commit(read(input.innerText))) {
       return;
     }
     if (session.settle()) {
@@ -62,7 +72,17 @@ export function runEditor(session: EditSession): void {
   for (const type of ['pointerdown', 'click', 'dblclick'] as const) {
     input.addEventListener(type, (ev) => ev.stopPropagation());
   }
-  input.addEventListener('keydown', (ev) => {
+  // Through Obsidian's keymap as well as the DOM: macOS hands Mod+Enter to
+  // the app rather than the page, so no listener here ever sees it.
+  const unbindSave = multiline ? session.bindSave(() => finish(true)) : null;
+
+  // On the document, in the capture phase: an editor shortcut this deep in
+  // the app can otherwise be taken before the element ever sees it (Mod+Enter
+  // on macOS is). Keys are only acted on while the edit owns the focus.
+  const onKey = (ev: KeyboardEvent): void => {
+    if (done || input.doc.activeElement !== input) {
+      return;
+    }
     ev.stopPropagation();
     // IME candidate confirmation also fires a "real" Enter keydown with
     // isComposing still true — that must only close the IME composition,
@@ -71,7 +91,7 @@ export function runEditor(session: EditSession): void {
       return;
     }
     // Multi-line text needs Enter for what Enter is for, so saving moves to
-    // Mod+Enter there.
+    // Ctrl+Enter there. Cmd is taken too, for the platforms that deliver it.
     if (ev.key === 'Enter' && (!multiline || ev.metaKey || ev.ctrlKey)) {
       ev.preventDefault();
       finish(true);
@@ -79,7 +99,9 @@ export function runEditor(session: EditSession): void {
       ev.preventDefault();
       finish(false);
     }
-  });
+  };
+
+  input.doc.addEventListener('keydown', onKey, true);
   input.addEventListener('blur', () => finish(true));
   // Growing text pushes the node's neighbours around, and renders are held
   // off while editing - so lay the map out again as it is typed.
@@ -108,13 +130,14 @@ export function runEditor(session: EditSession): void {
  * Save and discard buttons under an editor. Their pointerdown is swallowed so
  * the press cannot blur the editor out from under the click about to use it.
  */
-function addControls(
-  input: HTMLElement,
-  reflow: () => void,
-): { el: HTMLElement; bind: (finish: (save: boolean) => void) => void } {
+function addControls(input: HTMLElement): {
+  el: HTMLElement;
+  bind: (finish: (save: boolean) => void) => void;
+} {
   const el = createDiv({ cls: 'mindmap-edit-controls' });
+  const mod = Platform.isMacOS ? '⌘' : 'Ctrl + ';
   const buttons: [icon: string, label: string, save: boolean][] = [
-    ['check', 'Save (Ctrl/Cmd + Enter)', true],
+    ['check', `Save (${mod}Enter)`, true],
     ['x', 'Discard (Esc)', false],
   ];
   const made = buttons.map(([icon, label, save]) => {
@@ -128,8 +151,8 @@ function addControls(
     return { button, save };
   });
 
-  input.after(el);
-  reflow();
+  // Over the node, so nothing about the layout changes as it appears.
+  input.parentElement?.closest('.mindmap-node')?.append(el);
 
   return {
     el,

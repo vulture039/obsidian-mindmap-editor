@@ -1,4 +1,4 @@
-import { MindNode } from '../parser';
+import { MindNode } from '../parse/parser';
 
 export interface LaidNode {
   node: MindNode;

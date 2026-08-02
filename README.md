@@ -23,9 +23,10 @@ No new file format, no markup to add.
   Markdown pane folds with it - both ways, and after a restart. The header buttons and the fold commands do the
   whole map at once.
 - **Show and edit a node's own text** - Off by default. The `¶` header button draws the lines under a node that
-  are no node of their own inside it, and `≡` on the node's corner folds that text away on its own, apart from
-  the branch. Double-click a line to edit it right there: `Enter` makes a new line, the `✓`/`✕` buttons save and
-  discard (as do `Ctrl/Cmd + Enter` and `Esc`), and `Ctrl/Cmd + double-click` opens the line in the editor.
+  are no node of their own inside it; `≡` on the node's corner folds that text on its own, apart from the
+  branch, and that fold stays on the map (Obsidian folds a line and all it holds at once). Double-click a line
+  to edit it right there: `Enter` makes a new line, `✓`/`✕` or `Mod + Enter`/`Esc` save and discard, and
+  `Ctrl/Cmd + double-click` opens the line in the editor.
 - **Hide completed tasks** - The `✓✓` header button hides checked tasks behind one `✓ n done` node per parent.
   Click it to reveal just that parent (`− hide done` puts them back).
   Remembered across sessions.
@@ -38,18 +39,19 @@ No new file format, no markup to add.
 
 Active while the mind map pane is focused.
 
-| Key                    | Action                                                               |
-| ---------------------- | -------------------------------------------------------------------- |
-| `↑` / `↓`              | Select previous / next sibling                                       |
-| `←` / `→`              | Select parent / first child                                          |
-| `Ctrl/Cmd + ←/→`       | Collapse / expand the selected branch (also in the right-click menu) |
-| `Shift + ↑/↓`          | Move the node among its siblings (also in the right-click menu)      |
-| `Enter`                | Add a sibling (a child on the root)                                  |
-| `Tab`                  | Add a child                                                          |
-| `F2`                   | Rename (same as double-click); `Enter` saves, `Esc` cancels          |
-| `Space`                | Toggle the selected task's checkbox                                  |
-| `Delete` / `Backspace` | Delete the node and its subtree                                      |
-| `Esc`                  | Clear the selection                                                  |
+| Key                    | Action                                                                |
+| ---------------------- | --------------------------------------------------------------------- |
+| `↑` / `↓`              | Select previous / next sibling                                        |
+| `←` / `→`              | Select parent / first child                                           |
+| `Ctrl/Cmd + ←/→`       | Collapse / expand the selected branch (also in the right-click menu)  |
+| `Shift + ↑/↓`          | Move the node among its siblings, or the highlighted line of its text |
+| `Enter`                | Add a sibling (a child on the root)                                   |
+| `Tab`                  | Add a child                                                           |
+| `F2`                   | Edit the highlighted line of text, else rename the node               |
+| `Space`                | Toggle the selected task's checkbox                                   |
+| `Delete` / `Backspace` | Delete the node and its subtree, or the highlighted line of its text  |
+| `Mod + Z` / `Mod + ⇧Z` | Undo / redo, through the Markdown pane's own history                  |
+| `Esc`                  | Clear the selection                                                   |
 
 Back/forward use Obsidian's own Navigate back / forward command:
 `Ctrl + Alt + ←/→` (`Cmd + Option + ←/→` on macOS).

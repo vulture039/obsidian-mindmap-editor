@@ -15,8 +15,10 @@ describe('multiLineValue', () => {
     expect(multiLineValue('    code\nplain')).toBe('    code\nplain');
   });
 
-  it('drops blank lines at the top and whitespace at the end', () => {
-    expect(multiLineValue('\n \n  text\n\n  ')).toBe('  text');
+  it('drops whitespace at the end, and keeps a blank line at the top', () => {
+    // The line above is one the user can see: dropping it would delete a line
+    // nobody asked to remove.
+    expect(multiLineValue('\n  text\n\n  ')).toBe('\n  text');
   });
 
   it('keeps a blank line between paragraphs', () => {

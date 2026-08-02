@@ -1,4 +1,4 @@
-import { MindNode } from './parser';
+import { MindNode } from './parse/parser';
 
 /** One folded region as Obsidian stores it: 0-based lines, both inclusive. */
 export interface FoldRange {

@@ -109,12 +109,16 @@
   overflow-wrap: anywhere;
 }
 
+/* A line box, the same as the one the editor gives a blank line: opening an
+   edit must not change the height of what it replaces. */
 .mindmap-node-body-line:empty {
-  height: 0.7em;
+  height: 1.4em;
 }
 
-/* Text picked up again after a child node; edited on its own, so spaced. */
-.mindmap-node-body-line.is-run-start {
+/* Text picked up again after a child node; edited on its own, so spaced. The
+   editor takes the same spacing when it stands in for such a line. */
+.mindmap-node-body-line.is-run-start,
+.mindmap-edit-input.is-run-start {
   margin-top: 6px;
   border-top: 1px dotted
     color-mix(in srgb, var(--branch-color) 35%, transparent);
@@ -128,8 +132,8 @@
   color: var(--text-normal);
 }
 
-/* Where the editor's caret sits. A tinted line, not the selection's ring:
-   the node stays selected around it, and two rings would compete. */
+/* The line the editor's caret is on, and what Delete acts on: a selection, so
+   it is filled like one. The node keeps its ring around it. */
 .mindmap-node-body-line.is-cursor-line {
   border-radius: 3px;
   background: color-mix(in srgb, var(--interactive-accent) 20%, transparent);
@@ -312,12 +316,18 @@
 }
 
 /* Save/discard for the multi-line editor, where Enter is a line break and
-   only a click or a hotkey can end the edit. */
+   only a click or a hotkey can end the edit. Floated over the node's bottom
+   corner rather than added to it: a row of its own would make the node taller
+   the moment the edit opens, and the map would shift under the pointer. */
 .mindmap-edit-controls {
+  position: absolute;
+  right: 6px;
+  bottom: 3px;
   display: flex;
-  justify-content: flex-end;
   gap: 4px;
-  margin-top: 4px;
+  border-radius: 4px;
+  background: var(--background-primary);
+  box-shadow: 0 0 4px 4px var(--background-primary);
 }
 
 .mindmap-edit-button {
@@ -344,6 +354,9 @@
 .mindmap-edit-input {
   outline: none;
   white-space: pre-wrap;
+  /* As the lines it replaces wrap, so a long word leaves the height alone. */
+  overflow-wrap: anywhere;
+  min-height: 1.4em;
   cursor: text;
   user-select: text;
 }

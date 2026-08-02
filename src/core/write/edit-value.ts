@@ -10,13 +10,10 @@ export function singleLineValue(raw: string): string {
 }
 
 /**
- * A node's own text, trimmed by the line and never as one string: the first
- * line may be indented deeper than the rest, and that indent is exactly what
- * body text keeps to nest a block inside a description.
+ * A node's own text. Trimmed at the end only: the first line may be indented
+ * deeper than the rest, and a blank line at the top is a line the user can
+ * see - dropping it would take a line nobody asked to remove.
  */
 export function multiLineValue(raw: string): string {
-  return raw
-    .replace(/\r/g, '')
-    .replace(/^(?:[ \t]*\n)+/, '')
-    .replace(/\s+$/, '');
+  return raw.replace(/\r/g, '').replace(/\s+$/, '');
 }

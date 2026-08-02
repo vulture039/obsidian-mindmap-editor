@@ -1,5 +1,5 @@
 import { App, Keymap, TFile, WorkspaceLeaf } from 'obsidian';
-import { findMarkdownView } from './file-io';
+import { findEditingView, findMarkdownView } from './file-io';
 
 /** What the map has to offer for its side of the conversation. */
 export interface EditorPaneDeps {
@@ -170,6 +170,27 @@ export class EditorPane {
     editor.setCursor({ line, ch });
     editor.scrollIntoView({ from: { line, ch: 0 }, to: { line, ch } }, true);
     this.deps.focusMap();
+  }
+
+  /**
+   * Steps the editor's own history. Every write the map makes goes through
+   * that editor, so this is where the map's edits are undone - there is no
+   * second history to keep. False when no pane is open to hold one.
+   */
+  stepHistory(back: boolean): boolean {
+    const file = this.deps.file();
+    const view = file && findEditingView(this.deps.app, file);
+
+    if (!view) {
+      return false;
+    }
+    if (back) {
+      view.editor.undo();
+    } else {
+      view.editor.redo();
+    }
+
+    return true;
   }
 
   /**

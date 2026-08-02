@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { MindNode, parseMarkdown } from '../parser';
+import { MindNode, parseMarkdown } from '../parse/parser';
 import { canDrop, canDropAsSibling } from './drag';
 
 /** Root plus a line -> node lookup for the parsed tree. */

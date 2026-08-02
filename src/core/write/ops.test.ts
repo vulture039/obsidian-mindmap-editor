@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { MindNode, parseMarkdown } from './parser';
+import { MindNode, parseMarkdown } from '../parse/parser';
 import {
   addChildOp,
   addSiblingOp,
@@ -11,7 +11,7 @@ import {
   setCheckboxOp,
   setTextOp,
   toggleTaskOp,
-} from './markdown-ops';
+} from './ops';
 
 /** Parse `text`, exposing the root and a fresh mutable line array. */
 function setup(text: string): { root: MindNode; lines: string[] } {
@@ -103,15 +103,27 @@ describe('setBodyOp', () => {
     ]);
   });
 
-  it('drops blank lines at the edges but keeps a paragraph break', () => {
+  it('writes the lines it is given, blank ones included', () => {
     const { root, lines } = setup('# H\nold');
 
-    expect(setBodyOp(lines, root.children[0]!, '\none\n\ntwo\n', 1)).toEqual([
+    // Trimming what the user typed is the editor's job, not this one's: a
+    // blank line here is a line they can see.
+    expect(setBodyOp(lines, root.children[0]!, '\none\n\ntwo', 1)).toEqual([
       '# H',
+      '',
       'one',
       '',
       'two',
     ]);
+  });
+
+  it('writes an indented body that has a blank line in it', () => {
+    const src = '- a\n  one\n\n  two\n- b';
+    const { root } = setup(src);
+
+    expect(
+      setBodyOp(src.split('\n'), root.children[0]!, 'one\n\ntwo\nthree', 1),
+    ).toEqual(['- a', '  one', '', '  two', '  three', '- b']);
   });
 
   it('refuses to write when the body line changed underneath', () => {
@@ -141,12 +153,12 @@ describe('setBodyOp', () => {
       '',
       'tail',
     ]);
+    // ...and a run whose blank line the user removed keeps it removed.
     expect(setBodyOp(src.split('\n'), heading, 'edited', 5)).toEqual([
       '# H',
       'intro',
       '',
       '- a',
-      '',
       'edited',
     ]);
   });

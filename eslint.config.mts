@@ -40,6 +40,17 @@ export default defineConfig(
     },
   },
   ...obsidianmd.configs.recommended,
+  {
+    // Tests and build config are not the plugin: they may reach for Node and
+    // build DOM the plain way, and no user ever sees their strings.
+    files: ['test/**/*.ts', 'vitest.config.ts'],
+    rules: {
+      'obsidianmd/prefer-create-el': 'off',
+      'obsidianmd/no-global-this': 'off',
+      'obsidianmd/no-nodejs-modules': 'off',
+      'obsidianmd/ui/sentence-case': 'off',
+    },
+  },
   eslintConfigPrettier,
   {
     // These sit after eslint-config-prettier on purpose. Prettier manages

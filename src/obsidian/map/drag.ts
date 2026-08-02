@@ -1,11 +1,11 @@
-import { MindNode } from '../core/parser';
-import { LaidNode } from '../core/render/layout';
+import { MindNode } from '../../core/parse/parser';
+import { LaidNode } from '../../core/render/layout';
 import {
   canDrop,
   canDropAsSibling,
   DropTarget,
   findDrop,
-} from '../core/render/drag';
+} from '../../core/render/drag';
 
 /** Pointer travel (px) before a press on a node turns into a drag. */
 const DRAG_START_THRESHOLD = 6;

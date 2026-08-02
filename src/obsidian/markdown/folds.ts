@@ -1,5 +1,5 @@
 import { App, MarkdownSubView, MarkdownView, TFile } from 'obsidian';
-import { FoldRange } from '../core/folds';
+import { FoldRange } from '../../core/folds';
 import { findEditingView, findMarkdownView } from './file-io';
 
 /** Obsidian's fold state: the ranges plus the line count they were taken at. */

@@ -34,132 +34,112 @@ to the .md file.
 
 ## Layout
 
-Split by whether a file imports the `obsidian` package. Dependencies point one way: `main.ts` → `obsidian/` →
-`core/`. Where a concern has both a pure part and an Obsidian part, the two share a basename across the dirs
-(`core/settings.ts` holds the data, `obsidian/settings.ts` the tab; `core/node-text.ts` parses links,
-`obsidian/node-text.ts` renders them).
+Two questions, in order. Does the file import the `obsidian` package -
+`main.ts` → `obsidian/` → `core/`, one way. Then: which way is it facing.
+`core/` reads Markdown, writes Markdown, or places what came out of it;
+`obsidian/` faces this plugin's pane or Obsidian's own. Where a concern has a
+part on each side, the two share a basename (`core/folds.ts` maps the ranges,
+`obsidian/markdown/folds.ts` reads and writes them).
 
 - **main.ts** - Plugin entry: view registration, commands, settings, openSplit
-- **core/** - No `obsidian` import, so it's unit-testable in plain Node:
-  - **parser.ts** - Markdown → MindNode tree; `body` is a node's own lines (its range minus every child's),
-    each keeping its file line. lineMatchesNode answers whether a line still parses to a node
-  - **patterns.ts** - Shared Markdown-structure regexes, so parser.ts and markdown-ops.ts agree on constructs
-  - **markdown-ops.ts** - Pure line ops over `string[]` (setText/setBody/setCheckbox/add/delete/move/reorder)
-  - **node-text.ts** - Splits node text into link/plain segments (parseNodeText)
-  - **edit-value.ts** - What typed text becomes before it is written back (one line, or many)
-  - **folds.ts** - Obsidian's fold ranges ⇄ the map's two fold sets (collapsedFromFolds/mergeFolds), what each
-    can fold (branchTargets/textTargets), and pruning of lines a re-parse invalidated
-  - **settings.ts** - MindmapSettings shape and DEFAULT_SETTINGS
-  - **render/** - The visual/spatial layer:
+- **core/** - No `obsidian` import, so it is unit-testable in plain Node:
+  - **parse/** - Markdown in:
+    - **parser.ts** - Markdown → MindNode tree; `body` is a node's own lines (its range minus every child's)
+    - **patterns.ts** - The shared heading/list/checkbox regexes, so parse and write agree on each construct
+    - **node-text.ts** - A node's own text → link/plain segments, for drawing
+  - **write/** - Markdown out:
+    - **ops.ts** - Every write the map can make, as a pure edit over `string[]`
+    - **relocate.ts** - Finds a node or a run again in a fresh parse, by what it says rather than where it was
+    - **edit-value.ts** - What typed text becomes before it goes back into the document
+  - **render/** - Where it all goes on the canvas:
     - **colors.ts** - Per-branch colors, cycled by position from the palette setting
     - **layout.ts** - Left-to-right tree layout (measures real offsetWidth/Height, so not unit-tested)
-    - **drag.ts** - Pure drop-target resolution (canDrop/canDropAsSibling/findDrop)
+    - **drag.ts** - Pure drop-target resolution
+  - **folds.ts** - Obsidian's fold ranges ⇄ the map's two fold sets, and what each of them can fold
+  - **settings.ts** - MindmapSettings shape and DEFAULT_SETTINGS
 - **obsidian/** - Everything that touches the Obsidian API:
-  - **mindmap-view.ts** - ItemView: rendering, selection, keyboard ops, folds, context menu, file ops
-  - **drag.ts** - The pointer handling, cues and ghost around core/render/drag's answers
-  - **inline-edit.ts** - The contenteditable half of an edit: commit/cancel keys, focus net, caret placement
-  - **editor-pane.ts** - The map's side of the Markdown pane: which pane to use (linked tab, last-focused, else
-    a split), showing a file in it, and moving its cursor without taking focus
-  - **node-text.ts** - Renders the parsed segments to DOM links (wikilink / md link)
-  - **file-io.ts** - findMarkdownView, updateFileLines (editor open → replaceRange, else vault.process)
-  - **folds.ts** - Reads/writes the editor's fold state, all non-public API and feature-detected
+  - **map/** - This plugin's own pane:
+    - **mindmap-view.ts** - ItemView: rendering, selection, keyboard, folds, context menu, file ops
+    - **drag.ts** - The pointer handling, cues and ghost around core/render/drag's answers
+    - **inline-edit.ts** - The contenteditable half of an edit: keys, focus net, caret
+    - **node-text.ts** - Renders the parsed segments to DOM links
+  - **markdown/** - Obsidian's own pane, seen from here:
+    - **editor-pane.ts** - Which pane to use, what to show in it, where to put its cursor, its undo
+    - **file-io.ts** - findMarkdownView, updateFileLines (editor open → replaceRange, else vault.process)
+    - **folds.ts** - Reads/writes its fold state, all non-public API and feature-detected
   - **settings.ts** - Settings tab (MindmapSettingTab)
 - **styles.css** - All styles
-- **\*.test.ts** - Vitest, co-located under core/. The obsidian/ modules need the Obsidian API and have no
-  mock, so they are exercised by hand in a vault.
+- **\*.test.ts** - Vitest. A test for one module sits beside it; one that crosses modules lives in **test/**:
+  `body-edit`, `write-ops`, `stale-edit`, and `inline-edit`, which runs the real editor under jsdom with
+  `test/stubs/` standing in for what Obsidian adds to the DOM. The rest of obsidian/ needs the API itself, and most of it can be driven
+  over Obsidian's own debugging port rather than by hand; docs/DEVELOPMENT.md has both halves.
 
 ## Pitfalls (guards against past bugs)
 
-### Parsing
+Only what one file cannot say on its own: rules that span files, or that a
+reader would have to reproduce a bug to learn. Anything a comment beside the
+code already carries belongs there, not here.
 
-- **Unmarked continuation lines extend a list item's `endLine`** - an indented description with no marker of its
-  own is not a node but must move and delete with its item. `fixLists` rolls up from the existing `endLine`, not
-  from `n.line`, or that extension is silently dropped.
-- **Body text is collected per node, never for the root** - `collectBodies` runs after `computeEndLines`, so a
-  heading's prose _after_ a sub-list counts as its own. The root is skipped: its range starts at line 0, which
-  would pull frontmatter and loose top-level prose into the root node.
-- **Only the indent common to every body line is stripped** - a block nested _inside_ a description survives the
-  round trip, and `setBodyOp` re-applies that same indent. Trimming line by line would flatten the nesting on
-  the first edit that touched any other line.
+### The map is a projection, and that has consequences
 
-### Rendering
+- **Renders are deferred while editing or dragging** - a rebuild would take the editor's element with it.
+  `renderQueued` holds the render; `isBusy()` is the net, clearing a flag whose DOM is gone so a missing blur
+  or pointerup cannot freeze the map.
+- **So the map's line numbers are always from its last render** - and a render is debounced behind typing in
+  the Markdown pane. Every write therefore goes through `core/relocate.ts` first: find the node (and the run)
+  again in a parse of the lines being written, by what it says rather than where it was. Nothing is guessed -
+  two matches with the lines moved is a refusal.
+- **An open edit reflows the map, it does not re-render it** - `applyLayout` re-measures what is on the canvas.
+- **Node ops must survive a stale tree** - `lineMatchesNode` is the last check, after relocation, not instead.
 
-- **`renderSeq` serializes `render()`** - a render gone stale across an await must not touch the DOM, or nodes
-  are drawn twice and `laidByLine` desyncs.
-- **Renders are deferred while editing or dragging** - queued in `renderQueued`; a flag left set kills every
-  interaction. `isBusy()` is the net: it clears a flag whose DOM is gone (`.mindmap-edit-input`,
-  `.mindmap-node.is-dragging`), so a missing blur or pointerup cannot freeze the map.
-- **An open inline edit reflows the map, it does not re-render it** - `applyLayout` re-measures and repositions
-  what is on the canvas (handles and edges rebuilt, node elements not - the editor lives inside one).
-- **Collapse handles are canvas elements, not node children** - placed after `applyPositions`, so they leave
-  node widths to the text, and each stops its own pointerdown or the canvas starts a pan. `drawEdges` takes a
-  branch handle's right edge as that node's outlet and spans the gap with a stub, so it reads as the joint the
-  curves hang from.
-- **Checkboxes write the DOM state, not a toggle** - `writeCheckbox` sends what the box shows, so rapid clicks
-  before a re-render converge instead of alternating.
-- **hideCompleted removes checked nodes entirely** - they are absent from `laidByLine`, so selection and
-  navigation walk visible nodes only (`isHiddenDone`). A "✓ n done" node expands just its parent
-  (`expandedDone`, cleared on file switch and on the global toggle).
-- **Editors can be empty right after startup** - a restored MarkdownView may return "" before it loads;
-  `getFileText` falls back to the vault and onLayoutReady re-renders.
+### Writing to the file
 
-### Editing
-
-- **The inline editor is a contenteditable styled like what it replaces** - a span for the label, a block for
-  body text, so the node keeps its size. pointerdown/click/dblclick inside it must not bubble; bubbling blurs
-  it, which closes it. `runEditor` holds what both share, and only body text takes Enter for a line break, so
-  it saves on Mod+Enter.
-- **An edit that cannot take focus is aborted, not left open** - `startInlineEdit` re-resolves its element via
-  `laidByLine` and never starts on a detached one; `runEditor` retries focus once, then gives up. Esc is the
-  forced-recovery failsafe.
-- **Enter must ignore IME composition** - a CJK IME's candidate-confirming Enter fires a real `keydown` with
-  `isComposing` true; acting on it ends the edit mid-input. Guard on `isComposing`, but keep `stopPropagation`
-  unconditional so that Enter cannot reach the view's own shortcut either.
-- **Body text is edited one run at a time** - a child between two stretches of text keeps them apart in the
-  file, so `bodyRunOf` picks the run holding the clicked line and `setBodyOp` splices only that. The indent is
-  still the one common to the _whole_ body: that is what the parser stripped.
-- **A refused body write must not eat what was typed** - `setBodyOp` checks every body line before writing
-  anything (both write paths mutate before touching the file, so a throw means no partial write). The view
-  keeps the text in `pendingBodyEdit` and reopens the editor with it after the re-render, but only if the file
-  path _and_ the node's own text still match - a line number alone points at whatever moved into it. Otherwise
-  the text goes to the clipboard. Esc is the only discard.
+- **A body edit may not change a line nobody touched** - `test/body-edit.test.ts` is the guard: opening and
+  saving leaves the file byte for byte, deleting a line takes that line only, typing moves nothing outside the
+  run. It caught trailing spaces (a hard line break in Markdown) being stripped, an indented blank line
+  flattened, a deletion swallowing the blank beside it, and a run of blank lines erased by a save that typed
+  nothing - the view compares against the value the editor _would hand back_, not the one it was given.
+- **Body text is edited one run at a time** - a child between two stretches keeps them apart in the file, so
+  `bodyRunOf` picks the run holding the clicked line. The indent is the one common to the whole body, which is
+  what the parser stripped.
+- **A refused write must not eat what was typed** - the ops check before they write (both write paths run the
+  mutation before touching the file, so a throw means no partial write), and the view keeps the text in
+  `pendingBodyEdit`, reopening the editor with it once the file and the node's own text still match.
+- **Unmarked continuation lines extend a list item's `endLine`** - `fixLists` rolls up from the existing
+  `endLine`, not from `n.line`, or a description paragraph is left behind by a move or a delete.
 
 ### Folds
 
-- **Two folds, and only one of them fits in the editor** - `collapsedBranches` and `foldedText` are separate
-  sets written by separate handles. Obsidian has one fold per line covering everything under it, so
-  `core/folds.ts` is where they meet it: a fold on a node with children is a branch fold, on one without them a
-  text fold, and the text fold of a node that _has_ children stays on the map. Keep that in
-  `foldedKind`/`mergeFolds`; the view must never ask "does it have children" to place a fold.
-- **The map only folds what it draws** - `≡` and the header's text button exist only while `showBodyText` is
-  on. An editor fold on a node with no children is still read and written back either way.
-- **Folded text is only visible through its own handle** - no ellipsis on the label (it reads as the text
-  trailing off) and no stub row (it keeps the height the fold just saved), so `≡` stays pinned while folded and
-  is hover-only otherwise - a second chip beside `−`/`+n` on every node with text is what that avoids.
-- **Fold sync has no event to hang on** - nothing fires when the user folds a heading, so the view re-reads
-  `getFoldInfo` after what can fold (document `click`/`keyup`, `active-leaf-change`) and compares `foldsKey`.
+- **Two folds, one of which the editor cannot hold** - `collapsedBranches` and `foldedText` are separate sets
+  written by separate handles. Obsidian folds a line and everything under it, so `core/folds.ts` is where they
+  meet it: a fold on a node with children is a branch fold, on one without them a text fold, and the text fold
+  of a node that has children stays on the map. Keep that in `foldedKind`/`mergeFolds`; the view must not ask
+  "does it have children" to place a fold.
+- **Only `from` in a fold range can be trusted** - reading view puts a count where the editor puts an end line.
+- **Fold sync has no event** - the view re-reads `getFoldInfo` after what can fold and compares `foldsKey`.
   That check may only re-render, never adopt: the editor moves its folds the moment an edit lands, while `root`
   is still the parse from before it. Adoption belongs in `render()`, right after the re-parse.
-- **Only `from` in a fold range can be trusted** - reading view folds headings and lists of its own and reports
-  them, but puts a count where the editor puts an end line (`{from: 7, to: 2}`). The map reads `from` alone, so
-  `sanitize` squares up a `to` that cannot end the range instead of dropping the fold. Writes go to an editing
-  pane only, whose ranges are real; reads prefer it and fall back to a reading one, so the map follows whatever
-  pane the file is showing in.
-- **"No editing pane" is not "the fold API is gone"** - `applyEditorFolds` says which it was, and only a real
-  failure sets `foldSyncOff`, which stops the map following the editor as well.
 - **`lastEditorFoldsKey` holds what the editor has, not what we asked for** - read back after a write, so the
-  map neither mistakes its own fold for the user's nor re-expands a fold Obsidian silently refused. If writing
-  fails outright, `foldSyncOff` stops _both_ directions; reading alone would undo every collapse made on the
-  map. Writing also saves and restores the editor's scroll: `applyFoldInfo` unfolds and re-folds in two
-  transactions, and the editor creeps upward otherwise.
+  map neither mistakes its own fold for the user's nor re-expands one Obsidian silently refused.
 
-### Workspace
+### The keyboard and the editor are Obsidian's
 
-- **Wikilinks navigate via `leaf.setViewState` + `result.history = true`** - this joins the leaf history, so
-  Obsidian's own back/forward works. No custom mouse-event handling: it can be swallowed at the OS layer and
-  never reach the DOM.
-- **`EditorPane.resolveLeaf` targets the last-focused Markdown leaf** - `getLeavesOfType('markdown')` order has
-  nothing to do with focus, and `[0]` can hijack an unrelated tab. `active-leaf-change` feeds `noteActiveLeaf`.
-- **Split direction: vertical = side by side, horizontal = stacked** - opposite of intuition, so never use axis
-  names in UI labels. Auto-saved from the DOM's mod-vertical/mod-horizontal classes, but not while the map is
-  the only pane.
+- **`Mod+Enter` arrives through the view's `Scope`** - macOS hands that stroke to the app, never to the page.
+  The rest come through a document capture listener gated on the edit holding the focus, and the view's own
+  `Escape` stands aside while an editor is on screen: taking it there re-renders, and the editor goes with the
+  DOM before it can discard anything.
+- **Enter must ignore IME composition** - a CJK IME's confirming Enter is a real keydown with `isComposing`.
+- **Undo is the editor's** - every write goes through it, so `Mod+Z` on the map steps that same history.
+- **Wikilinks navigate via `leaf.setViewState` + `result.history`** - it joins the leaf history, so Obsidian's
+  own back/forward works; a custom mouse handler can be swallowed before the DOM ever sees it.
+
+### Drawing
+
+- **Collapse handles are canvas elements, not node children** - placed after `applyPositions`, so they leave
+  node widths to the text, and each stops its own pointerdown or the canvas starts a pan.
+- **Opening an edit must not move the map** - the editor is styled like what it replaces, down to blank-line
+  height and wrapping, and its buttons float over the node rather than taking a row.
+- **hideCompleted removes checked nodes entirely** - they are absent from `laidByLine`, so selection and
+  navigation walk visible nodes only.
+- **Split direction: vertical = side by side, horizontal = stacked** - opposite of intuition; never use axis
+  names in UI labels.

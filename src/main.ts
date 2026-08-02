@@ -1,5 +1,5 @@
 import { Notice, Plugin, WorkspaceLeaf } from 'obsidian';
-import { MindmapView, VIEW_TYPE_MINDMAP } from './obsidian/mindmap-view';
+import { MindmapView, VIEW_TYPE_MINDMAP } from './obsidian/map/mindmap-view';
 import { FoldKind } from './core/folds';
 import { DEFAULT_SETTINGS, MindmapSettings } from './core/settings';
 import { MindmapSettingTab } from './obsidian/settings';

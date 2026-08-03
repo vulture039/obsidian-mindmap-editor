@@ -1,23 +1,35 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { runEditor } from '../src/obsidian/map/inline-edit';
-import { singleLineValue } from '../src/core/write/edit-value';
+import { multiLineValue, singleLineValue } from '../src/core/write/edit-value';
 import { installObsidianDom } from './stubs/obsidian-dom';
 
 installObsidianDom();
 
-/** An editor on the page, with the view's side of it spied on. */
-function open(options: { text?: string } = {}) {
+/**
+ * An editor on the page, with the view's side of it spied on - the same two
+ * elements the view makes: a textarea for a node's own text, a span for its
+ * label.
+ */
+function open(options: { multiline: boolean; text?: string }) {
   const host = document.createElement('div');
-  const input = document.createElement('div');
+  const input = options.multiline
+    ? document.createElement('textarea')
+    : document.createElement('div');
 
   host.className = 'mindmap-node';
   host.appendChild(input);
   document.body.appendChild(host);
-  input.textContent = options.text ?? 'before';
-  // jsdom does not make a contenteditable focusable; the editor's keys are
-  // gated on holding the focus, so the test has to be able to give it.
-  input.tabIndex = -1;
+  const text = options.text ?? 'before';
+
+  if (input instanceof HTMLTextAreaElement) {
+    input.value = text;
+  } else {
+    input.textContent = text;
+    // jsdom does not make a contenteditable focusable; the editor's keys are
+    // gated on holding the focus, so the test has to be able to give it.
+    input.tabIndex = -1;
+  }
 
   const write = vi.fn();
   const restore = vi.fn();
@@ -25,7 +37,11 @@ function open(options: { text?: string } = {}) {
 
   runEditor({
     input,
-    value: () => singleLineValue(input.innerText),
+    multiline: options.multiline,
+    value: () =>
+      input instanceof HTMLTextAreaElement
+        ? multiLineValue(input.value)
+        : singleLineValue(input.innerText),
     placeCaret: () => undefined,
     restore,
     write,
@@ -40,7 +56,11 @@ function open(options: { text?: string } = {}) {
     );
   };
   const type = (value: string): void => {
-    input.textContent = value;
+    if (input instanceof HTMLTextAreaElement) {
+      input.value = value;
+    } else {
+      input.textContent = value;
+    }
     input.dispatchEvent(new Event('input', { bubbles: true }));
   };
 
@@ -58,7 +78,7 @@ afterEach(() => {
 
 describe('typing', () => {
   it('reaches the file a moment after it stops', () => {
-    const e = open({ text: 'one' });
+    const e = open({ multiline: true, text: 'one' });
 
     e.input.focus();
     e.type('one two');
@@ -69,7 +89,7 @@ describe('typing', () => {
   });
 
   it('is one write for a run of keys, not one for each', () => {
-    const e = open({ text: 'a' });
+    const e = open({ multiline: true, text: 'a' });
 
     e.input.focus();
     for (const value of ['ab', 'abc', 'abcd']) {
@@ -83,7 +103,7 @@ describe('typing', () => {
   });
 
   it('waits for an IME to be done before writing anything', () => {
-    const e = open({ text: '' });
+    const e = open({ multiline: true, text: '' });
 
     e.input.focus();
     e.input.dispatchEvent(new CompositionEvent('compositionstart'));
@@ -100,7 +120,7 @@ describe('typing', () => {
 
 describe('leaving an edit', () => {
   it('writes what has not gone yet, on Escape', () => {
-    const e = open({ text: 'one' });
+    const e = open({ multiline: true, text: 'one' });
 
     e.input.focus();
     e.type('one more');
@@ -111,7 +131,7 @@ describe('leaving an edit', () => {
   });
 
   it('writes what has not gone yet, when the focus goes', () => {
-    const e = open({ text: 'body' });
+    const e = open({ multiline: true, text: 'body' });
 
     e.input.focus();
     e.type('body and more');
@@ -121,7 +141,7 @@ describe('leaving an edit', () => {
   });
 
   it('says when it starts and when it is over', () => {
-    const e = open();
+    const e = open({ multiline: false });
 
     expect(e.setEditing).toHaveBeenCalledWith(true);
     e.input.focus();
@@ -130,7 +150,7 @@ describe('leaving an edit', () => {
   });
 
   it('takes its keys off the document when it goes', () => {
-    const e = open();
+    const e = open({ multiline: false });
 
     e.input.focus();
     e.press('Escape');
@@ -144,7 +164,7 @@ describe('leaving an edit', () => {
 
 describe('the keys an edit keeps to itself', () => {
   it('ends a label edit on Enter', () => {
-    const e = open({ text: 'name' });
+    const e = open({ multiline: false, text: 'name' });
 
     e.input.focus();
     e.press('Enter');
@@ -152,8 +172,17 @@ describe('the keys an edit keeps to itself', () => {
     expect(e.restore).toHaveBeenCalled();
   });
 
+  it("lets Enter be a line break in a node's own text", () => {
+    const e = open({ multiline: true });
+
+    e.input.focus();
+    e.press('Enter');
+
+    expect(e.restore).not.toHaveBeenCalled();
+  });
+
   it('lets the composing Enter through to the IME', () => {
-    const e = open();
+    const e = open({ multiline: false });
 
     e.input.focus();
     e.press('Enter', { isComposing: true });
@@ -162,7 +191,7 @@ describe('the keys an edit keeps to itself', () => {
   });
 
   it('holds on to the focus when Tab is pressed', () => {
-    const e = open();
+    const e = open({ multiline: true });
 
     e.input.focus();
     const tab = new KeyboardEvent('keydown', {

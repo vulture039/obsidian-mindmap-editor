@@ -1,4 +1,53 @@
-import { MindNode } from '../parse/parser';
+import { BodyLine, MindNode } from '../parse/parser';
+import { multiLineValue } from './edit-value';
+
+/** A body edit, pointed at the file as it is now. */
+export interface Relocated {
+  node: MindNode;
+  anchor: number;
+}
+
+/**
+ * Finds the run again in a freshly parsed tree. The map holds off re-parsing
+ * while an edit is open, so by the time it is saved the file may have moved
+ * under it - a line added in the Markdown pane is enough. Line numbers cannot
+ * survive that; the text can, so it is what the run is found by.
+ *
+ * Nothing is guessed: the node must have the same text, and its run the same
+ * lines, or the edit is refused rather than written somewhere it might not
+ * belong.
+ */
+export function relocateBodyEdit(
+  root: MindNode,
+  node: MindNode,
+  run: BodyLine[],
+): Relocated | null {
+  // What the run says, as an editor would show it: the blank lines that end a
+  // run are its gap to whatever follows, not text anyone typed, and an editor
+  // hands back neither.
+  const wanted = multiLineValue(run.map((b) => b.text).join('\n'));
+  const found: Relocated[] = [];
+  const visit = (n: MindNode): void => {
+    if (sameNode(n, node)) {
+      for (const start of runStarts(n)) {
+        if (multiLineValue(runText(n, start)) === wanted) {
+          found.push({ node: n, anchor: start });
+        }
+      }
+    }
+    n.children.forEach(visit);
+  };
+
+  visit(root);
+
+  return pick(
+    found,
+    node,
+    run[0]?.line,
+    (one) => one.node,
+    (one) => one.anchor,
+  );
+}
 
 /**
  * Finds a node again in a freshly parsed tree, by what it says rather than by
@@ -78,4 +127,28 @@ function sameNode(a: MindNode, b: MindNode): boolean {
     a.level === b.level &&
     a.indent === b.indent
   );
+}
+
+/** The first line of each consecutive stretch of the node's own text. */
+function runStarts(node: MindNode): number[] {
+  return node.body
+    .filter((b, i) => i === 0 || b.line !== (node.body[i - 1]?.line ?? 0) + 1)
+    .map((b) => b.line);
+}
+
+/** The text of the run beginning at `start`. */
+function runText(node: MindNode, start: number): string {
+  const from = node.body.findIndex((b) => b.line === start);
+  const out: string[] = [];
+
+  for (let i = from; i < node.body.length; i++) {
+    const line = node.body[i]!;
+
+    if (i > from && line.line !== (node.body[i - 1]?.line ?? 0) + 1) {
+      break;
+    }
+    out.push(line.text);
+  }
+
+  return out.join('\n');
 }

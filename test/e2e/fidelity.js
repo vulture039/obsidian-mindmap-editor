@@ -1,8 +1,7 @@
 /**
- * Every write lands exactly where it was aimed, and the map shows what the file
- * says, in whichever mode the Markdown pane is in. Each case states the file it
- * expects character for character - not "nothing was lost", but "this and
- * nothing else changed".
+ * Every edit lands exactly where it was aimed, both ways round, in whichever
+ * mode the Markdown pane is in. Each case states the file it expects character
+ * for character - not "nothing was lost", but "this and nothing else changed".
  *
  * Run it twice: once with the pane editing, once with it in reading view.
  */
@@ -17,6 +16,47 @@ const withLine = (text, at, line) => {
 };
 
 // ---------------------------------------------------------------- map -> md
+
+for (const target of [
+  'The description is indented',
+  'moves and deletes with it.',
+  'Text before the first item',
+  'tail after the block',
+  // Deeper than the run's own indent: a code block inside a description.
+  'indented four spaces',
+  'exactly as deep',
+]) {
+  await restore();
+  const line = bodyLine(target);
+
+  if (!line) {
+    check(`type into "${target}"`, false, 'not drawn');
+    continue;
+  }
+  const at = Number(line.dataset.line);
+  const before = await now();
+  const was = before.split('\n')[at];
+  const input = await openBody(line);
+
+  if (!input) {
+    check(`type into "${target}"`, false, 'no editor opened');
+    continue;
+  }
+  // Type at the end of the line the double-click landed on, wherever it sits
+  // in the run the editor holds.
+  const lines = held(input).split('\n');
+  const index = lines.findIndex((l) => l.trim() === was.trim());
+
+  lines[index] = `${lines[index]}EDIT`;
+  type(input, lines.join('\n'));
+  await written(before);
+
+  check(
+    `type into "${target}"`,
+    (await now()) === withLine(before, at, `${was}EDIT`),
+    'the file is not what that edit says it should be',
+  );
+}
 
 await restore();
 {
@@ -56,6 +96,148 @@ await restore();
   );
 }
 
+for (const [name, press, expect] of [
+  [
+    'delete a line of text',
+    () => key('Delete'),
+    (lines, at) => lines.filter((_, i) => i !== at),
+  ],
+  [
+    'move a line of text',
+    () => key('ArrowUp', { shiftKey: true }),
+    (lines, at) => [
+      ...lines.slice(0, at - 1),
+      lines[at],
+      lines[at - 1],
+      ...lines.slice(at + 1),
+    ],
+  ],
+]) {
+  await restore();
+  const line = bodyLine('moves and deletes with it.');
+  const at = Number(line?.dataset.line);
+  const before = await now();
+
+  if (!line) {
+    check(name, false, 'the line to act on is not drawn');
+    continue;
+  }
+  click(line);
+  await until(() => line.hasClass('is-cursor-line'));
+  press();
+  await until(async () => (await now()) !== before);
+  check(name, (await now()) === expect(before.split('\n'), at).join('\n'));
+}
+
+// A line typed into the middle of a run, one taken out of it, and the whole
+// run emptied - the three ways an edit changes how many lines a node has.
+for (const [name, edit, expect] of [
+  [
+    'add a line to a run',
+    (lines) => [...lines.slice(0, 1), 'a new line', ...lines.slice(1)],
+    (file, at) => [
+      ...file.slice(0, at + 1),
+      '  a new line',
+      ...file.slice(at + 1),
+    ],
+  ],
+  [
+    'take a line out of a run',
+    (lines) => lines.slice(0, 1),
+    (file, at) => file.filter((_, i) => i !== at + 1),
+  ],
+  [
+    'empty a run',
+    () => [],
+    (file, at) => file.filter((_, i) => i !== at && i !== at + 1),
+  ],
+]) {
+  await restore();
+  const line = bodyLine('The description is indented');
+  const at = Number(line?.dataset.line);
+  const before = await now();
+  const input = await openBody(line);
+
+  if (!input) {
+    check(name, false, 'no editor opened');
+    continue;
+  }
+  type(input, edit(held(input).split('\n')).join('\n'));
+  await written(before);
+  check(name, (await now()) === expect(before.split('\n'), at).join('\n'));
+}
+
+// Text put on a node that had none: there is no run to replace, so it goes in
+// under the node itself, indented to sit inside it.
+for (const [name, indent] of [
+  ['plain item', '  '],
+  ['Level three', ''],
+]) {
+  await restore();
+  const before = await now();
+  const all = [];
+  const walk = (n) => {
+    all.push(n);
+    n.children.forEach(walk);
+  };
+
+  walk(view.root);
+  const node = all.find((n) => n.text === name);
+
+  view.editBodyFromMenu(node);
+  const input = await until(() => editing());
+
+  if (!input) {
+    check(`add text to "${name}"`, false, 'no editor opened');
+    continue;
+  }
+  type(input, 'text put here');
+  await written(before);
+  const lines = before.split('\n');
+  const at = lines.findIndex((l) => l.trim().endsWith(name));
+
+  check(
+    `add text to "${name}"`,
+    (await now()) ===
+      [
+        ...lines.slice(0, at + 1),
+        `${indent}text put here`,
+        ...lines.slice(at + 1),
+      ].join('\n'),
+    'it did not land under the node it was added to',
+  );
+  await closeEditor();
+}
+
+// A hard line break is two spaces nobody can see: an edit elsewhere in the run
+// must not tidy them away.
+{
+  await restore();
+  await setFile(
+    original.replace(
+      '  The description is indented under the item, has no marker of its own, and\n',
+      '  The description is indented under the item, has no marker of its own, and  \n',
+    ),
+  );
+  const line = bodyLine('moves and deletes with it.');
+  const before = await now();
+  const at = Number(line?.dataset.line);
+  const input = await openBody(line);
+
+  if (input) {
+    const lines = held(input).split('\n');
+
+    lines[lines.length - 1] = `${lines[lines.length - 1]}EDIT`;
+    type(input, lines.join('\n'));
+    await written(before);
+  }
+  check(
+    'keep a hard line break in the same run',
+    (await now()) === withLine(before, at, `${before.split('\n')[at]}EDIT`),
+    'the two spaces that end the line above were not left alone',
+  );
+}
+
 // Deleting a node takes its own block and nothing else.
 {
   await restore();
@@ -77,39 +259,6 @@ await restore();
         after.join('\n'),
     `${removed} lines went, and not as one block`,
   );
-}
-
-// A write while the Markdown pane is edited underneath it: the map's line
-// numbers are behind the file, and the write has to find its node again. Only
-// an editing pane can be typed into.
-for (let i = 0; reading ? false : i < 4; i++) {
-  await restore();
-  const before = await now();
-  const at = before.split('\n').findIndex((l) => l.trim() === '- plain item');
-  const input = await openLabel('plain item');
-
-  if (!input) {
-    check(`rename with the pane edited underneath (${i})`, false, 'no editor');
-    continue;
-  }
-  const shifted = i % 2;
-
-  if (shifted) {
-    editor.replaceRange(`shifted ${i}\n`, { line: 0, ch: 0 });
-  } else {
-    editor.replaceRange('', { line: 0, ch: 0 }, { line: 1, ch: 0 });
-  }
-  const moved = await now();
-
-  type(input, `renamed ${i}`);
-  await written(moved);
-  check(
-    `rename with the pane edited underneath (${shifted ? 'a line added above' : 'a line taken from above'})`,
-    (await now()) ===
-      withLine(moved, at + (shifted ? 1 : -1), `- renamed ${i}`),
-    'the rename did not land where the node had moved to',
-  );
-  await closeEditor();
 }
 
 // ---------------------------------------------------------------- md -> map

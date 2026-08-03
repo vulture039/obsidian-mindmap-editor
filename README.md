@@ -17,16 +17,16 @@ No new file format, no markup to add.
   heading depth and list indentation define the hierarchy.
   Headings stand out by weight and a color-tinted fill; list items are plain.
 - **Edit on the map** - Rename, add, delete, drag & drop. Dropping on a node's middle makes it a child;
-  dropping near a sibling's top/bottom edge inserts it there. A rename is written as it is typed, and
-  `Ctrl/Cmd + Z` takes it back.
+  dropping near a sibling's top/bottom edge inserts it there. Nothing is confirmed: an edit is written as it
+  is typed, and `Ctrl/Cmd + Z` takes it back.
 - **Working checkboxes** - Clicking toggles `[ ]` ⇄ `[x]` in the file.
 - **Collapse branches, in sync with the Markdown pane** - A handle on each node folds its branch (`−` / `+3`),
   and the pane folds with it - both ways, and after a restart. A reading pane takes no fold state, so there
   the map folds its headings by their own handles; its lists stay the reader's. The header buttons and the
   fold commands do the whole map at once.
-- **Show a node's own text** - Off by default; the `¶` header button draws the lines under a node that are no
-  node of their own inside it, and `≡` on its corner folds them away. Click a line to put the editor's cursor
-  on it, double-click to open it there - the map draws this text, the editor writes it.
+- **Show and edit a node's own text** - Off by default; the `¶` header button draws the lines under a node
+  that are no node of their own inside it, and `≡` on its corner folds them away. Click a line to put the
+  editor's cursor on it; double-click to edit it here, where what you type is in the file a moment later.
 - **Hide completed tasks** - The `✓✓` header button hides checked tasks behind one `✓ n done` node per parent.
   Click it to reveal just that parent (`− hide done` puts them back).
   Remembered across sessions.
@@ -46,12 +46,12 @@ Active while the mind map pane is focused.
 | `↑` / `↓`               | Select previous / next sibling, or walk the node's text line by line                                                   |
 | `←` / `→`               | Select parent / first child                                                                                            |
 | `Ctrl/Cmd + ←/→`        | Collapse / expand the selected branch (also in the right-click menu)                                                   |
-| `Shift + ↑/↓`           | Move the node among its siblings                                                                                       |
+| `Shift + ↑/↓`           | Move the node among its siblings, or the highlighted line of its text                                                  |
 | `Enter`                 | Add a sibling (a child on the root)                                                                                    |
 | `Tab`                   | Add a child                                                                                                            |
-| `F2`                    | Rename the node                                                                                                        |
+| `F2`                    | Edit the highlighted line of text, else rename the node                                                                |
 | `Space`                 | Toggle the selected task's checkbox                                                                                    |
-| `Delete` / `Backspace`  | Delete the node and its subtree                                                                                        |
+| `Delete` / `Backspace`  | Delete the node and its subtree, or the highlighted line of its text                                                   |
 | `Ctrl/Cmd + Z` / `+ ⇧Z` | Undo / redo, through the Markdown pane's history - or one step of the map's own when the note is only open for reading |
 | `Esc`                   | End an edit, else clear the selection                                                                                  |
 

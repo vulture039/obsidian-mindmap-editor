@@ -70,17 +70,20 @@ npm run e2e     # Fixtures.md open in a map and in an editing pane
 few ways of acting on either, so a check file is nothing but its cases. It waits
 for conditions rather than on a clock. Two checks live there, a line per case:
 
-- **`fidelity.js`** (the default) - every write against the file it should
-  leave, character for character, and everything the map draws against what the
-  file says. Run it twice, once with the pane editing and once in reading view,
-  since the map writes through the editor in one and straight to the file in
-  the other.
-- **`keys.js`** - real keystrokes through Obsidian's keymap. It sees a key
-  before the page does, so this is the only way to tell whether the map claims
-  one that belonged to the editor open on top of it.
-- **`root.js`** - the note itself as a node: its own prose, and its folds.
+- **`edits.js`** (the default) - every way the map writes, against a file
+  edited in the Markdown pane at the same time. What `npm test` cannot reach:
+  the map defers its renders while you interact, so only a real editor can put
+  its line numbers behind the file.
+- **`keys.js`** (`npm run e2e test/e2e/keys.js`) - real keystrokes through
+  Obsidian's keymap. It sees a key before the page does, so this is the only
+  way to tell whether the map claims one that belonged to the editor open on
+  top of it.
+- **`fidelity.js`** (`npm run e2e test/e2e/fidelity.js`) - every edit against
+  the file it should leave, character for character, both ways round. Run it
+  twice, once with the pane editing and once in reading view, since the map
+  writes through the editor in one and straight to the file in the other.
 
-None of them are in CI.
+Neither is in CI.
 
 A one-off goes the same way (`npm run e2e my-check.js`): a snippet evaluated in
 the renderer, returning whatever you want printed. It reaches the map's DOM and

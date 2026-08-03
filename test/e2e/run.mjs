@@ -25,8 +25,7 @@ const KEY_CODES = {
   ' ': 32,
 };
 
-const file =
-  process.argv[2] ?? new URL('fidelity.js', import.meta.url).pathname;
+const file = process.argv[2] ?? new URL('edits.js', import.meta.url).pathname;
 const targets = await fetch('http://localhost:9222/json')
   .then((r) => r.json())
   .catch(() => null);

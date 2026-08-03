@@ -1,5 +1,5 @@
-Loose prose before the first heading. It belongs to no node, and the root pill
-must not pick it up.
+Loose prose before the first heading. It belongs to the note itself, so the
+root pill is where it is drawn.
 
 # Structure
 
@@ -43,6 +43,8 @@ And the second run of this heading's text, after every item it has.
 
 - an item whose own label runs long enough to wrap onto a second line inside the node pill, which is where the width cap shows
 
+## aa
+aaaa
 # Second section
 
 Body text on a heading that has no child node at all.
@@ -60,3 +62,5 @@ const x = 1;
 
 - and a list under it
   - to check the colors keep coming from the top-level branch
+
+## aaa

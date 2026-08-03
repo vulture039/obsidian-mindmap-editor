@@ -7,7 +7,8 @@ npm install
 npm run dev    # watch build
 npm run build  # type check + production build
 npm run lint
-npm test       # run the Vitest unit tests (npm run test:watch to watch)
+npm test       # the Vitest unit tests (npm run test:watch to watch)
+npm run e2e    # the checks that need Obsidian itself; see below
 ```
 
 ## The dev vault
@@ -36,7 +37,14 @@ Set it up once:
 `npm run dev` then gives: save a `.ts` or `styles.css` → esbuild rebuilds →
 Hot Reload reloads the plugin, no manual copying and no restart.
 
-`Fixtures.md` in the vault holds one of everything the parser and the map have
+A second plugin sits in the vault: **Write recorder**, which logs every write
+to `.obsidian/plugins/mm-recorder/writes.log` - what changed, what is no longer
+in the file, and the code that asked for it. It is how "a line disappeared"
+stops being a guess. Nothing else depends on it; turn it off if it is in the way.
+
+`Tabs.md` and `Crlf.md` are notes from elsewhere - tab indentation, and the line
+endings Windows writes - which the checks edit to prove neither is disturbed.
+`Fixtures.md` holds one of everything the parser and the map have
 to handle — nested lists, tasks, descriptions before and after a child, an
 indented code block, a long unbroken URL, links, deep headings. Walk it top to
 bottom for a manual pass instead of improvising. `Linked.md` is what its
@@ -55,44 +63,47 @@ editor back. Close Obsidian, then:
 
 ```bash
 open -a Obsidian --args --remote-debugging-port=9222
+npm run e2e     # Fixtures.md open in a map and in an editing pane
 ```
 
-A check is a snippet evaluated in the renderer; the pattern is always the same:
+`harness.js` goes in front of whichever check runs - the map, the pane, and the
+few ways of acting on either, so a check file is nothing but its cases. It waits
+for conditions rather than on a clock. Two checks live there, a line per case:
 
-```js
-const leaf = app.workspace.getLeavesOfType('mindmap-editor')[0];
-const el = leaf.view.contentEl;                       // the map's DOM
-const md = app.workspace.getLeavesOfType('markdown')
-  .find((l) => l.view.file?.path === 'Fixtures.md');
-const doc = () => md.view.editor.getValue();          // never vault.read: the
-                                                      // file lags the editor
-el.querySelector('.mindmap-node-body-line')
-  .dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
-```
+- **`fidelity.js`** (the default) - every write against the file it should
+  leave, character for character, and everything the map draws against what the
+  file says. Run it twice, once with the pane editing and once in reading view,
+  since the map writes through the editor in one and straight to the file in
+  the other.
+- **`keys.js`** - real keystrokes through Obsidian's keymap. It sees a key
+  before the page does, so this is the only way to tell whether the map claims
+  one that belonged to the editor open on top of it.
+- **`root.js`** - the note itself as a node: its own prose, and its folds.
 
-What that reaches: the map's DOM and its measurements (an element's size before
-and after an edit opens), every click, the editor's text and fold state, the
-plugin's commands and settings, and a screenshot of the window. Pick the node
-you mean by its label - the first `.mindmap-collapse` in the DOM is rarely the
-one you are thinking of.
+None of them are in CI.
+
+A one-off goes the same way (`npm run e2e my-check.js`): a snippet evaluated in
+the renderer, returning whatever you want printed. It reaches the map's DOM and
+its measurements, every click, the editor's text and fold state, the plugin's
+commands and settings, and a screenshot of the window. Two traps: read the text
+back from the editor rather than the file, which lags it, and pick the node you
+mean by its label - the first `.mindmap-collapse` in the DOM is rarely the one
+you are thinking of.
 
 ### By hand
 
-Only what a synthetic event cannot be: **real keystrokes** (`Mod + Enter` goes
-through Obsidian's keymap, which ignores dispatched events), **an IME**, a
-**real drag**, and any judgement about how it looks.
+Only what a synthetic event cannot be: **an IME**, a **real drag**, and any
+judgement about how it looks. In `Fixtures.md`:
 
-Walk `Fixtures.md` and check: the body editor takes text and `Mod + Enter`
-saves it; a Japanese IME can compose in it without the first Enter closing it;
-a node can be dragged onto another parent; `[[Linked]]` moves map and editor
-together.
-
-## Testing
-
-Unit tests (Vitest) exercise the pure logic — Markdown parsing, the
-line-editing operations, fold mapping, palette and drop-target rules. The
-Obsidian-API-facing code is exercised by hand in the dev vault rather than
-mocked.
+- Edit a node's text with a Japanese IME - the Enter that confirms it does not
+  close the editor, nothing lands in the file until the composition is, and the
+  text comes out as composed
+- Drag a node onto another - it becomes its child; drag to a sibling's edge - it
+  lands there
+- Click `[[Linked]]` - map and editor both move to that note, and Obsidian's
+  back button returns
+- Turn `¶` on with the map beside a reading pane - selecting a line marks that
+  line, and the pane does not scroll if the line is already on screen
 
 ## Issues
 

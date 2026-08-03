@@ -1,0 +1,9 @@
+{
+  "id": "mm-recorder",
+  "name": "Write recorder (dev)",
+  "version": "1.0.0",
+  "minAppVersion": "1.0.0",
+  "description": "Records every write to the vault - what changed, and which code did it. For working out where a line went.",
+  "author": "mindmap-editor",
+  "isDesktopOnly": true
+}

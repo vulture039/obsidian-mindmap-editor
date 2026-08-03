@@ -17,20 +17,21 @@ No new file format, no markup to add.
   heading depth and list indentation define the hierarchy.
   Headings stand out by weight and a color-tinted fill; list items are plain.
 - **Edit on the map** - Rename, add, delete, drag & drop. Dropping on a node's middle makes it a child;
-  dropping near a sibling's top/bottom edge inserts it there.
+  dropping near a sibling's top/bottom edge inserts it there. A rename is written as it is typed, and
+  `Ctrl/Cmd + Z` takes it back.
 - **Working checkboxes** - Clicking toggles `[ ]` ⇄ `[x]` in the file.
-- **Collapse branches, in sync with the editor** - A handle on each node folds its branch (`−` / `+3`), and the
-  Markdown pane folds with it - both ways, and after a restart. The header buttons and the fold commands do the
-  whole map at once.
-- **Show and edit a node's own text** - Off by default. The `¶` header button draws the lines under a node that
-  are no node of their own inside it; `≡` on the node's corner folds that text on its own, apart from the
-  branch, and that fold stays on the map (Obsidian folds a line and all it holds at once). Double-click a line
-  to edit it right there: `Enter` makes a new line, `✓`/`✕` or `Mod + Enter`/`Esc` save and discard, and
-  `Ctrl/Cmd + double-click` opens the line in the editor.
+- **Collapse branches, in sync with the editor** - A handle on each node folds its branch (`−` / `+3`), and an
+  editing pane folds with it - both ways, and after a restart. A reading pane's folds are read but cannot be
+  set: that is Obsidian's, not the map's. The header buttons and the fold commands do the whole map at once.
+- **Show a node's own text** - Off by default; the `¶` header button draws the lines under a node that are no
+  node of their own inside it, and `≡` on its corner folds them away. Click a line to put the editor's cursor
+  on it, double-click to open it there - the map draws this text, the editor writes it.
 - **Hide completed tasks** - The `✓✓` header button hides checked tasks behind one `✓ n done` node per parent.
   Click it to reveal just that parent (`− hide done` puts them back).
   Remembered across sessions.
-- **Map and editor follow each other** - Selecting a node (by click or arrow keys) moves the Markdown editor's cursor to its line and briefly highlights it; moving the cursor in the editor selects the node that line belongs to and scrolls it into view, down to the exact line when the node's text is drawn. Neither side steals focus from the other.
+- **Map and editor follow each other** - Selecting a node moves the editor's cursor to its line, and moving
+  the cursor selects the node it belongs to - down to the line, where a node's text is drawn.
+  Neither side steals the focus.
 - **Follow wikilinks** - Clicking a `[[wikilink]]` switches map and editor to the linked note together.
 - **Branch colors** - Each top-level branch gets a palette color by position and its subtree inherits it.
   Customize the palette in settings, one hex color per line.
@@ -39,19 +40,19 @@ No new file format, no markup to add.
 
 Active while the mind map pane is focused.
 
-| Key                    | Action                                                                |
-| ---------------------- | --------------------------------------------------------------------- |
-| `↑` / `↓`              | Select previous / next sibling                                        |
-| `←` / `→`              | Select parent / first child                                           |
-| `Ctrl/Cmd + ←/→`       | Collapse / expand the selected branch (also in the right-click menu)  |
-| `Shift + ↑/↓`          | Move the node among its siblings, or the highlighted line of its text |
-| `Enter`                | Add a sibling (a child on the root)                                   |
-| `Tab`                  | Add a child                                                           |
-| `F2`                   | Edit the highlighted line of text, else rename the node               |
-| `Space`                | Toggle the selected task's checkbox                                   |
-| `Delete` / `Backspace` | Delete the node and its subtree, or the highlighted line of its text  |
-| `Mod + Z` / `Mod + ⇧Z` | Undo / redo, through the Markdown pane's own history                  |
-| `Esc`                  | Clear the selection                                                   |
+| Key                     | Action                                                                                                                 |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `↑` / `↓`               | Select previous / next sibling, or walk the node's text line by line                                                   |
+| `←` / `→`               | Select parent / first child                                                                                            |
+| `Ctrl/Cmd + ←/→`        | Collapse / expand the selected branch (also in the right-click menu)                                                   |
+| `Shift + ↑/↓`           | Move the node among its siblings                                                                                       |
+| `Enter`                 | Add a sibling (a child on the root)                                                                                    |
+| `Tab`                   | Add a child                                                                                                            |
+| `F2`                    | Rename the node                                                                                                        |
+| `Space`                 | Toggle the selected task's checkbox                                                                                    |
+| `Delete` / `Backspace`  | Delete the node and its subtree                                                                                        |
+| `Ctrl/Cmd + Z` / `+ ⇧Z` | Undo / redo, through the Markdown pane's history - or one step of the map's own when the note is only open for reading |
+| `Esc`                   | End an edit, else clear the selection                                                                                  |
 
 Back/forward use Obsidian's own Navigate back / forward command:
 `Ctrl + Alt + ←/→` (`Cmd + Option + ←/→` on macOS).

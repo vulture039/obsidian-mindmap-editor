@@ -13,6 +13,9 @@ export default defineConfig(
     'dev-vault',
     'esbuild.config.mjs',
     'version-bump.mjs',
+    // Hand-run harness: a Node driver and a snippet the renderer evaluates,
+    // which is a function body rather than a module.
+    'test/e2e',
     'versions.json',
     'main.js',
     'package.json',
@@ -49,6 +52,8 @@ export default defineConfig(
       'obsidianmd/no-global-this': 'off',
       'obsidianmd/no-nodejs-modules': 'off',
       'obsidianmd/ui/sentence-case': 'off',
+      // The stub is what defines instanceOf; it cannot use it.
+      'obsidianmd/prefer-instanceof': 'off',
     },
   },
   eslintConfigPrettier,

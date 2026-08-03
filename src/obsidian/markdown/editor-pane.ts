@@ -1,5 +1,11 @@
 import { App, Keymap, TFile, WorkspaceLeaf } from 'obsidian';
 import { findEditingView, findMarkdownView } from './file-io';
+import {
+  clearPreviewLine,
+  markPreviewLine,
+  PreviewBlock,
+  keepPreviewScroll,
+} from './preview-line';
 
 /** What the map has to offer for its side of the conversation. */
 export interface EditorPaneDeps {
@@ -136,9 +142,10 @@ export class EditorPane {
   /**
    * Moves the editor cursor to `line`, without stealing keyboard focus from
    * the map — selecting a node (click or arrow keys) always calls this, so the
-   * map stays navigable throughout.
+   * map stays navigable throughout. `block` is what a reading pane renders the
+   * line inside of, which is all such a pane can be pointed at.
    */
-  async goToLine(line: number): Promise<void> {
+  async goToLine(line: number, block?: PreviewBlock): Promise<void> {
     const file = this.deps.file();
 
     if (!file || line < 0) {
@@ -166,7 +173,17 @@ export class EditorPane {
     // The unfocused editor hides its caret, so flash-highlight the line (what
     // search results and outline clicks use). First: it places the caret at
     // the start of the line, and the caret belongs at the end.
+    clearPreviewLine();
+    const settle =
+      mdView.getMode() === 'preview' ? keepPreviewScroll(mdView) : null;
+
     mdView.setEphemeralState({ line });
+    if (settle) {
+      if (block) {
+        markPreviewLine(mdView, line, block);
+      }
+      settle();
+    }
     editor.setCursor({ line, ch });
     editor.scrollIntoView({ from: { line, ch: 0 }, to: { line, ch } }, true);
     this.deps.focusMap();

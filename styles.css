@@ -117,8 +117,7 @@
 
 /* Text picked up again after a child node; edited on its own, so spaced. The
    editor takes the same spacing when it stands in for such a line. */
-.mindmap-node-body-line.is-run-start,
-.mindmap-edit-input.is-run-start {
+.mindmap-node-body-line.is-run-start {
   margin-top: 6px;
   border-top: 1px dotted
     color-mix(in srgb, var(--branch-color) 35%, transparent);
@@ -138,6 +137,15 @@
   border-radius: 3px;
   background: color-mix(in srgb, var(--interactive-accent) 20%, transparent);
   color: var(--text-normal);
+}
+
+/* The note's own pill is filled with the accent already, so an accent tint on
+   it is no mark at all: on that one, the line is picked out in its text
+   colour instead. */
+.mindmap-node-root .mindmap-node-body-line.is-cursor-line,
+.mindmap-node-root .mindmap-node-body-line:not(.is-cursor-line):hover {
+  background: color-mix(in srgb, var(--text-on-accent) 25%, transparent);
+  color: var(--text-on-accent);
 }
 
 /* Collapse handle: grey chrome, so the branch colors stay the nodes'. The
@@ -315,42 +323,9 @@
     color-mix(in srgb, var(--interactive-accent) 30%, transparent);
 }
 
-/* Save/discard for the multi-line editor, where Enter is a line break and
-   only a click or a hotkey can end the edit. Floated over the node's bottom
-   corner rather than added to it: a row of its own would make the node taller
-   the moment the edit opens, and the map would shift under the pointer. */
-.mindmap-edit-controls {
-  position: absolute;
-  right: 6px;
-  bottom: 3px;
-  display: flex;
-  gap: 4px;
-  border-radius: 4px;
-  background: var(--background-primary);
-  box-shadow: 0 0 4px 4px var(--background-primary);
-}
-
-.mindmap-edit-button {
-  display: flex;
-  align-items: center;
-  padding: 2px;
-  border-radius: 4px;
-  color: var(--text-muted);
-  cursor: pointer;
-}
-
-.mindmap-edit-button:hover {
-  background: var(--background-modifier-hover);
-  color: var(--text-normal);
-}
-
-.mindmap-edit-button .svg-icon {
-  width: 14px;
-  height: 14px;
-}
-
-/* Inline editor: a contenteditable span that shares .mindmap-node-text
-   styles, so the node size does not change between viewing and editing. */
+/* Inline editor for a node's label: a contenteditable span sharing
+   .mindmap-node-text styles, so the node is the same size viewing and
+   editing. */
 .mindmap-edit-input {
   outline: none;
   white-space: pre-wrap;
@@ -359,4 +334,20 @@
   min-height: 1.4em;
   cursor: text;
   user-select: text;
+}
+
+/* A reading pane's mark, narrowed to the line the map has selected. The block
+   flash underneath it would light the lines either side, so it stands down for
+   as long as ours is up. */
+::highlight(mindmap-line) {
+  /* Obsidian's own flash colour, spelled out: a highlight pseudo-element does
+     not inherit the theme's custom properties, so var() here paints nothing. */
+  background-color: rgb(255 208 0 / 40%);
+}
+
+/* Obsidian's own rule for the flash is as specific as anything we can write
+   from here, so this is the one place the plugin has to insist. */
+.mindmap-quiet-flash .is-flashing {
+  animation: none !important;
+  background-color: transparent !important;
 }

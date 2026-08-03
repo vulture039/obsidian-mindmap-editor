@@ -56,6 +56,10 @@ export function installObsidianDom(): void {
     appendText(this: Element, text: string) {
       this.appendChild(document.createTextNode(text));
     },
+    // Obsidian's cross-window instanceof, which is what the plugin uses.
+    instanceOf<T>(this: Element, type: new () => T) {
+      return this instanceof type;
+    },
   });
 
   // jsdom has no innerText. What the plugin needs from it is the one thing

@@ -1,9 +1,9 @@
 import {
   debounce,
   ItemView,
-  Keymap,
   MarkdownView,
   Menu,
+  Modifier,
   Notice,
   Scope,
   TAbstractFile,
@@ -18,7 +18,7 @@ import {
   MindNode,
   parseMarkdown,
 } from '../../core/parse/parser';
-import { relocateBodyEdit, relocateNode } from '../../core/write/relocate';
+import { relocateNode } from '../../core/write/relocate';
 import {
   branchTargets,
   collapsedFromFolds,
@@ -40,32 +40,27 @@ import { LaidNode, layoutTree, makeLaid } from '../../core/render/layout';
 import { branchColorFor, parsePalette } from '../../core/render/colors';
 import { renderNodeText } from './node-text';
 import { canDrop } from '../../core/render/drag';
-import { multiLineValue } from '../../core/write/edit-value';
+import { singleLineValue } from '../../core/write/edit-value';
 import { DRAGGING_SELECTOR, setupNodeDrag } from './drag';
 import { EditorPane } from '../markdown/editor-pane';
-import {
-  caretAtBodyLine,
-  CARET_AT_END,
-  EditSession,
-  putCaret,
-  runEditor,
-} from './inline-edit';
+import { blockOf } from '../markdown/preview-line';
+import { caretAtEnd, EditSession, runEditor } from './inline-edit';
 import {
   addChildOp,
   addSiblingOp,
   deleteNodeOp,
-  bodyRunOf,
-  deleteBodyLineOp,
   InsertResult,
-  moveBodyLineOp,
   moveNodeOp,
   reorderSiblingOp,
-  setBodyOp,
   setCheckboxOp,
   setTextOp,
   toggleTaskOp,
 } from '../../core/write/ops';
-import { findEditingView, updateFileLines } from '../markdown/file-io';
+import {
+  findEditingView,
+  updateFileLines,
+  WroteToDisk,
+} from '../markdown/file-io';
 
 export const VIEW_TYPE_MINDMAP = 'mindmap-editor';
 
@@ -88,9 +83,6 @@ const KEEP_IN_VIEW: ScrollIntoViewOptions = {
   inline: 'nearest',
 };
 
-/** How long a notice the user has to act on stays up (ms). */
-const HELD_NOTICE = 10000;
-
 /** How long the map waits before redrawing after a change to the file. */
 const RENDER_DELAY = 250;
 
@@ -103,19 +95,6 @@ const REFLOW_DELAY = 60;
 /** A completed task node ('- [x]'), the unit hidden by hideCompleted. */
 function isCompletedTask(node: MindNode): boolean {
   return node.type === 'list' && node.checked === true;
-}
-
-/**
- * A refused body edit, kept until it can be handed back. The file and the
- * node's own text come along so a reopen can prove it is putting the text
- * back where it came from - a line number alone points at whatever moved in.
- */
-interface PendingBody {
-  path: string;
-  nodeLine: number;
-  line: number;
-  nodeText: string;
-  text: string;
 }
 
 /** Placeholder MindNode for "✓ n done" summary pills; never written back. */
@@ -142,9 +121,12 @@ export class MindmapView extends ItemView {
   private selectedLine: number | null = null;
   /** File line the editor's caret was last seen on; re-marked after a render. */
   private cursorLine: number | null = null;
-  private pendingEditLine: number | null = null;
-  /** Body text whose write was refused, kept so a retry can hold on to it. */
-  private pendingBodyEdit: PendingBody | null = null;
+  /** A just-added node, to select and open for naming after the render. */
+  private insertedLine: number | null = null;
+  /** The last write the map made with no editor pane to remember it. */
+  private undoable: (WroteToDisk & { path: string }) | null = null;
+  /** Ends the edit on screen, for when the map is asked for its keyboard back. */
+  private closeEdit: (() => void) | null = null;
   private isInlineEditing = false;
   private isDragging = false;
   private renderQueued = false;
@@ -242,9 +224,27 @@ export class MindmapView extends ItemView {
    * whenever this leaf is active, without depending on which inner element
    * has DOM focus.
    */
+  /**
+   * Claims a key for the map, standing aside while an inline edit is on
+   * screen. Obsidian's keymap sees a keystroke before the page does, so a
+   * Backspace meant for the text being typed would otherwise reach the map
+   * and take the line out from under it. The edit registers what it needs of
+   * its own, and those are not registered through here.
+   */
+  private onKey(mods: Modifier[], key: string, run: () => boolean): void {
+    this.scope?.register(mods, key, () => {
+      const input = this.canvasEl.querySelector(`.${EDIT_INPUT}`);
+
+      // Only while the edit has the keyboard. An editor left open with the
+      // focus elsewhere is not who the key is for - and taking every key for
+      // it would leave the map with none.
+      return input && input.doc.activeElement === input ? true : run();
+    });
+  }
+
   private registerShortcuts(): void {
     this.scope = new Scope(this.app.scope);
-    this.scope.register([], 'Enter', () => {
+    this.onKey([], 'Enter', () => {
       const node = this.selectedNode();
 
       if (!node) {
@@ -256,7 +256,7 @@ export class MindmapView extends ItemView {
 
       return false;
     });
-    this.scope.register([], 'Tab', () => {
+    this.onKey([], 'Tab', () => {
       const node = this.selectedNode();
 
       if (!node) {
@@ -267,16 +267,7 @@ export class MindmapView extends ItemView {
       return false;
     });
     for (const key of ['Delete', 'Backspace']) {
-      this.scope.register([], key, () => {
-        // A highlighted body line is what the user picked out; the node is
-        // only what stands around it.
-        const marked = this.markedBodyLine();
-
-        if (marked) {
-          void this.deleteBodyLine(marked.node, marked.line);
-
-          return false;
-        }
+      this.onKey([], key, () => {
         const node = this.selectedNode();
 
         if (!node || node.type === 'root') {
@@ -290,15 +281,7 @@ export class MindmapView extends ItemView {
         return false;
       });
     }
-    this.scope.register([], 'F2', () => {
-      // Whatever is picked out is what F2 opens: a body line, else the label.
-      const marked = this.markedBodyLine();
-
-      if (marked) {
-        this.editBodyLine(marked.node, marked.line);
-
-        return false;
-      }
+    this.onKey([], 'F2', () => {
       const node = this.selectedNode();
 
       if (!node) {
@@ -330,7 +313,7 @@ export class MindmapView extends ItemView {
     for (const [key, move] of nav) {
       const step = key === 'ArrowUp' ? -1 : 1;
 
-      this.scope.register([], key, () => {
+      this.onKey([], key, () => {
         if (this.isInlineEditing) {
           return true;
         }
@@ -365,16 +348,7 @@ export class MindmapView extends ItemView {
       ['ArrowUp', -1],
       ['ArrowDown', 1],
     ] as const) {
-      this.scope.register(['Shift'], key, () => {
-        // Whatever is picked out moves: a body line among its own lines, a
-        // node among its siblings.
-        const marked = this.markedBodyLine();
-
-        if (marked) {
-          void this.moveBodyLine(marked.node, marked.line, delta);
-
-          return false;
-        }
+      this.onKey(['Shift'], key, () => {
         const node = this.selectedNode();
 
         if (!node || node.type === 'root') {
@@ -390,7 +364,7 @@ export class MindmapView extends ItemView {
       ['ArrowLeft', true],
       ['ArrowRight', false],
     ] as const) {
-      this.scope.register(['Mod'], key, () => {
+      this.onKey(['Mod'], key, () => {
         const node = this.selectedNode();
 
         if (!node) {
@@ -420,30 +394,25 @@ export class MindmapView extends ItemView {
       [['Mod', 'Shift'], 'Z', false],
       [['Mod'], 'Y', false],
     ] as const) {
-      this.scope.register([...mods], key, () => {
-        if (!this.editor.stepHistory(back)) {
+      this.onKey([...mods], key, () => {
+        if (this.editor.stepHistory(back)) {
+          this.requestRender();
+        } else if (!back || !this.undoLastWrite()) {
           new Notice(
             'Mind map: open this note in a pane to undo what the map wrote.',
           );
-
-          return false;
         }
-        this.requestRender();
 
         return false;
       });
     }
     // Obsidian passes KeyboardEvent.key through, so space is ' '.
-    this.scope.register([], ' ', () => this.toggleSelectedCheckbox());
-    this.scope.register([], 'Escape', () => {
+    this.onKey([], ' ', () => this.toggleSelectedCheckbox());
+    this.onKey([], 'Escape', () => {
+      // A flag left set with no editor on screen: the edit is over, and this
+      // is what unfreezes the map. An editor that is still there kept the key
+      // to itself, and never reached here.
       if (this.isInlineEditing) {
-        // Escape belongs to the edit while there is one on screen: taking it
-        // here would re-render, and the editor would go with the DOM before
-        // it could discard anything. Only a flag left set without an editor
-        // is this handler's business.
-        if (this.canvasEl.querySelector(`.${EDIT_INPUT}`)) {
-          return true;
-        }
         this.isInlineEditing = false;
         void this.render();
 
@@ -669,17 +638,6 @@ export class MindmapView extends ItemView {
     return node ? { node, line } : null;
   }
 
-  /** Opens the editor on the body run holding `line`. */
-  private editBodyLine(node: MindNode, line: number): void {
-    const bodyEl = this.laidByLine
-      .get(node.line)
-      ?.el.querySelector<HTMLElement>(`.${BODY}`);
-
-    if (bodyEl) {
-      this.startBodyEdit(node, bodyEl, line);
-    }
-  }
-
   /**
    * Moves the pick to the body line above or below. False when there is none
    * that way - the caller then moves between nodes, as it always did.
@@ -698,7 +656,7 @@ export class MindmapView extends ItemView {
       return false;
     }
     this.markCursorLine(line);
-    void this.editor.goToLine(line);
+    void this.editor.goToLine(line, blockOf(marked.node, line));
 
     return true;
   }
@@ -710,44 +668,6 @@ export class MindmapView extends ItemView {
     return el
       ? Array.from(el.querySelectorAll<HTMLElement>(`.${BODY_LINE}`))
       : [];
-  }
-
-  /** Moves one line of a node's own text past the one beside it. */
-  private async moveBodyLine(
-    node: MindNode,
-    line: number,
-    delta: -1 | 1,
-  ): Promise<void> {
-    const run = bodyRunOf(node, line);
-    const offset = run.findIndex((b) => b.line === line);
-
-    if (!run[offset + delta]) {
-      return;
-    }
-    // The mark goes with the line, so a run of presses keeps moving the same
-    // one rather than walking a different line each time.
-    this.cursorLine = line + delta;
-    await this.applyOp((lines) => moveBodyLineOp(lines, node, line, delta));
-  }
-
-  /** Removes one line of a node's own text. */
-  private async deleteBodyLine(node: MindNode, line: number): Promise<void> {
-    const run = bodyRunOf(node, line);
-    const offset = run.findIndex((b) => b.line === line);
-
-    this.cursorLine = null;
-    await this.applyOp((lines) => {
-      const fresh = parseMarkdown(lines.join('\n'), this.file?.basename ?? '');
-      const at = relocateBodyEdit(fresh, node, run);
-
-      if (!at) {
-        throw new Error(
-          `Mindmap: the text of "${node.text}" is no longer in the file`,
-        );
-      }
-
-      return deleteBodyLineOp(lines, at.node, at.anchor + offset);
-    });
   }
 
   /**
@@ -834,7 +754,13 @@ export class MindmapView extends ItemView {
       };
     }
 
-    return { branch: branchTargets(this.root), text: [] };
+    // Not the note itself: folding that leaves one pill on the canvas, which
+    // is not what the Markdown pane shows with everything folded, and not
+    // what "collapse all" is asking for. Its own handle still folds it.
+    return {
+      branch: branchTargets(this.root).filter((line) => line >= 0),
+      text: [],
+    };
   }
 
   /** Whether every handle of one kind is already folded. */
@@ -1058,6 +984,10 @@ export class MindmapView extends ItemView {
       attr: { tabindex: '0' },
     });
     this.canvasEl = this.scrollerEl.createDiv({ cls: 'mindmap-canvas' });
+    // The map asking for the keyboard back is the end of any edit still open:
+    // an edit left behind when the focus went elsewhere must not keep the keys
+    // it is no longer typing into.
+    this.scrollerEl.addEventListener('focus', () => this.closeEdit?.());
 
     this.registerWorkspaceEvents();
     // During workspace restore, renders can run before files and editors
@@ -1083,6 +1013,15 @@ export class MindmapView extends ItemView {
     this.registerEvent(
       this.app.workspace.on('editor-change', (_editor, info) => {
         if (this.isCurrentFile(info.file)) {
+          this.requestRender();
+        }
+      }),
+    );
+    // The note's name is what its own pill says, and it can be renamed from
+    // anywhere - the map's pill, the file explorer, another window.
+    this.registerEvent(
+      this.app.vault.on('rename', (file) => {
+        if (this.isCurrentFile(file)) {
           this.requestRender();
         }
       }),
@@ -1356,17 +1295,10 @@ export class MindmapView extends ItemView {
       this.markCursorLine(this.cursorLine);
     }
 
-    if (this.pendingBodyEdit) {
-      const pending = this.pendingBodyEdit;
+    if (this.insertedLine !== null) {
+      const laid = this.laidByLine.get(this.insertedLine);
 
-      this.pendingBodyEdit = null;
-      this.restoreBodyEdit(pending);
-    }
-
-    if (this.pendingEditLine !== null) {
-      const laid = this.laidByLine.get(this.pendingEditLine);
-
-      this.pendingEditLine = null;
+      this.insertedLine = null;
       if (laid) {
         this.selectNode(laid.node, laid.el);
         this.startInlineEdit(laid.node, laid.el);
@@ -1503,19 +1435,11 @@ export class MindmapView extends ItemView {
       e.stopPropagation();
       this.selectNode(node, el, lineAt(e.target));
     });
-    // A double-click edits the text here, on the line it hit; with Mod it
-    // hands that line to the editor instead, for what the map cannot do
-    // (Markdown syntax, long prose).
+    // The map draws this text; the editor is where it is written. A
+    // double-click opens the line there, with the caret on it.
     bodyEl.addEventListener('dblclick', (e) => {
       e.stopPropagation();
-      const line = lineAt(e.target);
-
-      if (Keymap.isModEvent(e)) {
-        void this.editor.editLine(line);
-
-        return;
-      }
-      this.startBodyEdit(node, bodyEl, line);
+      void this.editor.editLine(lineAt(e.target));
     });
   }
 
@@ -1823,7 +1747,10 @@ export class MindmapView extends ItemView {
     this.markCursorLine(line ?? node.line);
     // The editor always follows the current selection, whether it came
     // from a click or from arrow-key navigation.
-    void this.editor.goToLine(line ?? node.line);
+    void this.editor.goToLine(
+      line ?? node.line,
+      blockOf(node, line ?? node.line),
+    );
   }
 
   private clearSelectionClass(): void {
@@ -1898,11 +1825,6 @@ export class MindmapView extends ItemView {
         this.toggleTextFold(node),
       );
     }
-    if (this.canEditBody(node)) {
-      add(node.body.length ? 'Edit text' : 'Add text', 'pilcrow', () =>
-        this.editBodyFromMenu(node),
-      );
-    }
     add('Add child', 'plus', () => void this.addChildNode(node));
     // A forced task child is always a list item, so skip it only where a
     // child cannot be one: the root once it already has heading children.
@@ -1957,36 +1879,6 @@ export class MindmapView extends ItemView {
     menu.showAtMouseEvent(e);
   }
 
-  /**
-   * Whether the menu offers to edit this node's text: only where the map
-   * draws it, so what is edited is what is on screen.
-   */
-  private canEditBody(node: MindNode): boolean {
-    return (
-      this.plugin.settings.showBodyText &&
-      node.type !== 'root' &&
-      !this.collapsedBranches.has(node.line)
-    );
-  }
-
-  /**
-   * Opens the body editor from the menu, making the container first for a
-   * node that has no text yet - it has no body element to click on.
-   */
-  private editBodyFromMenu(node: MindNode): void {
-    const laid = this.laidByLine.get(node.line);
-
-    if (!laid) {
-      return;
-    }
-    const bodyEl =
-      laid.el.querySelector<HTMLElement>(`.${BODY}`) ??
-      laid.el.createDiv({ cls: BODY });
-
-    laid.el.addClass('has-body');
-    this.startBodyEdit(laid.node, bodyEl, node.body[0]?.line ?? node.line);
-  }
-
   private async addSiblingNode(node: MindNode, task?: boolean): Promise<void> {
     await this.applyInsert(node, (lines, target) =>
       addSiblingOp(lines, target, task),
@@ -2009,7 +1901,7 @@ export class MindmapView extends ItemView {
     const file = this.file;
 
     try {
-      await updateFileLines(this.app, file, (lines) => {
+      await this.writeFile(file, (lines) => {
         const fresh = parseMarkdown(lines.join('\n'), file.basename);
         const target = relocateNode(fresh, node);
 
@@ -2018,12 +1910,12 @@ export class MindmapView extends ItemView {
         }
         const result = mutate(lines, target);
 
-        this.pendingEditLine = result.insertedLine;
+        this.insertedLine = result.insertedLine;
 
         return result.lines;
       });
     } catch (err) {
-      this.pendingEditLine = null;
+      this.insertedLine = null;
       this.reportOpError(err);
     }
     await this.render();
@@ -2052,12 +1944,57 @@ export class MindmapView extends ItemView {
     });
   }
 
+  /**
+   * Every write the map makes goes through here. One with no editor pane
+   * behind it has no history to step, so the map keeps that one step itself.
+   */
+  private async writeFile(
+    file: TFile,
+    mutate: (lines: string[]) => string[],
+  ): Promise<void> {
+    const wrote = await updateFileLines(this.app, file, mutate);
+
+    this.undoable = wrote ? { path: file.path, ...wrote } : null;
+  }
+
+  /**
+   * Puts back the last write the map made straight to the file, which happens
+   * when the note is only open in a reading pane - Obsidian keeps no history
+   * for those, and a delete from the map would otherwise be final.
+   *
+   * Only while the file still says what that write left, so it can never undo
+   * over something changed since, and only once: what was put back is what the
+   * map now shows, and the step is spent.
+   */
+  private undoLastWrite(): boolean {
+    const kept = this.undoable;
+    const file = this.file;
+
+    if (!kept || !file || file.path !== kept.path) {
+      return false;
+    }
+    void (async () => {
+      if ((await this.app.vault.read(file)) !== kept.after) {
+        new Notice('Mind map: the file has changed since, so it was left be.');
+        this.undoable = null;
+
+        return;
+      }
+      await this.app.vault.modify(file, kept.before);
+      this.undoable = null;
+      new Notice('Mind map: undid the last change.');
+      await this.render();
+    })();
+
+    return true;
+  }
+
   private async applyOp(mutate: (lines: string[]) => string[]): Promise<void> {
     if (!this.file) {
       return;
     }
     try {
-      await updateFileLines(this.app, this.file, mutate);
+      await this.writeFile(this.file, mutate);
     } catch (err) {
       this.reportOpError(err);
     }
@@ -2074,9 +2011,10 @@ export class MindmapView extends ItemView {
   }
 
   private startInlineEdit(node: MindNode, el: HTMLElement): void {
-    if (this.isBusy()) {
+    if (this.isBusy() || !this.file) {
       return;
     }
+    const file = this.file;
     // The caller's node/el may be stale: closures from a context menu or
     // dblclick outlive re-renders. Remap to the current DOM element, and
     // never start on a detached one — its input can't take focus, so
@@ -2103,223 +2041,80 @@ export class MindmapView extends ItemView {
       cls: `mindmap-node-text ${EDIT_INPUT}`,
     });
 
+    let label = node.text;
+
     input.textContent = node.text;
     // Exactly the label's place, so the node's contents do not shift.
     textEl.after(input);
     textEl.hide();
-    runEditor({
+    this.closeEdit = runEditor({
       ...this.editSession(),
       input,
-      multiline: false,
-      placeCaret: () => putCaret(input, CARET_AT_END),
+      value: () => singleLineValue(input.innerText),
+      placeCaret: () => caretAtEnd(input),
       restore: () => {
+        this.closeEdit = null;
         input.remove();
         textEl.show();
       },
-      commit: (value) => {
-        if (value === node.text) {
-          return false;
+      // What the file says this node is called, kept up as it is typed: the
+      // next write has to find the node by the name the last one gave it.
+      write: (value) => {
+        if (value === label || !value) {
+          return;
         }
-        void this.applyToNodes([node], (lines, [target]) =>
-          setTextOp(lines, target!, value),
-        );
+        const named = { ...node, text: label };
 
-        return true;
+        void this.writeEdit(file, (lines, fresh) => {
+          const target = relocateNode(fresh, named);
+
+          if (!target) {
+            throw new Error(`Mindmap: "${label}" is no longer in the file`);
+          }
+
+          return setTextOp(lines, target, value);
+        }).then((ok) => {
+          if (ok) {
+            label = value;
+          }
+        });
       },
     });
   }
 
   /**
-   * Edits a node's own text in place, starting the caret on the line that
-   * was double-clicked. Multi-line, so Enter breaks the line and Mod+Enter
-   * (or leaving the editor) saves.
+   * Writes what an editor is holding. Renders are held off while editing, so
+   * the map's line numbers are from when it opened and the file may have moved
+   * on - every `mutate` is handed a fresh parse to aim itself at. False when
+   * the file no longer has what the edit was made against, which is a conflict
+   * rather than a mistake: the text goes to the clipboard and the map catches
+   * up with the file.
    */
-  private startBodyEdit(
-    node: MindNode,
-    bodyEl: HTMLElement,
-    line: number,
-    initial?: string,
-  ): void {
-    if (
-      this.isBusy() ||
-      !bodyEl.isConnected ||
-      !this.file ||
-      !this.plugin.settings.showBodyText
-    ) {
-      return;
-    }
-    const file = this.file;
-    // Only the run the click landed in: a child between two runs keeps them
-    // apart in the file, and what is edited must be what is written back.
-    const run = bodyRunOf(node, line);
-    const shown = run.map((b) => b.text).join('\n');
-    // What the editor would hand back untouched, which is not always what it
-    // was given: a run of blank lines comes back as nothing at all, and that
-    // must read as "unchanged", not as "the user emptied it".
-    const before = multiLineValue(shown);
-    const lineEls = run
-      .map((b) =>
-        bodyEl.querySelector<HTMLElement>(
-          `.${BODY_LINE}[data-line="${b.line}"]`,
-        ),
-      )
-      .filter((el): el is HTMLElement => !!el);
-    const input = bodyEl.createDiv({ cls: EDIT_INPUT });
-
-    // It stands where those lines stood, so it stands the same way: a run
-    // picked up after a child keeps the space that sets it apart.
-    input.toggleClass(
-      'is-run-start',
-      lineEls[0]?.hasClass('is-run-start') ?? false,
-    );
-    input.textContent = initial ?? shown;
-    // In the run's own place, so the text does not jump to the bottom of a
-    // body that has more than one.
-    lineEls[0]?.before(input);
-    for (const lineEl of lineEls) {
-      lineEl.hide();
-    }
-    runEditor({
-      ...this.editSession(),
-      input,
-      multiline: true,
-      placeCaret: () => caretAtBodyLine(input, run, line),
-      restore: () => {
-        input.remove();
-        for (const lineEl of lineEls) {
-          lineEl.show();
-        }
-        // Nothing was there to begin with: the menu made this container to
-        // edit in, and an empty one would draw its own separator.
-        if (!lineEls.length) {
-          bodyEl.remove();
-        }
-      },
-      commit: (value) => {
-        if (value === before) {
-          return false;
-        }
-        void this.writeBody(file, node, value, line);
-
-        return true;
-      },
-    });
-  }
-
-  /**
-   * Writes edited body text back. On failure the text is not dropped: the
-   * editor reopens on the freshly parsed node still holding it, so the only
-   * way to lose what was typed is to throw it away with Esc.
-   */
-  private async writeBody(
+  private async writeEdit(
     file: TFile,
-    node: MindNode,
-    text: string,
-    anchor: number,
-  ): Promise<void> {
-    const run = bodyRunOf(node, anchor);
-
+    mutate: (lines: string[], fresh: MindNode) => string[],
+  ): Promise<boolean> {
     try {
-      await updateFileLines(this.app, file, (lines) => {
-        // Renders are held off while editing, so the map's line numbers are
-        // from when the edit opened; the file may have moved on. Find the run
-        // again in what is actually there, and write to that.
-        const fresh = parseMarkdown(lines.join('\n'), file.basename);
-        const at = relocateBodyEdit(fresh, node, run);
-
-        if (!at) {
-          throw new Error(
-            `Mindmap: the text of "${node.text}" is no longer in the file`,
-          );
-        }
-
-        return setBodyOp(lines, at.node, text, at.anchor);
-      });
+      await this.writeFile(file, (lines) =>
+        mutate(lines, parseMarkdown(lines.join('\n'), file.basename)),
+      );
     } catch (err) {
-      console.error('Mindmap: failed to write the node text', err);
-      this.pendingBodyEdit = {
-        path: file.path,
-        nodeLine: node.line,
-        line: anchor,
-        nodeText: node.text,
-        text,
-      };
+      console.error('Mindmap: failed to write the edit', err);
+
+      return false;
     }
     await this.render();
-  }
 
-  /**
-   * Reopens a body edit whose write was refused, with the typed text intact.
-   * With the node itself gone there is nothing to reopen, so the text goes to
-   * the clipboard rather than nowhere.
-   */
-  private restoreBodyEdit(pending: PendingBody): void {
-    const laid = this.laidByLine.get(pending.nodeLine);
-    const same =
-      this.file?.path === pending.path && laid?.node.text === pending.nodeText;
-    const bodyEl = same
-      ? laid?.el.querySelector<HTMLElement>(`.${BODY}`)
-      : null;
-
-    if (!laid || !bodyEl) {
-      // Nothing to reopen on, so the text has nowhere to wait.
-      void navigator.clipboard?.writeText(pending.text);
-      new Notice(
-        'Mind map: that node is gone, so your text was copied to the clipboard.',
-        HELD_NOTICE,
-      );
-
-      return;
-    }
-    this.startBodyEdit(laid.node, bodyEl, pending.line, pending.text);
-    // The way out is offered rather than counted to: how many tries are worth
-    // making is the user's call, not a number picked here.
-    new Notice(this.refusedNotice(pending.text), HELD_NOTICE);
-  }
-
-  /** Why the text was not saved, and the one thing the map can still do. */
-  private refusedNotice(text: string): DocumentFragment {
-    const note = createFragment((el) => {
-      el.appendText(
-        'Mind map: this text is no longer where it was in the file, so it was not saved. It is still in the node - save again once the file is back, or: ',
-      );
-      const copy = el.createEl('a', { text: 'Copy it out' });
-
-      copy.addEventListener('click', () => {
-        void navigator.clipboard?.writeText(text);
-        new Notice('Mind map: copied.');
-      });
-      el.appendText('.');
-    });
-
-    return note;
+    return true;
   }
 
   /** The half of an inline edit every editor shares; see ./inline-edit.ts. */
-  private editSession(): Pick<
-    EditSession,
-    'setEditing' | 'reflow' | 'settle' | 'bindSave'
-  > {
+  private editSession(): Pick<EditSession, 'setEditing' | 'reflow' | 'settle'> {
     return {
       setEditing: (editing) => {
         this.isInlineEditing = editing;
       },
       reflow: () => this.reflow(),
-      bindSave: (save) => {
-        // Obsidian's own keymap, since the DOM never sees Mod+Enter on macOS.
-        const scope = this.scope;
-
-        if (!scope) {
-          return () => undefined;
-        }
-        const handler = scope.register(['Mod'], 'Enter', () => {
-          save();
-
-          return false;
-        });
-
-        return () => scope.unregister(handler);
-      },
       settle: () => {
         if (!this.renderQueued) {
           return false;

@@ -1,117 +1,159 @@
-import { Platform, setIcon } from 'obsidian';
-import { multiLineValue, singleLineValue } from '../../core/write/edit-value';
-import { BodyLine } from '../../core/parse/parser';
-
-/** Caret position meaning "past the last character". */
-export const CARET_AT_END = -1;
-
 /** How long focus is given to arrive before the edit is retried, then given up. */
 const FOCUS_RETRY_DELAY = 50;
 
+/**
+ * How long typing must pause before what was typed goes to the file. Short
+ * enough that both sides are the same thing, long enough that a word is one
+ * write rather than five.
+ */
+const SETTLE_DELAY = 300;
+
 /** What an inline edit needs from the view it runs in. */
 export interface EditSession {
-  /** The contenteditable to run in; already in place, already styled. */
+  /** The element to run in; already in place, already styled. */
   input: HTMLElement;
-  /** Enter breaks the line instead of saving, and buttons appear. */
-  multiline: boolean;
+  /** What the editor is holding, as it would go into the file. */
+  value: () => string;
   placeCaret: () => void;
-  /** Puts back what the editor replaced, when nothing was written. */
+  /** Puts the drawn text back when the editor goes. */
   restore: () => void;
-  /** Saves; true when it started a write, which redraws on its own. */
-  commit: (value: string) => boolean;
+  /** Writes what is in the editor; called as it is typed, and once at the end. */
+  write: (value: string) => void;
   setEditing: (editing: boolean) => void;
+  /** Sizes the editor to what it holds, for one that does not grow by itself. */
+  fit?: () => void;
   /** Re-lays out the map around the growing text. */
   reflow: () => void;
   /** Runs a render the edit held off; true when it did. */
   settle: () => boolean;
-  /**
-   * Registers the save shortcut through Obsidian's own keymap and returns the
-   * undo. macOS hands Mod+Enter to the app, not to the page, so a DOM listener
-   * never sees it.
-   */
-  bindSave: (save: () => void) => () => void;
 }
 
 /**
- * Runs an inline edit: the busy flag, the commit/cancel keys, and the focus
- * net that aborts rather than leaving the map frozen with no blur to come.
+ * Runs an inline edit of a node's label. What is typed goes to the file as it
+ * is typed, a moment behind the keys - the map is one side of a note, not a
+ * form to submit - so there is nothing here to confirm and nothing to lose by
+ * leaving. Undo is the editor's, as it is for every other way this plugin
+ * writes.
  */
-export function runEditor(session: EditSession): void {
-  const { input, multiline, placeCaret, restore, commit } = session;
+export function runEditor(session: EditSession): () => void {
+  const { input, placeCaret, restore, write, value } = session;
 
   session.setEditing(true);
   input.contentEditable = 'plaintext-only';
-  // Multi-line text has no Enter to leave by, so it gets buttons - a
-  // double-click would have to take word selection away to serve as one.
-  const controls = multiline ? addControls(input) : null;
-  const read = multiline ? multiLineValue : singleLineValue;
   let done = false;
-  const finish = (save: boolean): void => {
+  let composing = false;
+  let pending: number | null = null;
+  const put = (): void => {
+    // A render can take the editor's element with it while a write is still
+    // pending: what it holds is then older than the file it would go into.
+    if (done || !input.isConnected) {
+      return;
+    }
+    if (pending !== null) {
+      input.win.clearTimeout(pending);
+      pending = null;
+    }
+    // Mid-composition an IME's own working text is in the element: a CJK
+    // reading would land in the file, to be replaced when it is confirmed.
+    if (!composing) {
+      write(value());
+    }
+  };
+  const soon = (): void => {
     if (done) {
       return;
     }
-    done = true;
+    if (pending !== null) {
+      input.win.clearTimeout(pending);
+    }
+    pending = input.win.setTimeout(put, SETTLE_DELAY);
+  };
+  const finish = (): void => {
+    if (done) {
+      return;
+    }
     session.setEditing(false);
-    unbindSave?.();
     input.doc.removeEventListener('keydown', onKey, true);
-    controls?.el.remove();
-
-    // innerText, not textContent: a line the user made with Enter is a new
-    // element, and textContent runs the two together as one line.
-    if (save && commit(read(input.innerText))) {
-      return;
+    // The last of what was typed goes before the flag does; nothing typed
+    // after this can reach the file.
+    put();
+    done = true;
+    if (!session.settle()) {
+      restore();
     }
-    if (session.settle()) {
-      return;
-    }
-    restore();
   };
 
   // Clicks inside the editor must not reach the node handlers, which would
-  // move focus to the map and close the edit via blur.
+  // move focus to the map and close the edit.
   for (const type of ['pointerdown', 'click', 'dblclick'] as const) {
     input.addEventListener(type, (ev) => ev.stopPropagation());
   }
-  // Through Obsidian's keymap as well as the DOM: macOS hands Mod+Enter to
-  // the app rather than the page, so no listener here ever sees it.
-  const unbindSave = multiline ? session.bindSave(() => finish(true)) : null;
 
-  // On the document, in the capture phase: an editor shortcut this deep in
-  // the app can otherwise be taken before the element ever sees it (Mod+Enter
-  // on macOS is). Keys are only acted on while the edit owns the focus.
+  // On the document, in the capture phase: a key this deep in the app can
+  // otherwise be taken before the element ever sees it. Keys are only acted on
+  // while the edit owns the focus.
   const onKey = (ev: KeyboardEvent): void => {
     if (done || input.doc.activeElement !== input) {
       return;
     }
     ev.stopPropagation();
-    // IME candidate confirmation also fires a "real" Enter keydown with
-    // isComposing still true — that must only close the IME composition,
-    // not the inline edit itself.
+    // An IME's confirming Enter is a real keydown with isComposing still set:
+    // it belongs to the composition, not to this editor.
     if (ev.isComposing) {
       return;
     }
-    // Multi-line text needs Enter for what Enter is for, so saving moves to
-    // Ctrl+Enter there. Cmd is taken too, for the platforms that deliver it.
-    if (ev.key === 'Enter' && (!multiline || ev.metaKey || ev.ctrlKey)) {
+    if (ev.key === 'Escape' || ev.key === 'Enter') {
       ev.preventDefault();
-      finish(true);
-    } else if (ev.key === 'Escape') {
+      finish();
+    } else if (ev.key === 'Tab') {
+      // Focus is what ends an edit, and Tab moves it: the edit would close on
+      // a keystroke nobody means as "done". It does nothing here instead.
       ev.preventDefault();
-      finish(false);
     }
   };
 
   input.doc.addEventListener('keydown', onKey, true);
-  input.addEventListener('blur', () => finish(true));
-  // Growing text pushes the node's neighbours around, and renders are held
-  // off while editing - so lay the map out again as it is typed.
-  input.addEventListener('input', () => session.reflow());
-  controls?.bind(finish);
+  // Focus leaving for the Markdown pane, another window, anywhere outside the
+  // map: the edit stays where it is, so coming back carries on where it left
+  // off. What is typed is already in the file, so there is nothing to lose by
+  // waiting - only the map's renders, which stand down while an edit is on.
+  input.addEventListener('blur', (ev) => {
+    const to = ev.relatedTarget;
+
+    put();
+    if (to instanceof Node && input.closest('.mindmap-canvas')?.contains(to)) {
+      finish();
+
+      return;
+    }
+    session.setEditing(false);
+  });
+  input.addEventListener('focus', () => {
+    if (!done) {
+      session.setEditing(true);
+    }
+  });
+  input.addEventListener('compositionstart', () => {
+    composing = true;
+  });
+  input.addEventListener('compositionend', () => {
+    composing = false;
+    soon();
+  });
+  // Growing text pushes the node's neighbours around, and renders are held off
+  // while editing - so lay the map out again as it is typed, and put what was
+  // typed in the file a moment later.
+  input.addEventListener('input', () => {
+    session.fit?.();
+    session.reflow();
+    soon();
+  });
+  session.fit?.();
   input.focus();
   placeCaret();
   // A closing menu or leaf activation can keep focus away right as the edit
   // opens. Without focus the blur handler can never fire, so retry once, then
-  // abort the edit instead of leaving it stuck.
+  // give up on the edit instead of leaving the map frozen.
   input.win.setTimeout(() => {
     if (done || input.doc.activeElement === input) {
       return;
@@ -120,93 +162,23 @@ export function runEditor(session: EditSession): void {
     placeCaret();
     input.win.setTimeout(() => {
       if (!done && input.doc.activeElement !== input) {
-        finish(false);
+        finish();
       }
     }, FOCUS_RETRY_DELAY);
   }, 0);
+
+  return finish;
 }
 
-/**
- * Save and discard buttons under an editor. Their pointerdown is swallowed so
- * the press cannot blur the editor out from under the click about to use it.
- */
-function addControls(input: HTMLElement): {
-  el: HTMLElement;
-  bind: (finish: (save: boolean) => void) => void;
-} {
-  const el = createDiv({ cls: 'mindmap-edit-controls' });
-  const mod = Platform.isMacOS ? '⌘' : 'Ctrl + ';
-  const buttons: [icon: string, label: string, save: boolean][] = [
-    ['check', `Save (${mod}Enter)`, true],
-    ['x', 'Discard (Esc)', false],
-  ];
-  const made = buttons.map(([icon, label, save]) => {
-    const button = el.createDiv({
-      cls: 'mindmap-edit-button',
-      attr: { 'aria-label': label },
-    });
-
-    setIcon(button, icon);
-
-    return { button, save };
-  });
-
-  // Over the node, so nothing about the layout changes as it appears.
-  input.parentElement?.closest('.mindmap-node')?.append(el);
-
-  return {
-    el,
-    bind: (finish) => {
-      for (const { button, save } of made) {
-        for (const type of ['pointerdown', 'dblclick'] as const) {
-          button.addEventListener(type, (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-          });
-        }
-        button.addEventListener('click', (e) => {
-          e.stopPropagation();
-          finish(save);
-        });
-      }
-    },
-  };
-}
-
-/** Caret at `offset` into the editor's text, or at its end for CARET_AT_END. */
-export function putCaret(input: HTMLElement, offset: number): void {
-  const textNode = input.firstChild;
+/** Caret past the last character of a label, which is where a rename starts. */
+export function caretAtEnd(input: HTMLElement): void {
   const range = input.doc.createRange();
 
   range.selectNodeContents(input);
-  if (textNode && offset >= 0) {
-    range.setStart(
-      textNode,
-      Math.min(offset, (textNode.textContent ?? '').length),
-    );
-  }
   // Never a selection: the next keystroke would wipe the text it holds.
-  // Collapsing forward for a set offset, to the very end without one.
-  range.collapse(offset >= 0);
+  range.collapse(false);
   const sel = input.win.getSelection();
 
   sel?.removeAllRanges();
   sel?.addRange(range);
-}
-
-/**
- * Ends the caret on the body line the double-click landed on - where the
- * editor's own cursor lands when the map sends it to a line.
- */
-export function caretAtBodyLine(
-  input: HTMLElement,
-  run: BodyLine[],
-  line: number,
-): void {
-  const index = run.findIndex((b) => b.line === line);
-  const upto = index < 0 ? run.length : index + 1;
-  const offset =
-    run.slice(0, upto).reduce((n, b) => n + b.text.length + 1, 0) - 1;
-
-  putCaret(input, offset);
 }

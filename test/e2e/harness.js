@@ -24,6 +24,11 @@ if (view.file?.path !== 'Fixtures.md') {
   return fail(`the map is showing ${view.file?.path}, not Fixtures.md`);
 }
 
+// Obsidian hands a key to the view whose leaf is active; a check that presses
+// one has to be sure that is the map.
+const focusMap = () => app.workspace.setActiveLeaf(view.leaf, { focus: true });
+
+focusMap();
 const file = md.view.file;
 const editor = md.view.editor;
 const reading = md.view.getMode() !== 'source';
@@ -74,6 +79,7 @@ const closeEditor = async () => {
 
 const setFile = async (text) => {
   await closeEditor();
+  focusMap();
   if (reading) {
     await app.vault.modify(file, text);
   } else {

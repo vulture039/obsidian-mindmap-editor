@@ -32,6 +32,7 @@ import {
 } from '../../core/folds';
 import {
   applyEditorFolds,
+  foldPreviewHeadings,
   FoldWrite,
   loadStoredFolds,
   readEditorFolds,
@@ -881,6 +882,8 @@ export class MindmapView extends ItemView {
     if (foldsKey(folds) === foldsKey(current)) {
       return;
     }
+    // A reading pane takes no fold state; its headings have handles instead.
+    void foldPreviewHeadings(this.app, this.file, this.collapsedBranches);
     const wrote = applyEditorFolds(this.app, this.file, folds);
 
     if (wrote !== FoldWrite.Applied) {

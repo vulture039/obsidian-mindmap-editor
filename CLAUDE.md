@@ -50,7 +50,7 @@ part on each side, the two share a basename (`core/folds.ts` maps the ranges,
     - **node-text.ts** - A node's own text → link/plain segments, for drawing
   - **write/** - Markdown out:
     - **ops.ts** - Every write the map can make, as a pure edit over `string[]`
-    - **relocate.ts** - Finds a node or a run again in a fresh parse, by what it says rather than where it was
+    - **relocate.ts** - Finds a node again in a fresh parse, by what it says and what it sits under
     - **edit-value.ts** - What a typed name becomes before it goes back into the document
   - **render/** - Where it all goes on the canvas:
     - **colors.ts** - Per-branch colors, cycled by position from the palette setting
@@ -62,12 +62,13 @@ part on each side, the two share a basename (`core/folds.ts` maps the ranges,
   - **map/** - This plugin's own pane:
     - **mindmap-view.ts** - ItemView: rendering, selection, keyboard, folds, context menu, file ops
     - **drag.ts** - The pointer handling, cues and ghost around core/render/drag's answers
-    - **inline-edit.ts** - The editor half of an edit: keys, focus net, caret, save and discard
+    - **inline-edit.ts** - Renaming a node in place: keys, focus net, caret, and the write behind them
     - **node-text.ts** - Renders the parsed segments to DOM links
   - **markdown/** - Obsidian's own pane, seen from here:
     - **editor-pane.ts** - Which pane to use, what to show in it, where to put its cursor, its undo
     - **file-io.ts** - findMarkdownView, updateFileLines (editor open → replaceRange, else vault.process)
-    - **folds.ts** - Reads/writes its fold state, all non-public API and feature-detected
+    - **folds.ts** - Reads/writes its fold state, all non-public API and feature-detected; a reading pane
+      takes none, so its headings are folded by their own handles
     - **preview-line.ts** - A reading pane can only be pointed at a block; this narrows that to one line
   - **settings.ts** - Settings tab (MindmapSettingTab)
 - **styles.css** - All styles
@@ -110,6 +111,9 @@ code already carries belongs there, not here.
   of a node that has children stays on the map. Keep that in `foldedKind`/`mergeFolds`; the view must not ask
   "does it have children" to place a fold.
 - **Only `from` in a fold range can be trusted** - reading view puts a count where the editor puts an end line.
+- **A reading pane takes no fold state** - `applyFoldInfo` does nothing there, so `foldPreviewHeadings` clicks
+  the handles its headings carry instead, a pass at a time: one that is folded away has not been rendered, so
+  its own handle is not there to click until the one above it opens.
 - **Fold sync has no event** - the view re-reads `getFoldInfo` after what can fold and compares `foldsKey`.
   That check may only re-render, never adopt: the editor moves its folds the moment an edit lands, while `root`
   is still the parse from before it. Adoption belongs in `render()`, right after the re-parse.

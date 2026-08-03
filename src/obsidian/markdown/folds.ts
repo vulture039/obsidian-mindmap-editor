@@ -21,6 +21,16 @@ interface FoldStore {
   load?: (file: TFile) => Promise<FoldInfo | null>;
 }
 
+/** A rendered block, as the reading pane keeps them: level 7 is not a heading. */
+interface PreviewSection {
+  start?: { line: number };
+  el?: HTMLElement;
+}
+
+interface PreviewMode extends MarkdownSubView {
+  renderer?: { sections?: PreviewSection[] };
+}
+
 /**
  * Keeps every fold that names a line. Reading view puts a count where the
  * editor puts an end line, and dropping those lost the fold altogether.
@@ -63,6 +73,75 @@ export function readEditorFolds(app: App, file: TFile): FoldRange[] | null {
     return null;
   }
 }
+
+/**
+ * Folds a reading pane's headings to match the map. It will not take a fold
+ * state - applyFoldInfo does nothing there - but each heading carries a handle
+ * of its own, and clicking it folds that section. Its lists have handles too,
+ * with nothing tying them back to a line, so those stay the reader's own.
+ */
+export async function foldPreviewHeadings(
+  app: App,
+  file: TFile,
+  folded: Set<number>,
+): Promise<void> {
+  // A heading that is folded away has not been rendered, so its own handle is
+  // not there to click yet - and a pane draws more of itself as it scrolls.
+  // Each pass reaches what the last one brought back, and a pass that clicks
+  // nothing is the end of it.
+  for (let pass = 0; pass < PASSES; pass++) {
+    if (!foldPass(app, file, folded)) {
+      return;
+    }
+    await sleep(RENDER_DELAY);
+  }
+}
+
+/** One pass over the rendered headings; true when it changed any of them. */
+function foldPass(app: App, file: TFile, folded: Set<number>): boolean {
+  let clicked = false;
+
+  for (const leaf of app.workspace.getLeavesOfType('markdown')) {
+    const md = leaf.view;
+
+    if (
+      !(md instanceof MarkdownView) ||
+      md.file?.path !== file.path ||
+      md.getMode() === 'source'
+    ) {
+      continue;
+    }
+    const sections = (md.currentMode as PreviewMode).renderer?.sections ?? [];
+
+    for (const section of sections) {
+      const at = section.start?.line;
+      const handle = section.el?.querySelector<HTMLElement>(
+        '.heading-collapse-indicator',
+      );
+
+      // What the handle shows, not what the section says: the two disagree,
+      // and the handle is what the reader is looking at.
+      if (
+        handle &&
+        at !== undefined &&
+        folded.has(at) !== handle.hasClass('is-collapsed')
+      ) {
+        handle.click();
+        clicked = true;
+      }
+    }
+  }
+
+  return clicked;
+}
+
+/** Long enough for the pane to draw what a fold just brought back. */
+const RENDER_DELAY = 80;
+/** Deeper than any note nests, with room for what scrolling brings in. */
+const PASSES = 8;
+
+const sleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => window.setTimeout(resolve, ms));
 
 /** How a write went. Only `Failed` means the API itself let us down. */
 export enum FoldWrite {

@@ -331,9 +331,22 @@
   white-space: pre-wrap;
   /* As the lines it replaces wrap, so a long word leaves the height alone. */
   overflow-wrap: anywhere;
-  min-height: 1.4em;
+  /* Exactly the line box the drawn text has: anything else moves the node as
+     the edit opens. Empty still keeps its line, so the node does not jump. */
+  min-height: 1lh;
   cursor: text;
   user-select: text;
+}
+
+/* Obsidian flashes a line by tinting it, and a code span inside that line
+   paints its own background over the tint: all that showed of a flashed code
+   line was its indent. While the flash is up, the code lets it through - and
+   its own rule is as specific as anything that can be written from here. */
+.is-flashing .cm-hmd-indented-code,
+.is-flashing .cm-inline-code,
+.is-flashing .HyperMD-codeblock,
+.is-flashing code {
+  background: transparent !important;
 }
 
 /* A reading pane's mark, narrowed to the line the map has selected. The block

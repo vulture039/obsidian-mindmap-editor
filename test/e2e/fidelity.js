@@ -80,8 +80,9 @@ await restore();
 }
 
 // A write while the Markdown pane is edited underneath it: the map's line
-// numbers are behind the file, and the write has to find its node again.
-for (let i = 0; i < 4; i++) {
+// numbers are behind the file, and the write has to find its node again. Only
+// an editing pane can be typed into.
+for (let i = 0; reading ? false : i < 4; i++) {
   await restore();
   const before = await now();
   const at = before.split('\n').findIndex((l) => l.trim() === '- plain item');
@@ -158,6 +159,55 @@ for (const [what, edit, shows] of [
       'a line that is gone from the file is still on the map',
     );
   }
+}
+
+// What only a reading pane can be asked about.
+if (reading) {
+  // Everything open to begin with, whatever the last check left.
+  view.setAllCollapsed(0, false);
+  await drawn();
+  const pane = md.view.containerEl.querySelector('.markdown-preview-view');
+  /** Whether each heading the map can fold is folded in the pane. */
+  const headings = () =>
+    (md.view.currentMode.renderer?.sections ?? [])
+      .filter((s) => s.el?.querySelector('.heading-collapse-indicator'))
+      .map((s) => ({
+        line: s.start?.line,
+        folded: s.el
+          .querySelector('.heading-collapse-indicator')
+          .hasClass('is-collapsed'),
+      }));
+  const matches = () =>
+    headings().every((h) => h.folded === view.collapsedBranches.has(h.line));
+
+  await restore();
+  view.setAllCollapsed(0, false);
+  await until(matches);
+  check('a reading pane unfolds with the map', matches());
+
+  view.setAllCollapsed(0, true);
+  await until(matches);
+  check(
+    'a reading pane folds its headings with the map',
+    headings().length > 0 && matches(),
+    JSON.stringify(headings()),
+  );
+  view.setAllCollapsed(0, false);
+  await until(matches);
+
+  // A code block is not made of lines the way prose is; the line is found in
+  // it by what it says instead.
+  await restore();
+  const line = bodyLine('const x = 1;');
+
+  click(line);
+  const marked = await until(() =>
+    [...(CSS.highlights.get('mindmap-line') ?? [])]
+      .map((r) => r.toString().trim())
+      .find((t) => t === 'const x = 1;'),
+  );
+
+  check('a line inside a code block is marked in a reading pane', !!marked);
 }
 
 await restore();

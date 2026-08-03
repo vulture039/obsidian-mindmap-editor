@@ -20,9 +20,10 @@ No new file format, no markup to add.
   dropping near a sibling's top/bottom edge inserts it there. A rename is written as it is typed, and
   `Ctrl/Cmd + Z` takes it back.
 - **Working checkboxes** - Clicking toggles `[ ]` ⇄ `[x]` in the file.
-- **Collapse branches, in sync with the editor** - A handle on each node folds its branch (`−` / `+3`), and an
-  editing pane folds with it - both ways, and after a restart. A reading pane's folds are read but cannot be
-  set: that is Obsidian's, not the map's. The header buttons and the fold commands do the whole map at once.
+- **Collapse branches, in sync with the Markdown pane** - A handle on each node folds its branch (`−` / `+3`),
+  and the pane folds with it - both ways, and after a restart. A reading pane takes no fold state, so there
+  the map folds its headings by their own handles; its lists stay the reader's. The header buttons and the
+  fold commands do the whole map at once.
 - **Show a node's own text** - Off by default; the `¶` header button draws the lines under a node that are no
   node of their own inside it, and `≡` on its corner folds them away. Click a line to put the editor's cursor
   on it, double-click to open it there - the map draws this text, the editor writes it.
@@ -76,8 +77,8 @@ None of these come with a hotkey; bind the ones you want in Settings → Hotkeys
 
 - **Follow active file** (default on)
 - **Hide completed tasks**
-- **Sync collapse state with Markdown folding** (default on) - Needs an editor pane; list folding also follows
-  Obsidian's Editor → Fold settings.
+- **Sync collapse state with Markdown folding** (default on) - An editing pane folds both ways; a reading pane
+  follows along by its headings. List folding also follows Obsidian's Editor → Fold settings.
 - **Show node text on the map** - Draw a node's own text inside the node; also the `¶` header button.
 - **Split direction** - Side by side / stacked; also updates itself when you rearrange the map pane.
 - **Branch colors** - Custom palette, one hex color per line.

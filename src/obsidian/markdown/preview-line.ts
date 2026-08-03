@@ -65,18 +65,26 @@ export function markPreviewLine(
     return false;
   }
   const { runs, whole } = ownRuns(flashed);
-  const range = runs[line - block.first];
+  const lined = runs.length === block.lines && !(whole && runs.length < 2);
+  // A run per line, or the block is not made of lines at all - a code block,
+  // a table - and the line has to be found in it by what it says.
+  const range = lined ? runs[line - block.first] : saying(flashed, view, line);
 
-  // A run per line, or the two are not the same block. One run covering all of
-  // it and nothing else: the flash already means that one line.
-  if (!range || runs.length !== block.lines || (whole && runs.length < 2)) {
+  if (!range) {
     return false;
   }
+  mark(view, flashed, range);
+
+  return true;
+}
+
+/** Puts the mark up, and takes it down when the flash it stands in for goes. */
+function mark(view: MarkdownView, flashed: Element, range: Range): void {
   clearPreviewLine();
   CSS.highlights.set(HIGHLIGHT, new Highlight(range));
   view.containerEl.addClass(QUIET);
-  // Both marks go out together: the class is all that quiets the block, and
-  // Obsidian keeps its flash on for a good second longer than one expects.
+  // Both marks go out together: the class is all that quiets the flash, and
+  // Obsidian keeps it on for a good second longer than one expects.
   watch = new MutationObserver(() => {
     if (!flashed.hasClass('is-flashing')) {
       clearPreviewLine();
@@ -84,8 +92,6 @@ export function markPreviewLine(
   });
   watch.observe(flashed, { attributeFilter: ['class'] });
   fade = view.containerEl.win.setTimeout(clearPreviewLine, FLASH_MS);
-
-  return true;
 }
 
 /**
@@ -137,6 +143,62 @@ export function clearPreviewLine(): void {
     window.clearTimeout(fade);
     fade = null;
   }
+}
+
+/**
+ * Where the block says what the line says, when its rendering is nothing like
+ * a list of lines. Only for text that appears in it once: a second occurrence
+ * and there is no telling which one the line is.
+ */
+function saying(
+  block: Element,
+  view: MarkdownView,
+  line: number,
+): Range | null {
+  if (line < 0 || line > view.editor.lastLine()) {
+    return null;
+  }
+  // What the line says once the file's own marks are off it: a bullet, a task
+  // box and a heading's hashes are drawn, not written, so the rendering has
+  // none of them.
+  const text = view.editor
+    .getLine(line)
+    ?.replace(/^\s*(?:[-*+]|\d+[.)])\s+(?:\[[ xX]\]\s+)?|^\s*#{1,6}\s+/, '')
+    .trim();
+
+  if (!text) {
+    return null;
+  }
+  // Across the text nodes, not inside one: a highlighted code line is a span
+  // per token, and a line of prose is one per link.
+  const walk = block.doc.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+  const parts: { node: Node; at: number }[] = [];
+  let all = '';
+
+  for (let node = walk.nextNode(); node; node = walk.nextNode()) {
+    parts.push({ node, at: all.length });
+    all += node.textContent ?? '';
+  }
+  const at = all.indexOf(text);
+
+  // Twice in the same block and there is no telling which one the line is.
+  if (at < 0 || all.indexOf(text, at + 1) >= 0) {
+    return null;
+  }
+  const range = block.doc.createRange();
+  const end = at + text.length;
+  const holding = (offset: number): { node: Node; at: number } | undefined =>
+    [...parts].reverse().find((part) => part.at <= offset);
+  const from = holding(at);
+  const to = holding(end - 1);
+
+  if (!from || !to) {
+    return null;
+  }
+  range.setStart(from.node, at - from.at);
+  range.setEnd(to.node, end - to.at);
+
+  return range;
 }
 
 /**

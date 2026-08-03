@@ -179,10 +179,12 @@ describe('parseMarkdown - body text', () => {
     ]);
   });
 
-  it('leaves the root alone, frontmatter included', () => {
+  it('gives the note itself the prose above its first heading', () => {
     const root = parseMarkdown('---\ntitle: x\n---\nloose\n# A', 'Note');
 
-    expect(root.body).toEqual([]);
+    // Frontmatter is nobody's text; what follows it, above any node, is the
+    // note's own and is drawn on its pill.
+    expect(root.body).toEqual([{ line: 3, text: 'loose' }]);
   });
 
   it('reads body text that follows a child', () => {
@@ -256,6 +258,13 @@ describe('tree helpers', () => {
     expect(findEnclosing(root, 99)).toBe(null);
   });
 
+  it('findEnclosing gives the note itself its own prose', () => {
+    const root = parseMarkdown('loose\n# A\n- one', 'Note');
+
+    expect(findEnclosing(root, 0)!.type).toBe('root');
+    expect(findEnclosing(root, 1)!.text).toBe('A');
+  });
+
   it('isDescendantOrSelf walks the parent chain', () => {
     const root = parseMarkdown('# A\n## B', 'Note');
     const a = root.children[0]!;
@@ -270,5 +279,25 @@ describe('tree helpers', () => {
     const root = parseMarkdown('# A\n## B\n### C', 'Note');
 
     expect(maxHeadingLevel(root.children[0]!)).toBe(3);
+  });
+});
+
+describe('a note written on Windows', () => {
+  it('parses the same as one written anywhere else', () => {
+    // The carriage return is no part of a line, and every pattern here would
+    // trip over it: the nodes, their text and their lines must come out alike.
+    const shape = (root: MindNode): unknown[] =>
+      root.children.map((n) => [
+        n.type,
+        n.text,
+        n.line,
+        n.endLine,
+        n.body.map((b) => [b.line, b.text]),
+        shape(n),
+      ]);
+
+    expect(
+      shape(parseMarkdown('# H\r\n\r\n- a\r\n  text\r\n- b\r\n', 'Note')),
+    ).toEqual(shape(parseMarkdown('# H\n\n- a\n  text\n- b\n', 'Note')));
   });
 });

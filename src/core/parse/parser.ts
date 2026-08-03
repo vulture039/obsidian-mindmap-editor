@@ -44,7 +44,9 @@ function indentWidth(text: string): number {
 }
 
 export function parseMarkdown(text: string, rootText: string): MindNode {
-  const lines = text.split('\n');
+  // A note written on Windows ends its lines with a carriage return, which is
+  // no part of any line: left on, it defeats every pattern below.
+  const lines = text.split(/\r?\n/);
   const lastLine = lines.length - 1;
   const root: MindNode = {
     type: 'root',
@@ -162,7 +164,7 @@ export function parseMarkdown(text: string, rootText: string): MindNode {
   }
 
   computeEndLines(root, lastLine);
-  collectBodies(root, lines);
+  collectBodies(root, lines, start);
 
   return root;
 }
@@ -245,7 +247,13 @@ export function commonIndent(texts: string[]): string {
  * Fills in each node's own text: its range minus every child's, blank lines at
  * either end dropped. What is left is what the map can fold and edit.
  */
-function collectBodies(root: MindNode, lines: string[]): void {
+/**
+ * Every node's own lines, the root's included: prose above the first heading
+ * belongs to the note itself, and the map draws it on the note's own pill.
+ * `start` is where the note begins - past its frontmatter, which is nobody's
+ * text.
+ */
+function collectBodies(root: MindNode, lines: string[], start: number): void {
   const visit = (n: MindNode): void => {
     const own: BodyLine[] = [];
     const take = (from: number, to: number): void => {
@@ -253,7 +261,7 @@ function collectBodies(root: MindNode, lines: string[]): void {
         own.push({ line: i, text: (lines[i] ?? '').trimEnd() });
       }
     };
-    let next = n.line + 1;
+    let next = n.type === 'root' ? start : n.line + 1;
 
     for (const c of n.children) {
       take(next, c.line - 1);
@@ -277,9 +285,7 @@ function collectBodies(root: MindNode, lines: string[]): void {
     }
   };
 
-  for (const c of root.children) {
-    visit(c);
-  }
+  visit(root);
 }
 
 /**
@@ -335,7 +341,9 @@ export function findEnclosing(root: MindNode, line: number): MindNode | null {
     if (line < n.line || line > n.endLine) {
       return;
     }
-    if (n.type !== 'root') {
+    // The note itself counts, but only for what no node of its own covers:
+    // the prose above its first heading is its text, and nobody else's.
+    if (n.type !== 'root' || n.body.some((b) => b.line === line)) {
       found = n;
     }
     for (const c of n.children) {

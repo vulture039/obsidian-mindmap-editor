@@ -1,9 +1,4 @@
-import {
-  BodyLine,
-  commonIndent,
-  lineMatchesNode,
-  MindNode,
-} from '../parse/parser';
+import { lineMatchesNode, MindNode } from '../parse/parser';
 import {
   CHECKBOX_RE,
   HEADING_SHIFT_RE,
@@ -56,6 +51,10 @@ function listInsertPoint(target: MindNode): number {
  * to the wrong line. applyOp catches the throw, notifies, and re-renders.
  */
 function requireNodeLine(lines: string[], node: MindNode): string {
+  // The note itself has no line of its own; there is nothing to be stale.
+  if (node.type === 'root') {
+    return '';
+  }
   const line = lines[node.line];
 
   if (line === undefined || !lineMatchesNode(line, node)) {
@@ -102,181 +101,6 @@ export function setTextOp(
   }
 
   return lines;
-}
-
-/**
- * A node's own text, split into consecutive runs. A child sitting between two
- * of them keeps them apart in the file, so each is written back on its own -
- * one rewrite spanning both would move text across the child.
- */
-function bodyRuns(node: MindNode): BodyLine[][] {
-  const runs: BodyLine[][] = [];
-
-  for (const b of node.body) {
-    const last = runs[runs.length - 1];
-    const end = last?.[last.length - 1];
-
-    if (last && end && b.line === end.line + 1) {
-      last.push(b);
-    } else {
-      runs.push([b]);
-    }
-  }
-
-  return runs;
-}
-
-/** The run an edit anchored at `line` belongs to; empty for a node with no text. */
-export function bodyRunOf(node: MindNode, line: number): BodyLine[] {
-  const runs = bodyRuns(node);
-
-  return (
-    runs.find(
-      (run) => line >= run[0]!.line && line <= run[run.length - 1]!.line,
-    ) ??
-    runs[0] ??
-    []
-  );
-}
-
-/**
- * Replaces the run of a node's own text holding `anchor`; an empty string
- * removes it. Every body line is checked first, so the edit lands on the text
- * it was made against or not at all.
- */
-export function setBodyOp(
-  lines: string[],
-  node: MindNode,
-  text: string,
-  anchor: number,
-): string[] {
-  requireNodeLine(lines, node);
-  const indent = requireFreshBody(lines, node);
-  // Empty is no lines at all, not one blank one: this is how the text goes.
-  const body =
-    text === ''
-      ? []
-      : text.split('\n').map((line) => {
-          const trimmed = line.trimEnd();
-
-          return trimmed === '' ? '' : indent + trimmed;
-        });
-
-  const run = bodyRunOf(node, anchor);
-  const from = run[0]?.line ?? node.line + 1;
-  // The editor trims the end of what it hands back, so a blank line the run
-  // ended on - which is what holds it apart from whatever follows - goes back
-  // in. Text that already ends blank says its own last word, and text that is
-  // gone entirely takes the gap with it.
-  // A run that is nothing but blank lines has no gap to hold: its own lines
-  // are the gap, and the text just typed into them stands where they stood.
-  const gap = run.every((b) => b.text === '')
-    ? 0
-    : blankRun([...run].reverse());
-  const keepsGap = body.length > 0 && body[body.length - 1] !== '';
-  const next = keepsGap ? [...body, ...Array<string>(gap).fill('')] : body;
-  const was = run.map((b) => lines[b.line] ?? '');
-
-  lines.splice(from, run.length, ...keepUntouched(next, was));
-
-  return lines;
-}
-
-/**
- * Removes one line of a node's own text and nothing else. Its own op, because
- * an edit cannot tell a line the user deleted from one the editor trimmed,
- * and here there is nothing to guess.
- */
-export function deleteBodyLineOp(
-  lines: string[],
-  node: MindNode,
-  line: number,
-): string[] {
-  requireNodeLine(lines, node);
-  requireFreshBody(lines, node);
-  if (!node.body.some((b) => b.line === line)) {
-    throw new Error(`Mindmap: line ${line} is not text of "${node.text}"`);
-  }
-  lines.splice(line, 1);
-
-  return lines;
-}
-
-/**
- * Swaps one line of a node's own text with the one above or below it, inside
- * the same run: the lines move as they are, indent and all.
- */
-export function moveBodyLineOp(
-  lines: string[],
-  node: MindNode,
-  line: number,
-  delta: -1 | 1,
-): string[] {
-  requireNodeLine(lines, node);
-  requireFreshBody(lines, node);
-  const run = bodyRunOf(node, line);
-  const at = run.findIndex((b) => b.line === line);
-  const other = run[at + delta];
-
-  if (at < 0 || !other) {
-    throw new Error(`Mindmap: line ${line} has nowhere to go`);
-  }
-  const moved = lines[line] ?? '';
-
-  lines[line] = lines[other.line] ?? '';
-  lines[other.line] = moved;
-
-  return lines;
-}
-
-/**
- * Proves every body line is still what the map showed, and answers with the
- * indent they carry. A blank line is compared as the empty line it is:
- * `indent + ''` matches nothing, and would refuse every edit to a body with a
- * paragraph break in it.
- */
-function requireFreshBody(lines: string[], node: MindNode): string {
-  const raw = node.body.map((b) => lines[b.line] ?? '');
-  const indent = node.body.length
-    ? commonIndent(raw)
-    : node.type === 'list'
-      ? node.indent + detectIndentUnit(lines)
-      : '';
-  const stale = node.body.find(
-    (b, i) =>
-      (raw[i] ?? '').trimEnd() !== (b.text === '' ? '' : indent + b.text),
-  );
-
-  if (stale) {
-    throw new Error(
-      `Mindmap: line ${stale.line} no longer matches the text of "${node.text}"`,
-    );
-  }
-
-  return indent;
-}
-
-/**
- * Puts back the line exactly as the file had it wherever the text is the same
- * - trailing spaces are a hard line break in Markdown, and the indent on a
- * blank line is the file's business. Only line for line: once the count has
- * changed, which line is which is no longer a question this can answer.
- */
-function keepUntouched(next: string[], was: string[]): string[] {
-  if (next.length !== was.length) {
-    return next;
-  }
-
-  return next.map((line, i) =>
-    line.trim() === (was[i] ?? '').trim() ? (was[i] ?? line) : line,
-  );
-}
-
-/** How many of these lines are blank before the first line of text. */
-function blankRun(run: BodyLine[]): number {
-  const text = run.findIndex((b) => b.text !== '');
-
-  return text < 0 ? 0 : text;
 }
 
 function detectIndentUnit(lines: string[]): string {

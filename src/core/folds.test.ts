@@ -21,22 +21,29 @@ describe('branchTargets / textTargets', () => {
   it('splits the nodes with children from the ones with text', () => {
     const root = parseMarkdown(NOTE, 'Note');
 
+    // The note itself is line -1: it has children, so it folds like any other.
     // 0 "# A" and 1 "- a" have children; 3 "# B" only body text.
-    expect(branchTargets(root)).toEqual([0, 1]);
+    expect(branchTargets(root)).toEqual([-1, 0, 1]);
     expect(textTargets(root)).toEqual([3]);
   });
 
-  it('counts a node that has both, and never the root', () => {
+  it('counts a node that has both', () => {
     const root = parseMarkdown('# A\nintro\n- a', 'Note');
 
-    expect(branchTargets(root)).toEqual([0]);
+    expect(branchTargets(root)).toEqual([-1, 0]);
     expect(textTargets(root)).toEqual([0]);
+  });
+
+  it('counts the note itself for the prose above its first heading', () => {
+    const root = parseMarkdown('loose\n\n# A', 'Note');
+
+    expect(textTargets(root)).toEqual([-1]);
   });
 
   it('skips nodes that hide nothing, blank lines included', () => {
     const root = parseMarkdown('- a\n- b\n\n', 'Note');
 
-    expect(branchTargets(root)).toEqual([]);
+    expect(branchTargets(root)).toEqual([-1]);
     expect(textTargets(root)).toEqual([]);
   });
 });

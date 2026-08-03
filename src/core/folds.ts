@@ -22,10 +22,16 @@ export function textTargets(root: MindNode): number[] {
   return targets(root, (n) => n.body.length > 0);
 }
 
+/**
+ * The note itself is a node like any other on the map: its branch folds, and
+ * the prose above its first heading folds with the same handle. It has no line
+ * in the file, so nothing about it reaches the editor - `mergeFolds` starts at
+ * its children - but the map has to keep what it was told.
+ */
 function targets(root: MindNode, wanted: (n: MindNode) => boolean): number[] {
   const lines: number[] = [];
   const visit = (n: MindNode): void => {
-    if (n.type !== 'root' && wanted(n)) {
+    if (wanted(n)) {
       lines.push(n.line);
     }
     for (const c of n.children) {

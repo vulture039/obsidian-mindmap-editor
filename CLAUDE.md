@@ -57,7 +57,8 @@ part on each side, the two share a basename (`core/folds.ts` maps the ranges,
     - **relocate.ts** - Finds a node again in a fresh parse, by what it says and what it sits under
     - **edit-value.ts** - What a typed name becomes before it goes back into the document
   - **render/** - Where it all goes on the canvas:
-    - **colors.ts** - Per-branch colors, cycled by position from the palette setting
+    - **colors.ts** - Per-branch colors, cycled by position from the palette setting, plus how many levels
+      down a node sits - the stylesheet turns that into its fill, text size and border
     - **layout.ts** - Left-to-right tree layout (measures real offsetWidth/Height, so not unit-tested)
     - **drag.ts** - Pure drop-target resolution
   - **folds.ts** - Obsidian's fold ranges ⇄ the map's two fold sets, and what each of them can fold
@@ -154,6 +155,26 @@ code already carries belongs there, not here.
 
 - **Collapse handles are canvas elements, not node children** - placed after `applyPositions`, so they leave
   node widths to the text, and each stops its own pointerdown or the canvas starts a pan.
+- **An edge starts past the collapse handle, and never past its own child** - the handle stands in the gap and
+  hands out the far side of itself, so it reads as the joint; `EDGE_MIN_RUN` clamps that start, since the
+  layout is free to shorten a gap below what the handle takes.
+- **A level is read off the column it starts in, not off the node** - `columnsFor` gives every node of a level
+  one left edge, from the widest node of the level before. Nothing drawn on the node replaces it: fill, size
+  and border were each pushed as far as they go first, and ragged left edges still read as one flat thing.
+- **The bend belongs at the parent's end** - a column is as wide as its widest node, so a narrow one's edge
+  runs a long way, and that length has to go into a straight run. Both control points sit near the joint, so
+  siblings part company at once. A shared trunk by the children was tried: the curves stay on one line to the
+  last moment and, overdrawn in each child's color, come out in pieces. One cubic, no straight tail joined on
+  - the join shows as a kink.
+- **An edge's thickness is its arrival's, not its departure's** - `EDGE_WIDTHS` is indexed by the level the
+  edge lands on and matched to that level's border. Siblings share a level, so the stub they leave by is that
+  thickness too, and no edge changes width along itself.
+- **A rung has to differ from its neighbour in every channel at once** - fill, outline, size. Whichever one
+  two rungs share says nothing where it is needed, and one channel alone (a tint 8% lighter, a border half a
+  pixel thinner) is invisible at a glance.
+- **The ladder may never go back up** - a child drawn louder than its parent reads as a new start, so the rung
+  is plain depth. Counting a heading by its heading level and a list by its indent was tried: a list item
+  under an H3 restarted at the loudest rung, inside the node that held it.
 - **Opening an edit must not move the map** - the editor is styled like what it replaces, down to blank-line
   height and wrapping, and its buttons float over the node rather than taking a row.
 - **hideCompleted removes checked nodes entirely** - they are absent from `laidByLine`, so selection and

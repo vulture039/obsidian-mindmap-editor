@@ -50,7 +50,7 @@ export class MindmapSettingTab extends PluginSettingTab {
       },
       {
         name: 'Branch colors',
-        desc: 'Colors assigned to top-level branches by position, one hex color per line. Branches beyond the last line cycle back to the first. Leave empty for the default palette.',
+        desc: 'Colors assigned to top-level branches by position, one hex color per line. Branches beyond the last line cycle back to the first. One line paints the whole map in that one color; leave empty for the default palette.',
         control: {
           type: 'textarea',
           key: 'palette',

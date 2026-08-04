@@ -20,9 +20,20 @@ export function makeLaid(
   return { node, el, color, w: 0, h: 0, x: 0, y: 0, subtreeH: 0, children: [] };
 }
 
-const H_GAP = 48;
 const V_GAP = 12;
 const PADDING = 40;
+
+/**
+ * Edge length per level, and the length every level past the last one takes.
+ * Uneven on purpose: the first steps in are the ones that have to read, and
+ * they are where most maps live. The last value has to keep fitting a branch
+ * node's collapse handle, which stands in this gap.
+ */
+const H_GAPS = [72, 56, 44, 40];
+
+function gapAt(level: number): number {
+  return H_GAPS[Math.min(level, H_GAPS.length - 1)]!;
+}
 
 /**
  * Left-to-right tidy tree layout for variable-size nodes. Nodes must already
@@ -31,12 +42,37 @@ const PADDING = 40;
 export function layoutTree(root: LaidNode): { width: number; height: number } {
   measure(root);
   computeSubtreeHeight(root);
-  place(root, PADDING, PADDING);
+  place(root, columnsFor(root), 0, PADDING);
   const bounds = { width: 0, height: 0 };
 
   collectBounds(root, bounds);
 
   return { width: bounds.width + PADDING, height: bounds.height + PADDING };
+}
+
+/**
+ * Where each level starts, from the widest node on the level before it: a
+ * shared left edge is how a tree says "same depth", and nothing drawn on the
+ * nodes says it instead. A node's own width then only lengthens its own edge,
+ * so one long label no longer shifts everything under it out of line.
+ */
+function columnsFor(root: LaidNode): number[] {
+  const widest: number[] = [];
+  const walk = (laid: LaidNode, level: number): void => {
+    widest[level] = Math.max(widest[level] ?? 0, laid.w);
+    for (const c of laid.children) {
+      walk(c, level + 1);
+    }
+  };
+
+  walk(root, 0);
+  const xs = [PADDING];
+
+  for (let level = 1; level < widest.length; level++) {
+    xs[level] = xs[level - 1]! + widest[level - 1]! + gapAt(level - 1);
+  }
+
+  return xs;
 }
 
 function measure(laid: LaidNode): void {
@@ -63,8 +99,13 @@ function computeSubtreeHeight(laid: LaidNode): number {
   return laid.subtreeH;
 }
 
-function place(laid: LaidNode, x: number, top: number): void {
-  laid.x = x;
+function place(
+  laid: LaidNode,
+  columns: number[],
+  level: number,
+  top: number,
+): void {
+  laid.x = columns[level]!;
   laid.y = top + (laid.subtreeH - laid.h) / 2;
   if (!laid.children.length) {
     return;
@@ -75,10 +116,9 @@ function place(laid: LaidNode, x: number, top: number): void {
     childBlock += c.subtreeH;
   }
   let cy = top + (laid.subtreeH - childBlock) / 2;
-  const childX = x + laid.w + H_GAP;
 
   for (const c of laid.children) {
-    place(c, childX, cy);
+    place(c, columns, level + 1, cy);
     cy += c.subtreeH + V_GAP;
   }
 }

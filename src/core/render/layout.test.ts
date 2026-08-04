@@ -102,6 +102,37 @@ describe('layoutTree', () => {
     }
   });
 
+  it('starts every node of a level on the same edge', () => {
+    const under = (w: number): LaidNode => laid(w, 20, [laid(30, 20)]);
+    const root = laid(60, 20, [under(40), under(200), under(90)]);
+
+    layoutTree(root);
+    const children = root.children.map((c) => c.children[0]!);
+
+    expect(new Set(root.children.map((c) => c.x)).size).toBe(1);
+    expect(new Set(children.map((c) => c.x)).size).toBe(1);
+    // Cleared by the widest of the level before, not by each node's own width.
+    expect(children[0]!.x).toBeGreaterThan(root.children[1]!.x + 200);
+  });
+
+  it('shortens the edges level by level, then holds', () => {
+    const deep = (levels: number): LaidNode =>
+      levels === 0 ? laid(40, 20) : laid(40, 20, [deep(levels - 1)]);
+    const root = deep(6);
+
+    layoutTree(root);
+    const chain = all(root);
+    const gaps = chain
+      .slice(1)
+      .map((n, i) => n.x - (chain[i]!.x + chain[i]!.w));
+
+    expect(gaps[1]).toBeLessThan(gaps[0]!);
+    expect(gaps[2]).toBeLessThan(gaps[1]!);
+    // A floor, or a deep chain would end up with its nodes touching.
+    expect(Math.min(...gaps)).toBeGreaterThan(0);
+    expect(gaps.at(-1)).toBe(gaps.at(-2));
+  });
+
   it('reports a canvas that holds every node', () => {
     const root = laid(60, 20, [laid(40, 60), laid(40, 200, [laid(80, 20)])]);
     const { width, height } = layoutTree(root);

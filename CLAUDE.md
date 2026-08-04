@@ -44,7 +44,8 @@ Two questions, in order. Does the file import the `obsidian` package -
 part on each side, the two share a basename (`core/folds.ts` maps the ranges,
 `obsidian/markdown/folds.ts` reads and writes them).
 
-- **main.ts** - Plugin entry: view registration, commands, settings, openSplit
+- **main.ts** - Plugin entry: view registration, commands, the note menu's "Open mind map", settings,
+  which leaf a new map lands on
 - **core/** - No `obsidian` import, so it is unit-testable in plain Node:
   - **parse/** - Markdown in:
     - **parser.ts** - Markdown → MindNode tree; `body` is a node's own lines (its range minus every child's)

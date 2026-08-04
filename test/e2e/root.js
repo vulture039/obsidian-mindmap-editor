@@ -73,6 +73,27 @@ check(
   );
 }
 
+// The pill carries the file's name, which no write can reach: it must not
+// open an editor at all, rather than take text that goes nowhere.
+{
+  await restore();
+  const pill = rootEl();
+
+  click(pill);
+  click(pill, 'dblclick');
+  await wait(120);
+  const opened = !!editing();
+
+  key('F2');
+  await wait(120);
+  check(
+    "the note's own pill cannot be edited",
+    !opened && !editing(),
+    'an editor opened on the root',
+  );
+  await closeEditor();
+}
+
 await restore();
 
 return { results, mode: reading ? 'reading' : 'editing' };

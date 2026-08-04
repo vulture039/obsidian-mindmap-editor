@@ -16,7 +16,8 @@ No new file format, no markup to add.
 ## Features
 
 - **Automatic mind map** - Headings and bullet lists become nodes, with the note title as the root;
-  heading depth and list indentation define the hierarchy.
+  heading depth and list indentation define the hierarchy. The root is the file's own name, so it is the one
+  node the map does not edit - rename the note itself.
   Headings stand out by weight and a color-tinted fill; list items are plain.
 - **Edit on the map** - Rename, add, delete, drag & drop. Dropping on a node's middle makes it a child;
   dropping near a sibling's top/bottom edge inserts it there. A rename is written as it is typed, and

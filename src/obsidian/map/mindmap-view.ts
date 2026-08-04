@@ -2109,6 +2109,13 @@ export class MindmapView extends ItemView {
     if (this.isBusy() || !this.file) {
       return;
     }
+    // The note's own pill says the file's name, which is no line in it: there
+    // is nothing for a write to aim at, so an editor here would take text the
+    // file never sees. The menu already leaves the root out; this is the same
+    // rule for a double-click and for F2.
+    if (node.type === 'root') {
+      return;
+    }
     const file = this.file;
     // The caller's node/el may be stale: closures from a context menu or
     // dblclick outlive re-renders. Remap to the current DOM element, and

@@ -38,7 +38,12 @@ import {
   readEditorFolds,
 } from '../markdown/folds';
 import { LaidNode, layoutTree, makeLaid } from '../../core/render/layout';
-import { branchColorFor, parsePalette } from '../../core/render/colors';
+import {
+  DEPTH_CAP,
+  NodeColor,
+  nodeColorFor,
+  parsePalette,
+} from '../../core/render/colors';
 import { renderNodeText } from './node-text';
 import { canDrop } from '../../core/render/drag';
 import { singleLineValue } from '../../core/write/edit-value';
@@ -66,11 +71,42 @@ import {
 export const VIEW_TYPE_MINDMAP = 'mindmap-editor';
 
 /**
- * Gap (px) between a node's right edge and its collapse handle. Long enough
- * for the stub to read as a joint the branch hangs from, and to keep the
- * handle clear of the text handle sitting on the node's corner.
+ * Gap (px) between a node's right edge and its collapse handle. Short, because
+ * the edges fan out from that right edge: a handle further along would stand
+ * between two of them rather than on the joint they share.
  */
-const COLLAPSE_HANDLE_GAP = 10;
+const COLLAPSE_HANDLE_GAP = 4;
+
+/**
+ * Edge thickness by the level the edge arrives at, matched to that level's
+ * border. Siblings share a level, so no edge changes width along its length.
+ */
+const EDGE_WIDTHS = [2, 2, 1.5, 1];
+
+/** Run left for an edge once the collapse handle has taken its share. */
+const EDGE_MIN_RUN = 12;
+
+/** How far out of the parent the bend is spent, at most. */
+const BEND_LEAD = 60;
+const BEND_SETTLE = 110;
+
+/**
+ * Out of the parent, across to the child's row early, then all but straight in.
+ * Both control points sit near the parent, which parts the siblings a few
+ * pixels out and leaves the rest of a long edge running straight.
+ */
+function branchCurve(x1: number, y1: number, x2: number, y2: number): string {
+  if (Math.abs(y2 - y1) < 1) {
+    return `M ${x1} ${y1} H ${x2}`;
+  }
+  const run = x2 - x1;
+  const lead = Math.min(run * 0.25, BEND_LEAD);
+  const settle = Math.min(run * 0.45, BEND_SETTLE);
+
+  return (
+    `M ${x1} ${y1} C ${x1 + lead} ${y1}, ` + `${x1 + settle} ${y2}, ${x2} ${y2}`
+  );
+}
 
 /** Classes the view both writes and looks for again. */
 const EDIT_INPUT = 'mindmap-edit-input';
@@ -1293,7 +1329,7 @@ export class MindmapView extends ItemView {
     this.canvasEl.createSvg('svg', { cls: 'mindmap-edges' });
     const palette = parsePalette(this.plugin.settings.palette);
 
-    this.laidRoot = this.buildNode(this.root, '', palette);
+    this.laidRoot = this.buildNode(this.root, palette);
     this.applyLayout();
     this.scrollerEl.scrollLeft = scrollLeft;
     this.scrollerEl.scrollTop = scrollTop;
@@ -1324,21 +1360,20 @@ export class MindmapView extends ItemView {
     }
   }
 
-  private buildNode(
-    node: MindNode,
-    color: string,
-    palette: string[],
-  ): LaidNode {
+  private buildNode(node: MindNode, palette: string[]): LaidNode {
     const el = this.canvasEl.createDiv({
       cls: ['mindmap-node', `mindmap-node-${node.type}`],
     });
 
     el.dataset.line = String(node.line);
 
-    const own = this.nodeColor(node, color, palette);
+    const own = nodeColorFor(node, palette);
 
-    if (own) {
-      el.setCssProps({ '--branch-color': own });
+    if (own.color) {
+      el.setCssProps({ '--branch-color': own.color });
+      // An attribute rather than a variable: the ladder it picks is uneven,
+      // which is a rule per level, not an expression.
+      el.dataset.depth = String(own.depth);
     }
 
     // The checkbox and the label share a row of their own, so body text below
@@ -1381,7 +1416,7 @@ export class MindmapView extends ItemView {
     });
     this.setupDrag(node, el);
 
-    const laid = makeLaid(node, el, own);
+    const laid = makeLaid(node, el, own.color);
 
     this.laidByLine.set(node.line, laid);
     this.buildChildNodes(node, laid, own, palette);
@@ -1453,26 +1488,6 @@ export class MindmapView extends ItemView {
     });
   }
 
-  /**
-   * The node's own branch color: the root has none, a top-level branch takes
-   * a palette color by its position, and deeper nodes inherit the passed-in
-   * color.
-   */
-  private nodeColor(
-    node: MindNode,
-    inherited: string,
-    palette: string[],
-  ): string {
-    if (node.type === 'root') {
-      return '';
-    }
-    if (node.parent?.type === 'root') {
-      return branchColorFor(node.parent.children.indexOf(node), palette);
-    }
-
-    return inherited;
-  }
-
   private collapseLabel(collapsed: boolean): string {
     return collapsed ? 'Expand branch' : 'Collapse branch';
   }
@@ -1487,10 +1502,10 @@ export class MindmapView extends ItemView {
   }
 
   /**
-   * Hangs the handles outside every node that has them and returns where each
-   * branch now starts. Only the branch handle moves that start: the "≡" sits
-   * on the node's own corner, out of the edges' way. Widths are read in one
-   * pass, after every placement.
+   * Hangs the handles outside every node that has them, and answers where each
+   * branch handle ends - the point the edges below it fan out from, so the
+   * handle sits on a straight run of wire rather than in the white space
+   * between two curves. Widths are read in one pass, after every placement.
    */
   private addCollapseToggles(laid: LaidNode): Map<LaidNode, number> {
     const branches: [LaidNode, HTMLElement][] = [];
@@ -1615,7 +1630,7 @@ export class MindmapView extends ItemView {
   private buildChildNodes(
     node: MindNode,
     laid: LaidNode,
-    own: string,
+    own: NodeColor,
     palette: string[],
   ): void {
     if (this.collapsedBranches.has(node.line)) {
@@ -1632,7 +1647,7 @@ export class MindmapView extends ItemView {
       if (isCompletedTask(child)) {
         shownDone++;
       }
-      laid.children.push(this.buildNode(child, own, palette));
+      laid.children.push(this.buildNode(child, palette));
     }
     if (hiddenDone > 0) {
       laid.children.push(this.buildDonePill(node, hiddenDone, own));
@@ -1649,7 +1664,7 @@ export class MindmapView extends ItemView {
   private buildDonePill(
     parent: MindNode,
     hiddenCount: number,
-    color: string,
+    own: NodeColor,
   ): LaidNode {
     const expand = hiddenCount > 0;
     const el = this.canvasEl.createDiv({
@@ -1660,8 +1675,10 @@ export class MindmapView extends ItemView {
     // element of their own.
     el.dataset.parentLine = String(parent.line);
 
-    if (color) {
-      el.setCssProps({ '--branch-color': color });
+    if (own.color) {
+      el.setCssProps({ '--branch-color': own.color });
+      // A level in from the parent it stands under, like the tasks it hides.
+      el.dataset.depth = String(Math.min(own.depth + 1, DEPTH_CAP));
     }
     el.createSpan({
       cls: 'mindmap-node-text',
@@ -1677,7 +1694,7 @@ export class MindmapView extends ItemView {
       void this.render();
     });
 
-    return makeLaid(SUMMARY_NODE, el, color);
+    return makeLaid(SUMMARY_NODE, el, own.color);
   }
 
   /**
@@ -1711,38 +1728,41 @@ export class MindmapView extends ItemView {
   }
 
   /**
-   * Draws the branch curves. A handle hands out its right side as the start
-   * (`outlets`) and gets a stub across its gap, so it reads as the joint the
-   * branch hangs from; a body-only handle gets neither, having no branch.
+   * Draws the branch curves. They leave from the far side of the collapse
+   * handle, with a stub carrying the wire out to it, so the handle reads as the
+   * joint the branch hangs from; `EDGE_MIN_RUN` keeps that start short of the
+   * children. `level` is the rung they land on, which the thickness comes from.
+   * The stub is one of their bundle, so it takes their color, not the parent's:
+   * at the root, which has none, a grey stub would meet a colored curve.
    */
   private drawEdges(
     svg: SVGSVGElement,
     laid: LaidNode,
     outlets: Map<LaidNode, number>,
+    level = 0,
   ): void {
     const y1 = laid.y + laid.h / 2;
-    const outlet = outlets.get(laid);
+    const right = laid.x + laid.w;
     const stroke = (color: string): string => color || 'var(--text-faint)';
+    const width = String(EDGE_WIDTHS[Math.min(level, EDGE_WIDTHS.length - 1)]!);
     const line = (d: string, color: string): void => {
       svg.createSvg('path', {
-        attr: { d, stroke: stroke(color), fill: 'none', 'stroke-width': '1.5' },
+        attr: { d, stroke: stroke(color), fill: 'none', 'stroke-width': width },
       });
     };
+    const outlet = outlets.get(laid);
+    const childX = laid.children[0]?.x;
+    const x1 =
+      outlet === undefined
+        ? right
+        : Math.max(right, Math.min(outlet, (childX ?? outlet) - EDGE_MIN_RUN));
 
-    if (outlet !== undefined && laid.node.children.length > 0) {
-      line(`M ${laid.x + laid.w} ${y1} H ${outlet}`, laid.color);
+    if (laid.node.children.length > 0) {
+      line(`M ${right} ${y1} H ${x1}`, laid.children[0]?.color ?? laid.color);
     }
     for (const child of laid.children) {
-      const x1 = outlet ?? laid.x + laid.w;
-      const x2 = child.x;
-      const y2 = child.y + child.h / 2;
-      const dx = Math.max(16, (x2 - x1) / 2);
-
-      line(
-        `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`,
-        child.color,
-      );
-      this.drawEdges(svg, child, outlets);
+      line(branchCurve(x1, y1, child.x, child.y + child.h / 2), child.color);
+      this.drawEdges(svg, child, outlets, level + 1);
     }
   }
 

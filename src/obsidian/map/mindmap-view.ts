@@ -180,6 +180,8 @@ export class MindmapView extends ItemView {
   private hideCompletedActionEl: HTMLElement | null = null;
   private bodyTextActionEl: HTMLElement | null = null;
   private linkActionEl: HTMLElement | null = null;
+  /** How many `pointEditorAtFile` calls this map has in flight. */
+  private pointing = 0;
   /** The two bulk-fold buttons in the header, by what each one folds. */
   private foldAllActionEls = new Map<FoldKind, HTMLElement>();
   /**
@@ -1941,6 +1943,11 @@ export class MindmapView extends ItemView {
     }
     const had = this.containerEl.contains(document.activeElement);
 
+    // Counted, because clicking a node calls this twice - once for the leaf
+    // going active, once for the node. The second finds the tab already up and
+    // returns at once; clearing the flag there would leave the first one
+    // revealing unguarded, which is the whole window it exists to cover.
+    this.pointing++;
     this.plugin.mapDrivenOpen = this.file.path;
     try {
       // Only the focus we took is given back: grabbing it unasked makes this
@@ -1950,7 +1957,9 @@ export class MindmapView extends ItemView {
         this.scrollerEl.focus({ preventScroll: true });
       }
     } finally {
-      this.plugin.mapDrivenOpen = null;
+      if (--this.pointing === 0) {
+        this.plugin.mapDrivenOpen = null;
+      }
     }
   }
 

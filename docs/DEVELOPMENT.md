@@ -68,7 +68,8 @@ npm run e2e     # Fixtures.md open in a map and in an editing pane
 
 `harness.js` goes in front of whichever check runs - the map, the pane, and the
 few ways of acting on either, so a check file is nothing but its cases. It waits
-for conditions rather than on a clock. Two checks live there, a line per case:
+for conditions rather than on a clock. Each file below is a check, a line per
+case:
 
 - **`fidelity.js`** (the default) - every write against the file it should
   leave, character for character, and everything the map draws against what the

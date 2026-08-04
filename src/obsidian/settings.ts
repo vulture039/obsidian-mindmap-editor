@@ -37,7 +37,7 @@ export class MindmapSettingTab extends PluginSettingTab {
       },
       {
         name: 'Split direction',
-        desc: 'How the workspace splits when the plugin opens a new pane (mind map or editor). Updates automatically when you rearrange the mind map pane.',
+        desc: 'How the workspace splits when the plugin opens a new pane (mind map or editor). A map opened beside one already on screen is a tab in its group, so this is the split the first one makes.',
         control: {
           type: 'dropdown',
           key: 'splitDirection',

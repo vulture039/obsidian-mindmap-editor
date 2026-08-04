@@ -28,7 +28,7 @@ No new file format, no markup to add.
   fold commands do the whole map at once.
 - **Show a node's own text** - Off by default; the `¶` header button draws the lines under a node that are no
   node of their own inside it, and `≡` on its corner folds them away. Click a line to put the editor's cursor
-  on it, double-click to open it there - the map draws this text, the editor writes it. The button is that
+  on it, double-click to open it there - the map draws this text, the editor writes it. The `¶` button is that
   map's own, so a second map can leave its text alone.
 - **Hide completed tasks** - The `✓✓` header button hides checked tasks behind one `✓ n done` node per parent.
   Click it to reveal just that parent (`− hide done` puts them back). Per map, and remembered across sessions.
@@ -85,7 +85,8 @@ None of these come with a hotkey; bind the ones you want in Settings → Hotkeys
   then switched on its own from its header (`✓✓`, `¶`).
 - **Sync collapse state with Markdown folding** (default on) - An editing pane folds both ways; a reading pane
   follows along by its headings. List folding also follows Obsidian's Editor → Fold settings.
-- **Split direction** - Side by side / stacked, for the split the first map opens in.
+- **Split direction** - Side by side / stacked, for any pane the plugin splits open (the first map, or an
+  editor for a note that has none). Later maps are tabs beside the first.
 - **Branch colors** - Custom palette, one hex color per line.
 
 ---

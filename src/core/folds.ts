@@ -126,12 +126,14 @@ export function pruneLines(lines: Set<number>, keep: number[]): Set<number> {
   return new Set([...lines].filter((line) => known.has(line)));
 }
 
-/** Comparable form of a fold set, for spotting changes in the editor. */
+/**
+ * Comparable form of a fold set, for spotting changes in the editor. Keyed by
+ * where each fold starts and nothing else: a fold is its start line, since
+ * Obsidian folds that line and everything under it, while `to` is the pane's
+ * own answer - reading view gives a different one for the very same fold.
+ */
 export function foldsKey(folds: FoldRange[]): string {
-  return folds
-    .map((f) => `${f.from}:${f.to}`)
-    .sort()
-    .join(',');
+  return [...new Set(folds.map((f) => f.from))].sort((a, b) => a - b).join(',');
 }
 
 export function sameLines(a: Set<number>, b: Set<number>): boolean {

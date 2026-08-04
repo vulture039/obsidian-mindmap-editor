@@ -159,7 +159,7 @@ describe('pruneLines', () => {
 });
 
 describe('foldsKey', () => {
-  it('is order-independent and range-sensitive', () => {
+  it('is order-independent and keyed by where each fold starts', () => {
     const a = [
       { from: 1, to: 2 },
       { from: 0, to: 3 },
@@ -167,9 +167,22 @@ describe('foldsKey', () => {
 
     expect(foldsKey(a)).toBe(foldsKey([...a].reverse()));
     expect(foldsKey(a)).not.toBe(foldsKey([{ from: 0, to: 3 }]));
-    expect(foldsKey([{ from: 0, to: 3 }])).not.toBe(
-      foldsKey([{ from: 0, to: 4 }]),
-    );
+  });
+
+  // The same two folds, read from the same file: the editor answers 47:65 and
+  // 56:64, reading view 47:48 and 56:57. Keying on `to` made every switch
+  // between the two panes look like the user had refolded the document.
+  it('does not change when a pane reports `to` its own way', () => {
+    const editing = [
+      { from: 47, to: 65 },
+      { from: 56, to: 64 },
+    ];
+    const reading = [
+      { from: 47, to: 48 },
+      { from: 56, to: 57 },
+    ];
+
+    expect(foldsKey(editing)).toBe(foldsKey(reading));
   });
 });
 

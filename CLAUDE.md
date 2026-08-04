@@ -110,7 +110,9 @@ code already carries belongs there, not here.
   meet it: a fold on a node with children is a branch fold, on one without them a text fold, and the text fold
   of a node that has children stays on the map. Keep that in `foldedKind`/`mergeFolds`; the view must not ask
   "does it have children" to place a fold.
-- **Only `from` in a fold range can be trusted** - reading view puts a count where the editor puts an end line.
+- **Only `from` in a fold range can be trusted** - reading view puts a count where the editor puts an end line,
+  so `foldsKey` and `collapsedFromFolds` both key on `from` alone. Measured on one file: the editor answers
+  `47:65, 56:64` where reading view answers `47:48, 56:57` for the very same two folds.
 - **A reading pane takes no fold state** - `applyFoldInfo` does nothing there, so `foldPreviewHeadings` clicks
   the handles its headings carry instead, a pass at a time: one that is folded away has not been rendered, so
   its own handle is not there to click until the one above it opens.

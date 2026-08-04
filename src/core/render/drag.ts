@@ -1,4 +1,4 @@
-import { isDescendantOrSelf, maxHeadingLevel, MindNode } from '../parser';
+import { isDescendantOrSelf, maxHeadingLevel, MindNode } from '../parse/parser';
 import { LaidNode } from './layout';
 
 /** Max distance (px) from the pointer to a node for snap reparenting. */

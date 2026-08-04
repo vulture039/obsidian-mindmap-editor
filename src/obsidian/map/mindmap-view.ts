@@ -1,9 +1,9 @@
 import {
   debounce,
   ItemView,
-  Keymap,
   MarkdownView,
   Menu,
+  Modifier,
   Notice,
   Scope,
   TAbstractFile,
@@ -11,33 +11,41 @@ import {
   ViewStateResult,
   WorkspaceLeaf,
 } from 'obsidian';
-import type MindmapPlugin from '../main';
+import type MindmapPlugin from '../../main';
 import {
   findByLine,
   findEnclosing,
   MindNode,
   parseMarkdown,
-} from '../core/parser';
+} from '../../core/parse/parser';
+import { relocateNode } from '../../core/write/relocate';
 import {
+  branchTargets,
   collapsedFromFolds,
+  FoldKind,
   FoldRange,
   foldsKey,
-  foldTargets,
-  isCollapsible,
   mergeFolds,
-  pruneCollapsed,
+  pruneLines,
   sameLines,
-} from '../core/folds';
-import { applyEditorFolds, loadStoredFolds, readEditorFolds } from './folds';
-import { LaidNode, layoutTree, makeLaid } from '../core/render/layout';
-import { branchColorFor, parsePalette } from '../core/render/colors';
-import { renderNodeText } from './node-text';
+  textTargets,
+} from '../../core/folds';
 import {
-  canDrop,
-  canDropAsSibling,
-  DropTarget,
-  findDrop,
-} from '../core/render/drag';
+  applyEditorFolds,
+  foldPreviewHeadings,
+  FoldWrite,
+  loadStoredFolds,
+  readEditorFolds,
+} from '../markdown/folds';
+import { LaidNode, layoutTree, makeLaid } from '../../core/render/layout';
+import { branchColorFor, parsePalette } from '../../core/render/colors';
+import { renderNodeText } from './node-text';
+import { canDrop } from '../../core/render/drag';
+import { singleLineValue } from '../../core/write/edit-value';
+import { DRAGGING_SELECTOR, setupNodeDrag } from './drag';
+import { EditorPane } from '../markdown/editor-pane';
+import { blockOf } from '../markdown/preview-line';
+import { caretAtEnd, EditSession, runEditor } from './inline-edit';
 import {
   addChildOp,
   addSiblingOp,
@@ -48,16 +56,42 @@ import {
   setCheckboxOp,
   setTextOp,
   toggleTaskOp,
-} from '../core/markdown-ops';
-import { findEditingView, findMarkdownView, updateFileLines } from './file-io';
+} from '../../core/write/ops';
+import {
+  findEditingView,
+  updateFileLines,
+  WroteToDisk,
+} from '../markdown/file-io';
 
 export const VIEW_TYPE_MINDMAP = 'mindmap-editor';
 
-/** Pointer travel (px) before a press on a node turns into a drag. */
-const DRAG_START_THRESHOLD = 6;
+/**
+ * Gap (px) between a node's right edge and its collapse handle. Long enough
+ * for the stub to read as a joint the branch hangs from, and to keep the
+ * handle clear of the text handle sitting on the node's corner.
+ */
+const COLLAPSE_HANDLE_GAP = 10;
 
-/** Gap (px) between a node's right edge and its collapse handle. */
-const COLLAPSE_HANDLE_GAP = 4;
+/** Classes the view both writes and looks for again. */
+const EDIT_INPUT = 'mindmap-edit-input';
+const HEAD = 'mindmap-node-head';
+const BODY = 'mindmap-node-body';
+const BODY_LINE = 'mindmap-node-body-line';
+
+/** Just enough scrolling to bring something into view, and no more. */
+const KEEP_IN_VIEW: ScrollIntoViewOptions = {
+  block: 'nearest',
+  inline: 'nearest',
+};
+
+/** How long the map waits before redrawing after a change to the file. */
+const RENDER_DELAY = 250;
+
+/** How long after a click or key it looks for a fold the user just made. */
+const FOLD_CHECK_DELAY = 120;
+
+/** How long an inline edit may grow before the map is laid out again. */
+const REFLOW_DELAY = 60;
 
 /** A completed task node ('- [x]'), the unit hidden by hideCompleted. */
 function isCompletedTask(node: MindNode): boolean {
@@ -70,7 +104,7 @@ const SUMMARY_NODE: MindNode = {
   text: '',
   line: -2,
   endLine: -2,
-  foldable: false,
+  body: [],
   level: 0,
   indent: '',
   marker: '',
@@ -86,25 +120,34 @@ export class MindmapView extends ItemView {
   private scrollerEl!: HTMLElement;
   private canvasEl!: HTMLElement;
   private selectedLine: number | null = null;
-  private pendingEditLine: number | null = null;
+  /** File line the editor's caret was last seen on; re-marked after a render. */
+  private cursorLine: number | null = null;
+  /** A just-added node, to select and open for naming after the render. */
+  private insertedLine: number | null = null;
+  /** The last write the map made with no editor pane to remember it. */
+  private undoable: (WroteToDisk & { path: string }) | null = null;
+  /** Ends the edit on screen, for when the map is asked for its keyboard back. */
+  private closeEdit: (() => void) | null = null;
   private isInlineEditing = false;
   private isDragging = false;
   private renderQueued = false;
   private renderSeq = 0;
   private laidByLine = new Map<number, LaidNode>();
+  /** Last built tree, so an edit can re-lay it out without rebuilding it. */
+  private laidRoot: LaidNode | null = null;
   private hideCompletedActionEl: HTMLElement | null = null;
-  /** Bulk-fold buttons, keyed by bodyOnly: false = branches, true = "≡". */
-  private foldAllActionEls = new Map<boolean, HTMLElement>();
+  private bodyTextActionEl: HTMLElement | null = null;
+  /** The two bulk-fold buttons in the header, by what each one folds. */
+  private foldAllActionEls = new Map<FoldKind, HTMLElement>();
   /**
    * Parents (by line) whose completed tasks are shown despite
    * hideCompleted, via a click on their "✓ n done" pill.
    */
   private expandedDone = new Set<number>();
-  /**
-   * Collapsed nodes, by line. Mirrors the editor's folds while syncFolds is
-   * on; otherwise it lives here only.
-   */
-  private collapsed = new Set<number>();
+  /** Nodes whose children are folded away, by line. */
+  private collapsedBranches = new Set<number>();
+  /** Nodes whose own text is folded away, by line. */
+  private foldedText = new Set<number>();
   /** Folds last read from or written to the editor, to spot user folds. */
   private lastEditorFoldsKey: string | null = null;
   /**
@@ -112,19 +155,8 @@ export class MindmapView extends ItemView {
    * both ways: reading alone would let the next render undo the map's folds.
    */
   private foldSyncOff = false;
-  /**
-   * Most recently focused Markdown leaf, so syncEditorTo reuses the
-   * editor the user was actually looking at instead of an arbitrary
-   * (and possibly unfocused) open tab.
-   */
-  private lastActiveMarkdownLeaf: WorkspaceLeaf | null = null;
-  /**
-   * Linked-pane group ("Link with tab"), empty when unlinked. Read on demand:
-   * a cached copy would depend on when Obsidian assigns the group.
-   */
-  private get linkGroup(): string {
-    return (this.leaf as WorkspaceLeaf & { group?: string }).group ?? '';
-  }
+  /** Everything that talks to the Markdown pane; see ./editor-pane.ts. */
+  private readonly editor: EditorPane;
 
   /**
    * Checked tasks collapse into one "✓ n done" pill per parent. Backed by
@@ -146,31 +178,41 @@ export class MindmapView extends ItemView {
   private isBusy(): boolean {
     if (
       this.isInlineEditing &&
-      !this.canvasEl.querySelector('.mindmap-edit-input')
+      !this.canvasEl.querySelector(`.${EDIT_INPUT}`)
     ) {
       this.isInlineEditing = false;
     }
-    if (
-      this.isDragging &&
-      !this.canvasEl.querySelector('.mindmap-node.is-dragging')
-    ) {
+    if (this.isDragging && !this.canvasEl.querySelector(DRAGGING_SELECTOR)) {
       this.isDragging = false;
     }
 
     return this.isInlineEditing || this.isDragging;
   }
 
+  private readonly reflow = debounce(
+    () => this.applyLayout(),
+    REFLOW_DELAY,
+    false,
+  );
+
   private readonly requestRender = debounce(
     () => {
       void this.render();
     },
-    250,
+    RENDER_DELAY,
     true,
   );
 
   constructor(leaf: WorkspaceLeaf, plugin: MindmapPlugin) {
     super(leaf);
     this.plugin = plugin;
+    this.editor = new EditorPane({
+      app: this.app,
+      leaf,
+      file: () => this.file,
+      openSplit: () => plugin.openSplit(),
+      focusMap: () => this.scrollerEl.focus({ preventScroll: true }),
+    });
     // This view navigates between files (wikilink follows), so it takes
     // part in Obsidian's per-leaf navigation history: back/forward via
     // the tab-header arrows, mouse buttons, and the built-in hotkeys.
@@ -183,9 +225,27 @@ export class MindmapView extends ItemView {
    * whenever this leaf is active, without depending on which inner element
    * has DOM focus.
    */
+  /**
+   * Claims a key for the map, standing aside while an inline edit is on
+   * screen. Obsidian's keymap sees a keystroke before the page does, so a
+   * Backspace meant for the text being typed would otherwise reach the map
+   * and take the line out from under it. The edit registers what it needs of
+   * its own, and those are not registered through here.
+   */
+  private onKey(mods: Modifier[], key: string, run: () => boolean): void {
+    this.scope?.register(mods, key, () => {
+      const input = this.canvasEl.querySelector(`.${EDIT_INPUT}`);
+
+      // Only while the edit has the keyboard. An editor left open with the
+      // focus elsewhere is not who the key is for - and taking every key for
+      // it would leave the map with none.
+      return input && input.doc.activeElement === input ? true : run();
+    });
+  }
+
   private registerShortcuts(): void {
     this.scope = new Scope(this.app.scope);
-    this.scope.register([], 'Enter', () => {
+    this.onKey([], 'Enter', () => {
       const node = this.selectedNode();
 
       if (!node) {
@@ -197,7 +257,7 @@ export class MindmapView extends ItemView {
 
       return false;
     });
-    this.scope.register([], 'Tab', () => {
+    this.onKey([], 'Tab', () => {
       const node = this.selectedNode();
 
       if (!node) {
@@ -208,19 +268,21 @@ export class MindmapView extends ItemView {
       return false;
     });
     for (const key of ['Delete', 'Backspace']) {
-      this.scope.register([], key, () => {
+      this.onKey([], key, () => {
         const node = this.selectedNode();
 
         if (!node || node.type === 'root') {
           return true;
         }
         this.selectedLine = null;
-        void this.applyOp((lines) => deleteNodeOp(lines, node));
+        void this.applyToNodes([node], (lines, [target]) =>
+          deleteNodeOp(lines, target!),
+        );
 
         return false;
       });
     }
-    this.scope.register([], 'F2', () => {
+    this.onKey([], 'F2', () => {
       const node = this.selectedNode();
 
       if (!node) {
@@ -250,9 +312,19 @@ export class MindmapView extends ItemView {
     ];
 
     for (const [key, move] of nav) {
-      this.scope.register([], key, () => {
+      const step = key === 'ArrowUp' ? -1 : 1;
+
+      this.onKey([], key, () => {
         if (this.isInlineEditing) {
           return true;
+        }
+        // With a body line picked out, up and down walk the text; the ends of
+        // it hand the keys back to the nodes.
+        if (
+          (key === 'ArrowUp' || key === 'ArrowDown') &&
+          this.stepBodyLine(step)
+        ) {
+          return false;
         }
         const node = this.selectedNode();
 
@@ -277,7 +349,7 @@ export class MindmapView extends ItemView {
       ['ArrowUp', -1],
       ['ArrowDown', 1],
     ] as const) {
-      this.scope.register(['Shift'], key, () => {
+      this.onKey(['Shift'], key, () => {
         const node = this.selectedNode();
 
         if (!node || node.type === 'root') {
@@ -293,26 +365,55 @@ export class MindmapView extends ItemView {
       ['ArrowLeft', true],
       ['ArrowRight', false],
     ] as const) {
-      this.scope.register(['Mod'], key, () => {
+      this.onKey(['Mod'], key, () => {
         const node = this.selectedNode();
 
-        if (!node || !isCollapsible(node)) {
+        if (!node) {
           return true;
         }
-        if (this.collapsed.has(node.line) !== collapse) {
-          this.toggleCollapse(node);
+        if (node.children.length > 0) {
+          if (this.collapsedBranches.has(node.line) !== collapse) {
+            this.toggleCollapse(node);
+          }
+
+          return false;
+        }
+        if (!this.hasTextToggle(node)) {
+          return true;
+        }
+        if (this.foldedText.has(node.line) !== collapse) {
+          this.toggleTextFold(node);
+        }
+
+        return false;
+      });
+    }
+    // The map's edits are written through the editor, so its history is the
+    // map's history too - undo on this side steps the same one.
+    for (const [mods, key, back] of [
+      [['Mod'], 'Z', true],
+      [['Mod', 'Shift'], 'Z', false],
+      [['Mod'], 'Y', false],
+    ] as const) {
+      this.onKey([...mods], key, () => {
+        if (this.editor.stepHistory(back)) {
+          this.requestRender();
+        } else if (!back || !this.undoLastWrite()) {
+          new Notice(
+            'Mind map: open this note in a pane to undo what the map wrote.',
+          );
         }
 
         return false;
       });
     }
     // Obsidian passes KeyboardEvent.key through, so space is ' '.
-    this.scope.register([], ' ', () => this.toggleSelectedCheckbox());
-    this.scope.register([], 'Escape', () => {
+    this.onKey([], ' ', () => this.toggleSelectedCheckbox());
+    this.onKey([], 'Escape', () => {
+      // A flag left set with no editor on screen: the edit is over, and this
+      // is what unfreezes the map. An editor that is still there kept the key
+      // to itself, and never reached here.
       if (this.isInlineEditing) {
-        // This only fires when the edit input does not own focus
-        // (a focused input handles Escape itself), i.e. the edit is
-        // broken. Reset instead of leaving the map frozen.
         this.isInlineEditing = false;
         void this.render();
 
@@ -336,12 +437,12 @@ export class MindmapView extends ItemView {
       return;
     }
     this.selectNode(node, laid.el);
-    laid.el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    laid.el.scrollIntoView(KEEP_IN_VIEW);
   }
 
   /**
    * Selects the node the editor's caret sits in, the mirror of
-   * focusLineInEditor. Never takes focus: the user is typing over there.
+   * EditorPane.goToLine. Never takes focus: the user is typing over there.
    */
   private followEditorCursor(): void {
     if (this.isBusy() || !this.root || !this.file) {
@@ -352,7 +453,12 @@ export class MindmapView extends ItemView {
     if (mdView?.file?.path !== this.file.path) {
       return;
     }
-    const node = findEnclosing(this.root, mdView.editor.getCursor().line);
+    const cursorLine = mdView.editor.getCursor().line;
+
+    // Before the node work below, which returns early on an unchanged node -
+    // the caret moving between two lines of the same body still moves.
+    this.markCursorLine(cursorLine);
+    const node = findEnclosing(this.root, cursorLine);
     // Inside a collapsed branch, the branch stands in for the caret's node.
     const shown = node && (this.collapsedAncestor(node) ?? node);
     const laid = shown && this.laidByLine.get(shown.line);
@@ -365,14 +471,38 @@ export class MindmapView extends ItemView {
       return;
     }
     // Same node: nothing to do, and skipping the write is what keeps this
-    // from bouncing against focusLineInEditor.
+    // from bouncing against EditorPane.goToLine.
     if (laid.node.line === this.selectedLine) {
       return;
     }
     this.clearSelectionClass();
     laid.el.addClass('is-selected');
     this.selectedLine = laid.node.line;
-    laid.el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    laid.el.scrollIntoView(KEEP_IN_VIEW);
+  }
+
+  /**
+   * Marks the drawn body line the editor's caret sits on. Node selection is
+   * as fine as the map gets otherwise, and a node's whole description reads
+   * the same whichever of its lines you are on.
+   */
+  private markCursorLine(line: number): void {
+    const moved = line !== this.cursorLine;
+
+    this.cursorLine = line;
+    // All of them: a mark left behind on another line reads as a second
+    // caret, and only the editor's is real.
+    this.canvasEl
+      .querySelectorAll(`.${BODY_LINE}.is-cursor-line`)
+      .forEach((stale) => stale.removeClass('is-cursor-line'));
+    const el = this.canvasEl.querySelector<HTMLElement>(
+      `.${BODY_LINE}[data-line="${line}"]`,
+    );
+
+    el?.addClass('is-cursor-line');
+    if (moved) {
+      el?.scrollIntoView(KEEP_IN_VIEW);
+    }
   }
 
   /**
@@ -388,7 +518,7 @@ export class MindmapView extends ItemView {
     this.clearSelectionClass();
     this.selectedLine = null;
     pill?.addClass('is-selected');
-    pill?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    pill?.scrollIntoView(KEEP_IN_VIEW);
   }
 
   /**
@@ -414,7 +544,9 @@ export class MindmapView extends ItemView {
     }
     this.selectedLine =
       delta < 0 ? other.line : node.line + (other.endLine - node.endLine);
-    await this.applyOp((lines) => reorderSiblingOp(lines, node, other));
+    await this.applyToNodes([node, other], (lines, [a, b]) =>
+      reorderSiblingOp(lines, a!, b!),
+    );
   }
 
   /**
@@ -427,7 +559,9 @@ export class MindmapView extends ItemView {
     cb: HTMLInputElement,
   ): void {
     el.toggleClass('is-done', cb.checked);
-    void this.applyOp((lines) => setCheckboxOp(lines, node, cb.checked));
+    void this.applyToNodes([node], (lines, [target]) =>
+      setCheckboxOp(lines, target!, cb.checked),
+    );
   }
 
   /** Space on a task node: flip the real checkbox and persist that state. */
@@ -486,11 +620,76 @@ export class MindmapView extends ItemView {
    * hideCompleted. Navigation walks this too, or the selection strands.
    */
   private visibleChildren(node: MindNode): MindNode[] {
-    if (this.collapsed.has(node.line)) {
+    if (this.collapsedBranches.has(node.line)) {
       return [];
     }
 
     return node.children.filter((c) => !this.isHiddenDone(node, c));
+  }
+
+  /** The body line the map is showing as picked, if there is one. */
+  private markedBodyLine(): { node: MindNode; line: number } | null {
+    const el = this.canvasEl.querySelector<HTMLElement>(
+      `.${BODY_LINE}.is-cursor-line`,
+    );
+    const line = Number(el?.dataset.line ?? NaN);
+    const node =
+      this.root && !Number.isNaN(line) ? findEnclosing(this.root, line) : null;
+
+    return node ? { node, line } : null;
+  }
+
+  /**
+   * Moves the pick to the body line above or below. False when there is none
+   * that way - the caller then moves between nodes, as it always did.
+   */
+  private stepBodyLine(delta: -1 | 1): boolean {
+    const marked = this.markedBodyLine();
+
+    if (!marked) {
+      return false;
+    }
+    const lines = this.bodyLineEls(marked.node);
+    const at = lines.findIndex((el) => el.dataset.line === String(marked.line));
+    const line = Number(lines[at + delta]?.dataset.line ?? NaN);
+
+    if (at < 0 || Number.isNaN(line)) {
+      return false;
+    }
+    this.markCursorLine(line);
+    void this.editor.goToLine(line, blockOf(marked.node, line));
+
+    return true;
+  }
+
+  /** The drawn lines of a node's own text, in the order they are drawn. */
+  private bodyLineEls(node: MindNode): HTMLElement[] {
+    const el = this.laidByLine.get(node.line)?.el;
+
+    return el
+      ? Array.from(el.querySelectorAll<HTMLElement>(`.${BODY_LINE}`))
+      : [];
+  }
+
+  /**
+   * Whether the node's own text is folded away. Its branch being folded does
+   * not count: the two handles are two separate things, and putting children
+   * out of the way is no reason to take the node's description with them.
+   */
+  private isTextFolded(node: MindNode): boolean {
+    return this.foldedText.has(node.line);
+  }
+
+  /**
+   * Folds a node's own text. Always the same state, whatever the node looks
+   * like - mergeFolds is what knows which of these the editor can hold.
+   */
+  private toggleTextFold(node: MindNode): void {
+    if (!this.foldedText.delete(node.line)) {
+      this.foldedText.add(node.line);
+    }
+    this.syncCollapseToEditor();
+    void this.render();
   }
 
   /** The outermost collapsed ancestor - the one still on screen. */
@@ -498,7 +697,7 @@ export class MindmapView extends ItemView {
     let outermost: MindNode | null = null;
 
     for (let cur = node.parent; cur; cur = cur.parent) {
-      if (this.collapsed.has(cur.line)) {
+      if (this.collapsedBranches.has(cur.line)) {
         outermost = cur;
       }
     }
@@ -518,13 +717,13 @@ export class MindmapView extends ItemView {
 
   /** Collapses or expands `node`'s branch, and folds the editor to match. */
   private toggleCollapse(node: MindNode): void {
-    if (!isCollapsible(node)) {
+    if (!node.children.length) {
       return;
     }
-    if (this.collapsed.has(node.line)) {
-      this.collapsed.delete(node.line);
+    if (this.collapsedBranches.has(node.line)) {
+      this.collapsedBranches.delete(node.line);
     } else {
-      this.collapsed.add(node.line);
+      this.collapsedBranches.add(node.line);
       this.keepSelectionVisible();
     }
     this.syncCollapseToEditor();
@@ -535,22 +734,72 @@ export class MindmapView extends ItemView {
    * Folds every handle of one kind, and unfolds them once all are folded.
    * Mixed state folds the rest, so the first click always tidies up.
    */
-  private toggleAllCollapse(bodyOnly: boolean): void {
-    const targets = this.root ? foldTargets(this.root, bodyOnly) : [];
+  private toggleAllCollapse(kind: FoldKind): void {
+    this.setAllCollapsed(kind, !this.allFolded(kind));
+  }
 
-    if (!targets.length) {
+  /**
+   * What a bulk fold acts on. Folding text takes in the nodes whose handle is
+   * a "≡" and the ones carrying text beside a branch handle, so one button
+   * still means "all of it".
+   */
+  private bulkTargets(kind: FoldKind): { branch: number[]; text: number[] } {
+    if (!this.root) {
+      return { branch: [], text: [] };
+    }
+
+    if (kind === FoldKind.Text) {
+      return {
+        branch: [],
+        text: this.plugin.settings.showBodyText ? textTargets(this.root) : [],
+      };
+    }
+
+    // Not the note itself: folding that leaves one pill on the canvas, which
+    // is not what the Markdown pane shows with everything folded, and not
+    // what "collapse all" is asking for. Its own handle still folds it.
+    return {
+      branch: branchTargets(this.root).filter((line) => line >= 0),
+      text: [],
+    };
+  }
+
+  /** Whether every handle of one kind is already folded. */
+  private allFolded(kind: FoldKind): boolean {
+    const { branch, text } = this.bulkTargets(kind);
+
+    return (
+      branch.length + text.length > 0 &&
+      branch.every((line) => this.collapsedBranches.has(line)) &&
+      text.every((line) => this.foldedText.has(line))
+    );
+  }
+
+  /** Folds or unfolds every handle of one kind; what the commands call. */
+  setAllCollapsed(kind: FoldKind, collapse: boolean): void {
+    if (kind === FoldKind.Text && !this.plugin.settings.showBodyText) {
+      new Notice('Mind map: the map is not drawing node text right now.');
+
       return;
     }
-    const collapseAll = targets.some((line) => !this.collapsed.has(line));
+    const targets = this.bulkTargets(kind);
 
-    for (const line of targets) {
-      if (collapseAll) {
-        this.collapsed.add(line);
-      } else {
-        this.collapsed.delete(line);
-      }
+    if (!targets.branch.length && !targets.text.length) {
+      return;
     }
-    if (collapseAll) {
+    const apply = (lines: number[], set: Set<number>): void => {
+      for (const line of lines) {
+        if (collapse) {
+          set.add(line);
+        } else {
+          set.delete(line);
+        }
+      }
+    };
+
+    apply(targets.branch, this.collapsedBranches);
+    apply(targets.text, this.foldedText);
+    if (collapse) {
       this.keepSelectionVisible();
     }
     this.syncCollapseToEditor();
@@ -559,13 +808,8 @@ export class MindmapView extends ItemView {
 
   /** Lights up a bulk-fold button while everything it folds is folded. */
   private updateFoldActions(): void {
-    for (const [bodyOnly, el] of this.foldAllActionEls) {
-      const targets = this.root ? foldTargets(this.root, bodyOnly) : [];
-
-      el.toggleClass(
-        'is-active',
-        targets.length > 0 && targets.every((line) => this.collapsed.has(line)),
-      );
+    for (const [kind, el] of this.foldAllActionEls) {
+      el.toggleClass('is-active', this.allFolded(kind));
     }
   }
 
@@ -573,9 +817,12 @@ export class MindmapView extends ItemView {
   private adoptFolds(root: MindNode, folds: FoldRange[]): boolean {
     this.lastEditorFoldsKey = foldsKey(folds);
     const next = collapsedFromFolds(root, folds);
-    const changed = !sameLines(next, this.collapsed);
+    const changed =
+      !sameLines(next.branches, this.collapsedBranches) ||
+      !sameLines(next.text, this.foldedText);
 
-    this.collapsed = next;
+    this.collapsedBranches = next.branches;
+    this.foldedText = next.text;
 
     return changed;
   }
@@ -612,7 +859,7 @@ export class MindmapView extends ItemView {
     }
   }
 
-  /** Folds the Markdown pane to match the map's collapsed branches. */
+  /** Folds the Markdown pane to match the map, in whichever mode it is in. */
   private syncCollapseToEditor(): void {
     if (!this.syncFolds || !this.root || !this.file) {
       return;
@@ -622,10 +869,26 @@ export class MindmapView extends ItemView {
     if (!current) {
       return;
     }
-    const folds = mergeFolds(this.root, this.collapsed, current);
+    const folds = mergeFolds(
+      this.root,
+      this.collapsedBranches,
+      this.foldedText,
+      current,
+    );
 
-    if (!applyEditorFolds(this.app, this.file, folds)) {
-      this.foldSyncOff = true;
+    // A fold the editor cannot hold (a node's text with children under it)
+    // leaves this set unchanged; writing it anyway would re-fold the whole
+    // document for nothing.
+    if (foldsKey(folds) === foldsKey(current)) {
+      return;
+    }
+    // A reading pane takes no fold state; its headings have handles instead.
+    void foldPreviewHeadings(this.app, this.file, this.collapsedBranches);
+    const wrote = applyEditorFolds(this.app, this.file, folds);
+
+    if (wrote !== FoldWrite.Applied) {
+      // No editing pane is not a broken API: keep reading, write next time.
+      this.foldSyncOff = wrote === FoldWrite.Failed;
 
       return;
     }
@@ -663,8 +926,30 @@ export class MindmapView extends ItemView {
     this.plugin.settings.hideCompleted = value;
     void this.plugin.saveSettings();
     this.expandedDone.clear();
-    this.hideCompletedActionEl?.toggleClass('is-active', value);
+    this.syncToggleActions();
     void this.render();
+  }
+
+  /**
+   * Flips the map-wide "draw a node's own text" setting; the header button
+   * and the command share it, and every open map follows.
+   */
+  toggleBodyText(): void {
+    this.plugin.settings.showBodyText = !this.plugin.settings.showBodyText;
+    void this.plugin.saveSettings();
+    this.syncToggleActions();
+    void this.render();
+  }
+
+  /** Lights up the header buttons that stand for a stored setting. */
+  private syncToggleActions(): void {
+    const text = this.plugin.settings.showBodyText;
+
+    this.hideCompletedActionEl?.toggleClass('is-active', this.hideCompleted);
+    this.bodyTextActionEl?.toggleClass('is-active', text);
+    // Nothing to fold while the map draws no text, and the map only folds
+    // what it draws.
+    this.foldAllActionEls.get(FoldKind.Text)?.toggleClass('is-hidden', !text);
   }
 
   async onOpen(): Promise<void> {
@@ -674,19 +959,24 @@ export class MindmapView extends ItemView {
       'Hide/show completed tasks',
       () => this.setHideCompleted(!this.hideCompleted),
     );
-    this.hideCompletedActionEl.toggleClass('is-active', this.hideCompleted);
+    this.bodyTextActionEl = this.addAction(
+      'pilcrow',
+      'Show/hide node text on the map',
+      () => this.toggleBodyText(),
+    );
+    this.syncToggleActions();
     this.foldAllActionEls.set(
-      false,
+      FoldKind.Branches,
       this.addAction(
         'chevrons-down-up',
         'Collapse or expand all branches',
-        () => this.toggleAllCollapse(false),
+        () => this.toggleAllCollapse(FoldKind.Branches),
       ),
     );
     this.foldAllActionEls.set(
-      true,
+      FoldKind.Text,
       this.addAction('align-justify', 'Fold or unfold all text', () =>
-        this.toggleAllCollapse(true),
+        this.toggleAllCollapse(FoldKind.Text),
       ),
     );
     this.addAction('refresh-cw', 'Refresh from the Markdown', () => {
@@ -697,6 +987,10 @@ export class MindmapView extends ItemView {
       attr: { tabindex: '0' },
     });
     this.canvasEl = this.scrollerEl.createDiv({ cls: 'mindmap-canvas' });
+    // The map asking for the keyboard back is the end of any edit still open:
+    // an edit left behind when the focus went elsewhere must not keep the keys
+    // it is no longer typing into.
+    this.scrollerEl.addEventListener('focus', () => this.closeEdit?.());
 
     this.registerWorkspaceEvents();
     // During workspace restore, renders can run before files and editors
@@ -726,18 +1020,25 @@ export class MindmapView extends ItemView {
         }
       }),
     );
+    // The note's name is what its own pill says, and it can be renamed from
+    // anywhere - the map's pill, the file explorer, another window.
     this.registerEvent(
-      this.app.workspace.on('active-leaf-change', (leaf) => {
-        if (leaf?.view instanceof MarkdownView) {
-          this.lastActiveMarkdownLeaf = leaf;
+      this.app.vault.on('rename', (file) => {
+        if (this.isCurrentFile(file)) {
+          this.requestRender();
         }
       }),
+    );
+    this.registerEvent(
+      this.app.workspace.on('active-leaf-change', (leaf) =>
+        this.editor.noteActiveLeaf(leaf),
+      ),
     );
     this.registerEvent(
       this.app.workspace.on('file-open', (file) => {
         // An explicit choice of source, so it wins over the active file and
         // over followActiveFile. Nothing to track means nothing to win.
-        if (this.linkedLeaf()) {
+        if (this.editor.linkedLeaf()) {
           this.followLinkedLeaf();
 
           return;
@@ -765,7 +1066,10 @@ export class MindmapView extends ItemView {
       this.followEditorCursor(),
     );
     // Nothing fires on a fold, so check once clicks and keys settle.
-    const checkFolds = debounce(() => this.syncCollapseFromEditor(), 120);
+    const checkFolds = debounce(
+      () => this.syncCollapseFromEditor(),
+      FOLD_CHECK_DELAY,
+    );
 
     for (const type of ['click', 'keyup'] as const) {
       this.registerDomEvent(document, type, () => checkFolds());
@@ -808,7 +1112,7 @@ export class MindmapView extends ItemView {
         // editor pane too so map and Markdown stay on the same file.
         if (this.file) {
           result.history = true;
-          void this.syncEditorTo(af);
+          void this.editor.showFile(af);
         }
         await this.setFile(af);
       }
@@ -819,8 +1123,10 @@ export class MindmapView extends ItemView {
   async setFile(file: TFile): Promise<void> {
     this.file = file;
     this.selectedLine = null;
+    this.cursorLine = null;
     this.expandedDone.clear();
-    this.collapsed.clear();
+    this.collapsedBranches.clear();
+    this.foldedText.clear();
     this.lastEditorFoldsKey = null;
     await this.render(true);
     void this.loadStoredCollapse();
@@ -833,8 +1139,8 @@ export class MindmapView extends ItemView {
 
   refresh(): void {
     // Settings may have changed (e.g. hideCompleted from the settings
-    // tab or another view's header button); keep the action in sync.
-    this.hideCompletedActionEl?.toggleClass('is-active', this.hideCompleted);
+    // tab or another view's header button); keep the actions in sync.
+    this.syncToggleActions();
     this.requestRender();
   }
 
@@ -847,7 +1153,7 @@ export class MindmapView extends ItemView {
     this.requestRender.cancel();
     this.isInlineEditing = false;
     this.isDragging = false;
-    this.hideCompletedActionEl?.toggleClass('is-active', this.hideCompleted);
+    this.syncToggleActions();
     await this.render();
     new Notice('Mind map refreshed.');
   }
@@ -969,30 +1275,33 @@ export class MindmapView extends ItemView {
     this.root = parseMarkdown(text, this.file.basename);
     // Keyed by line, so re-derive: the editor's folds, else prune.
     if (!this.pullEditorFolds(this.root)) {
-      this.collapsed = pruneCollapsed(this.root, this.collapsed);
+      this.collapsedBranches = pruneLines(
+        this.collapsedBranches,
+        branchTargets(this.root),
+      );
+      this.foldedText = pruneLines(this.foldedText, textTargets(this.root));
     }
     this.updateFoldActions();
 
-    const svg = this.canvasEl.createSvg('svg', { cls: 'mindmap-edges' });
+    this.canvasEl.createSvg('svg', { cls: 'mindmap-edges' });
     const palette = parsePalette(this.plugin.settings.palette);
-    const laidRoot = this.buildNode(this.root, '', palette);
-    const { width, height } = layoutTree(laidRoot);
 
-    this.applyPositions(laidRoot);
-    this.drawEdges(svg, laidRoot, this.addCollapseToggles(laidRoot));
-    this.canvasEl.setCssStyles({
-      width: `${width}px`,
-      height: `${height}px`,
-    });
-    svg.setAttribute('width', String(width));
-    svg.setAttribute('height', String(height));
+    this.laidRoot = this.buildNode(this.root, '', palette);
+    this.applyLayout();
     this.scrollerEl.scrollLeft = scrollLeft;
     this.scrollerEl.scrollTop = scrollTop;
 
-    if (this.pendingEditLine !== null) {
-      const laid = this.laidByLine.get(this.pendingEditLine);
+    if (this.cursorLine !== null) {
+      // The rebuild dropped the mark, and no caret move is coming to redo
+      // it. Same line as before, so this re-marks without scrolling - a
+      // render must not yank a map the user just panned somewhere else.
+      this.markCursorLine(this.cursorLine);
+    }
 
-      this.pendingEditLine = null;
+    if (this.insertedLine !== null) {
+      const laid = this.laidByLine.get(this.insertedLine);
+
+      this.insertedLine = null;
       if (laid) {
         this.selectNode(laid.node, laid.el);
         this.startInlineEdit(laid.node, laid.el);
@@ -1025,8 +1334,12 @@ export class MindmapView extends ItemView {
       el.setCssProps({ '--branch-color': own });
     }
 
+    // The checkbox and the label share a row of their own, so body text below
+    // them is a block under it rather than another item on the same line.
+    const head = el.createDiv({ cls: HEAD });
+
     if (node.checked !== null) {
-      const cb = el.createEl('input', {
+      const cb = head.createEl('input', {
         cls: 'mindmap-checkbox',
         type: 'checkbox',
       });
@@ -1036,19 +1349,14 @@ export class MindmapView extends ItemView {
       cb.addEventListener('change', () => this.writeCheckbox(node, el, cb));
       el.toggleClass('is-done', node.checked);
     }
-    const textEl = el.createSpan({ cls: 'mindmap-node-text' });
+    const textEl = head.createSpan({ cls: 'mindmap-node-text' });
 
     if (node.text.length) {
-      renderNodeText(
-        textEl,
-        node.text,
-        this.app,
-        this.file?.path ?? '',
-        (target, evt) => void this.openInternalLink(target, evt),
-      );
+      this.renderText(textEl, node.text);
     } else {
       textEl.setText(' ');
     }
+    this.addBodyText(node, el);
 
     el.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -1074,6 +1382,70 @@ export class MindmapView extends ItemView {
     return laid;
   }
 
+  /** Node text with its links clickable, following them on the map. */
+  private renderText(el: HTMLElement, text: string): void {
+    renderNodeText(
+      el,
+      text,
+      this.app,
+      this.file?.path ?? '',
+      (target, evt) => void this.openInternalLink(target, evt),
+    );
+  }
+
+  /**
+   * Draws the node's own text inside it, one element per source line so a
+   * click can name the line it hit.
+   */
+  private addBodyText(node: MindNode, el: HTMLElement): void {
+    if (!this.plugin.settings.showBodyText || !node.body.length) {
+      return;
+    }
+    if (this.isTextFolded(node)) {
+      return;
+    }
+    const bodyEl = el.createDiv({ cls: BODY });
+
+    el.addClass('has-body');
+
+    let previous = -1;
+
+    for (const { line, text } of node.body) {
+      const lineEl = bodyEl.createDiv({ cls: BODY_LINE });
+
+      lineEl.dataset.line = String(line);
+      // A gap in the line numbers is a child node standing between two runs
+      // of text. They are written back separately, so they read separately.
+      lineEl.toggleClass('is-run-start', previous >= 0 && line > previous + 1);
+      previous = line;
+      this.renderText(lineEl, text);
+    }
+    // Which line the pointer hit; the gaps around them answer with the first,
+    // so a click near a line never turns into a click on nothing.
+    const lineAt = (target: EventTarget | null): number => {
+      const lineEl =
+        target instanceof HTMLElement
+          ? target.closest<HTMLElement>(`.${BODY_LINE}`)
+          : null;
+      const line = Number(lineEl?.dataset.line ?? NaN);
+
+      return Number.isNaN(line) ? (node.body[0]?.line ?? node.line) : line;
+    };
+
+    // Selecting from the body still selects the node, but the editor's cursor
+    // goes to the line under the pointer rather than the node's own.
+    bodyEl.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.selectNode(node, el, lineAt(e.target));
+    });
+    // The map draws this text; the editor is where it is written. A
+    // double-click opens the line there, with the caret on it.
+    bodyEl.addEventListener('dblclick', (e) => {
+      e.stopPropagation();
+      void this.editor.editLine(lineAt(e.target));
+    });
+  }
+
   /**
    * The node's own branch color: the root has none, a top-level branch takes
    * a palette color by its position, and deeper nodes inherit the passed-in
@@ -1094,26 +1466,33 @@ export class MindmapView extends ItemView {
     return inherited;
   }
 
-  /** A body-only node folds text the map never draws, so name the editor. */
-  private collapseLabel(body: boolean, collapsed: boolean): string {
-    if (body) {
-      return collapsed
-        ? 'Unfold text in the editor'
-        : 'Fold text in the editor';
-    }
-
+  private collapseLabel(collapsed: boolean): string {
     return collapsed ? 'Expand branch' : 'Collapse branch';
   }
 
+  private textFoldLabel(folded: boolean): string {
+    return folded ? 'Unfold the text' : 'Fold the text';
+  }
+
+  /** Whether the node gets a "≡": it has text of its own the map can fold. */
+  private hasTextToggle(node: MindNode): boolean {
+    return this.plugin.settings.showBodyText && node.body.length > 0;
+  }
+
   /**
-   * Hangs a handle outside every foldable node and returns where each one's
-   * branch now starts. Widths are read in one pass, after every placement.
+   * Hangs the handles outside every node that has them and returns where each
+   * branch now starts. Only the branch handle moves that start: the "≡" sits
+   * on the node's own corner, out of the edges' way. Widths are read in one
+   * pass, after every placement.
    */
   private addCollapseToggles(laid: LaidNode): Map<LaidNode, number> {
-    const handles: [LaidNode, HTMLElement][] = [];
+    const branches: [LaidNode, HTMLElement][] = [];
     const visit = (l: LaidNode): void => {
-      if (isCollapsible(l.node)) {
-        handles.push([l, this.addCollapseToggle(l)]);
+      if (l.node.children.length > 0) {
+        branches.push([l, this.addBranchToggle(l)]);
+      }
+      if (this.hasTextToggle(l.node)) {
+        this.addTextToggle(l);
       }
       for (const child of l.children) {
         visit(child);
@@ -1123,38 +1502,29 @@ export class MindmapView extends ItemView {
     visit(laid);
     const outlets = new Map<LaidNode, number>();
 
-    for (const [l, el] of handles) {
+    for (const [l, el] of branches) {
       outlets.set(l, l.x + l.w + COLLAPSE_HANDLE_GAP + el.offsetWidth);
     }
 
     return outlets;
   }
 
-  /** "−"/"+n" for a branch, "≡" for a node that only hides text. */
-  private addCollapseToggle(laid: LaidNode): HTMLElement {
+  /** "−"/"+n" beside the node: folds the branch, and the editor with it. */
+  private addBranchToggle(laid: LaidNode): HTMLElement {
     const node = laid.node;
-    const collapsed = this.collapsed.has(node.line);
-    const body = node.children.length === 0;
-    const toggle = this.canvasEl.createDiv({
-      cls: 'mindmap-collapse',
-      text: body ? '≡' : collapsed ? `+${node.children.length}` : '−',
-      attr: { 'aria-label': this.collapseLabel(body, collapsed) },
-    });
+    const collapsed = this.collapsedBranches.has(node.line);
+    const toggle = this.makeToggle(
+      laid,
+      collapsed ? `+${node.children.length}` : '−',
+      this.collapseLabel(collapsed),
+      collapsed,
+    );
 
-    if (laid.color) {
-      toggle.setCssProps({ '--branch-color': laid.color });
-    }
     // Clear of the node's edge; CSS does the vertical half, so no measuring.
     toggle.setCssStyles({
       left: `${laid.x + laid.w + COLLAPSE_HANDLE_GAP}px`,
       top: `${laid.y + laid.h / 2}px`,
     });
-    toggle.toggleClass('is-body', body);
-    toggle.toggleClass('is-collapsed', collapsed);
-    // The handle sits on the canvas: an escaping press would pan the map.
-    for (const type of ['pointerdown', 'dblclick'] as const) {
-      toggle.addEventListener(type, (e) => e.stopPropagation());
-    }
     toggle.addEventListener('click', (e) => {
       e.stopPropagation();
       // Moves the editor like a click on the node. Selecting last, so the
@@ -1162,6 +1532,69 @@ export class MindmapView extends ItemView {
       this.toggleCollapse(node);
       this.selectNode(node, laid.el);
     });
+
+    return toggle;
+  }
+
+  /**
+   * "≡" on the node's top corner: folds the node's own text. The corner, not
+   * the side, so a node that also has a branch handle can carry both.
+   */
+  private addTextToggle(laid: LaidNode): void {
+    const node = laid.node;
+    const folded = this.isTextFolded(node);
+    const toggle = this.makeToggle(
+      laid,
+      '≡',
+      this.textFoldLabel(folded),
+      folded,
+    );
+
+    toggle.addClass('is-body');
+    // Centred on the node's top-right corner. The branch handle's own gap
+    // keeps the two apart, and z-order gives it any pixel they share.
+    toggle.setCssStyles({
+      left: `${laid.x + laid.w}px`,
+      top: `${laid.y}px`,
+    });
+    // Out of sight until the node is pointed at, so a map full of text does
+    // not carry a second chip on every node. Both elements answer: the handle
+    // sits outside the node's box, so reaching for it leaves the node.
+    const reveal = (on: boolean): void => {
+      toggle.toggleClass('is-visible', on);
+    };
+
+    for (const el of [laid.el, toggle]) {
+      el.addEventListener('pointerenter', () => reveal(true));
+      el.addEventListener('pointerleave', () => reveal(false));
+    }
+    toggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.toggleTextFold(node);
+      this.selectNode(node, laid.el);
+    });
+  }
+
+  private makeToggle(
+    laid: LaidNode,
+    text: string,
+    label: string,
+    collapsed: boolean,
+  ): HTMLElement {
+    const toggle = this.canvasEl.createDiv({
+      cls: 'mindmap-collapse',
+      text,
+      attr: { 'aria-label': label },
+    });
+
+    if (laid.color) {
+      toggle.setCssProps({ '--branch-color': laid.color });
+    }
+    toggle.toggleClass('is-collapsed', collapsed);
+    // The handle sits on the canvas: an escaping press would pan the map.
+    for (const type of ['pointerdown', 'dblclick'] as const) {
+      toggle.addEventListener(type, (e) => e.stopPropagation());
+    }
 
     return toggle;
   }
@@ -1178,7 +1611,7 @@ export class MindmapView extends ItemView {
     own: string,
     palette: string[],
   ): void {
-    if (this.collapsed.has(node.line)) {
+    if (this.collapsedBranches.has(node.line)) {
       return;
     }
     let hiddenDone = 0;
@@ -1202,11 +1635,9 @@ export class MindmapView extends ItemView {
   }
 
   /**
-   * Read-only pill under `parent`: "✓ n done" (click to show that
-   * parent's hidden completed tasks) or "− hide done" (click to hide them
-   * again). Only this parent is affected; the header button remains the
-   * map-wide toggle. Not registered in laidByLine, so it cannot be
-   * selected, edited, dragged, or targeted by a drop.
+   * Read-only stand-in under `parent`: "✓ n done" reveals that parent's
+   * completed tasks, "− hide done" puts them back. Kept out of laidByLine, so
+   * it cannot be selected, edited, dragged or dropped on.
    */
   private buildDonePill(
     parent: MindNode,
@@ -1240,6 +1671,29 @@ export class MindmapView extends ItemView {
     });
 
     return makeLaid(SUMMARY_NODE, el, color);
+  }
+
+  /**
+   * Measures and places the nodes already on the canvas, leaving the elements
+   * alone - which is what lets an open edit reflow the map as it grows.
+   */
+  private applyLayout(): void {
+    const svg = this.canvasEl.querySelector<SVGSVGElement>('svg.mindmap-edges');
+
+    if (!this.laidRoot || !svg) {
+      return;
+    }
+    this.canvasEl
+      .querySelectorAll('.mindmap-collapse')
+      .forEach((handle) => handle.remove());
+    svg.empty();
+    const { width, height } = layoutTree(this.laidRoot);
+
+    this.applyPositions(this.laidRoot);
+    this.drawEdges(svg, this.laidRoot, this.addCollapseToggles(this.laidRoot));
+    this.canvasEl.setCssStyles({ width: `${width}px`, height: `${height}px` });
+    svg.setAttribute('width', String(width));
+    svg.setAttribute('height', String(height));
   }
 
   private applyPositions(laid: LaidNode): void {
@@ -1285,14 +1739,21 @@ export class MindmapView extends ItemView {
     }
   }
 
-  private selectNode(node: MindNode, el: HTMLElement): void {
+  /** `line` overrides which line the editor follows to (a body line). */
+  private selectNode(node: MindNode, el: HTMLElement, line?: number): void {
     this.clearSelectionClass();
     el.addClass('is-selected');
     this.selectedLine = node.line;
     this.scrollerEl.focus({ preventScroll: true });
+    // Here rather than from the editor's own event: with the map holding
+    // focus that event may never come, leaving the last mark standing.
+    this.markCursorLine(line ?? node.line);
     // The editor always follows the current selection, whether it came
     // from a click or from arrow-key navigation.
-    void this.focusLineInEditor(node);
+    void this.editor.goToLine(
+      line ?? node.line,
+      blockOf(node, line ?? node.line),
+    );
   }
 
   private clearSelectionClass(): void {
@@ -1301,143 +1762,18 @@ export class MindmapView extends ItemView {
       ?.removeClass('is-selected');
   }
 
-  /**
-   * Opens a [[wikilink]]: follows it on the map and shows it in an editor
-   * pane. The map switch goes through leaf.setViewState (not openLinkText
-   * + file-open events, which target the active leaf — this view — and do
-   * not reliably update the map), so it lands in the leaf's navigation
-   * history and Obsidian's own back/forward can return.
-   */
-  private async openInternalLink(
-    target: string,
-    evt: MouseEvent,
-  ): Promise<void> {
-    const from = this.file;
-
-    if (!from) {
-      return;
-    }
-    const linkpath = (target.split('#')[0] ?? '').trim();
-    const resolve = (): TFile | null =>
-      linkpath
-        ? this.app.metadataCache.getFirstLinkpathDest(linkpath, from.path)
-        : null;
-    let dest = resolve();
-
-    if (!dest || dest.extension !== 'md') {
-      // Unresolved (openLinkText may create the note) or not Markdown:
-      // default behavior, then follow to the note if one now exists.
-      await this.app.workspace.openLinkText(
-        target,
-        from.path,
-        Keymap.isModEvent(evt),
-      );
-      dest = resolve();
-      if (dest && dest.extension === 'md') {
-        await this.followTo(from, dest);
-      }
-
-      return;
-    }
-    await this.followTo(from, dest);
-  }
-
-  /** The Markdown tab this map is linked to, if any. */
-  private linkedLeaf(): WorkspaceLeaf | null {
-    if (!this.linkGroup) {
-      return null;
-    }
-    for (const leaf of this.app.workspace.getGroupLeaves(this.linkGroup)) {
-      if (leaf !== this.leaf && leaf.getViewState().type === 'markdown') {
-        return leaf;
-      }
-    }
-
-    return null;
-  }
-
-  /**
-   * The linked tab's file, read from its view state so a tab that is still
-   * deferred (never opened in this session) counts too.
-   */
-  private linkedFile(): TFile | null {
-    const path = this.linkedLeaf()?.getViewState().state?.file;
-    const af =
-      typeof path === 'string'
-        ? this.app.vault.getAbstractFileByPath(path)
-        : null;
-
-    return af instanceof TFile ? af : null;
-  }
-
+  /** Follows the tab this map is linked to onto its file. */
   private followLinkedLeaf(): void {
-    const file = this.linkedFile();
+    const file = this.editor.linkedFile();
 
     if (file && file.path !== this.file?.path) {
       void this.setFile(file);
     }
   }
 
-  /**
-   * Where to show the map's file. The linked tab owns that job when there is
-   * one; otherwise a new tab beside the Markdown pane the user was last
-   * looking at (getLeavesOfType's order is unrelated to focus), since the
-   * note that pane is showing is not ours to replace. No pane, so a split.
-   */
-  private resolveEditorLeaf(): WorkspaceLeaf {
-    const linked = this.linkedLeaf();
-
-    if (linked) {
-      return linked;
-    }
-    const markdownLeaves = this.app.workspace.getLeavesOfType('markdown');
-    const near =
-      (this.lastActiveMarkdownLeaf &&
-        markdownLeaves.includes(this.lastActiveMarkdownLeaf) &&
-        this.lastActiveMarkdownLeaf) ||
-      markdownLeaves[0];
-
-    return near
-      ? this.app.workspace.createLeafInParent(near.parent, -1)
-      : this.plugin.openSplit();
-  }
-
-  /**
-   * Shows `file` in a Markdown pane (reusing an existing one, else
-   * splitting) without stealing focus, so the editor always tracks the
-   * file the map is showing.
-   */
-  private async syncEditorTo(file: TFile): Promise<void> {
-    // The linked tab moves with the map even when another tab has the file.
-    if (this.linkedLeaf()) {
-      if (this.linkedFile()?.path !== file.path) {
-        await this.resolveEditorLeaf().openFile(file, { active: false });
-      }
-
-      return;
-    }
-    if (findMarkdownView(this.app, file)) {
-      return;
-    }
-    await this.resolveEditorLeaf().openFile(file, { active: false });
-  }
-
-  /**
-   * Reveals and focuses the Markdown pane for this map's file, opening one
-   * if none is open yet. The other half of the mind-map/Markdown toggle
-   * command (see `openMindmap` in main.ts for the reverse direction).
-   */
+  /** Focuses the Markdown pane; the map half of the toggle-focus command. */
   async focusEditor(): Promise<void> {
-    if (!this.file) {
-      return;
-    }
-    const existing = findMarkdownView(this.app, this.file);
-    const leaf = existing?.leaf ?? this.resolveEditorLeaf();
-
-    if (!existing) {
-      await leaf.openFile(this.file, { active: false });
-    }
-    this.app.workspace.setActiveLeaf(leaf, { focus: true });
+    await this.editor.focus();
   }
 
   /**
@@ -1456,45 +1792,17 @@ export class MindmapView extends ItemView {
     });
   }
 
-  /**
-   * Moves the editor cursor to `node`'s line, without stealing keyboard
-   * focus from the map — selecting a node (click or arrow keys) always
-   * calls this, so the map stays navigable throughout.
-   */
-  private async focusLineInEditor(node: MindNode): Promise<void> {
-    if (!this.file || node.line < 0) {
-      return;
-    }
-    const mdView = findMarkdownView(this.app, this.file);
+  /** Follows a [[wikilink]] on the map and in the editor pane. */
+  private async openInternalLink(
+    target: string,
+    evt: MouseEvent,
+  ): Promise<void> {
+    const from = this.file;
 
-    if (mdView) {
-      const editor = mdView.editor;
-
-      if (node.line > editor.lastLine()) {
-        return;
-      }
-      const lineText = editor.getLine(node.line);
-
-      editor.setCursor({ line: node.line, ch: lineText.length });
-      editor.scrollIntoView(
-        {
-          from: { line: node.line, ch: 0 },
-          to: { line: node.line, ch: lineText.length },
-        },
-        true,
+    if (from) {
+      await this.editor.openLink(target, evt, (dest) =>
+        this.followTo(from, dest),
       );
-      // The unfocused editor hides its caret, so flash-highlight the
-      // line (same mechanism as search results / outline clicks) to
-      // make the jump target visible.
-      mdView.setEphemeralState({ line: node.line });
-      this.scrollerEl.focus({ preventScroll: true });
-    } else {
-      // resolveEditorLeaf, not a fresh split: splitting past a Markdown tab
-      // that is already there stacks up panes nobody asked for.
-      await this.resolveEditorLeaf().openFile(this.file, {
-        active: false,
-        eState: { line: node.line },
-      });
     }
   }
 
@@ -1506,13 +1814,18 @@ export class MindmapView extends ItemView {
       );
     };
 
-    if (isCollapsible(node)) {
-      const collapsed = this.collapsed.has(node.line);
+    if (node.children.length > 0) {
+      const collapsed = this.collapsedBranches.has(node.line);
 
       add(
-        this.collapseLabel(node.children.length === 0, collapsed),
+        this.collapseLabel(collapsed),
         collapsed ? 'chevron-down' : 'chevron-right',
         () => this.toggleCollapse(node),
+      );
+    }
+    if (this.hasTextToggle(node)) {
+      add(this.textFoldLabel(this.isTextFolded(node)), 'align-justify', () =>
+        this.toggleTextFold(node),
       );
     }
     add('Add child', 'plus', () => void this.addChildNode(node));
@@ -1552,45 +1865,131 @@ export class MindmapView extends ItemView {
         add(
           node.checked === null ? 'Add checkbox' : 'Remove checkbox',
           'check-square',
-          () => void this.applyOp((lines) => toggleTaskOp(lines, node)),
+          () =>
+            void this.applyToNodes([node], (lines, [target]) =>
+              toggleTaskOp(lines, target!),
+            ),
         );
       }
       menu.addSeparator();
       add('Delete', 'trash', () => {
         this.selectedLine = null;
-        void this.applyOp((lines) => deleteNodeOp(lines, node));
+        void this.applyToNodes([node], (lines, [target]) =>
+          deleteNodeOp(lines, target!),
+        );
       });
     }
     menu.showAtMouseEvent(e);
   }
 
   private async addSiblingNode(node: MindNode, task?: boolean): Promise<void> {
-    await this.applyInsert((lines) => addSiblingOp(lines, node, task));
+    await this.applyInsert(node, (lines, target) =>
+      addSiblingOp(lines, target, task),
+    );
   }
 
   private async addChildNode(node: MindNode, task?: boolean): Promise<void> {
-    await this.applyInsert((lines) => addChildOp(lines, node, task));
+    await this.applyInsert(node, (lines, target) =>
+      addChildOp(lines, target, task),
+    );
   }
 
   private async applyInsert(
-    mutate: (lines: string[]) => InsertResult,
+    node: MindNode,
+    mutate: (lines: string[], found: MindNode) => InsertResult,
   ): Promise<void> {
     if (!this.file) {
       return;
     }
-    try {
-      await updateFileLines(this.app, this.file, (lines) => {
-        const result = mutate(lines);
+    const file = this.file;
 
-        this.pendingEditLine = result.insertedLine;
+    try {
+      await this.writeFile(file, (lines) => {
+        const fresh = parseMarkdown(lines.join('\n'), file.basename);
+        const target = relocateNode(fresh, node);
+
+        if (!target) {
+          throw new Error(`Mindmap: "${node.text}" is no longer in the file`);
+        }
+        const result = mutate(lines, target);
+
+        this.insertedLine = result.insertedLine;
 
         return result.lines;
       });
     } catch (err) {
-      this.pendingEditLine = null;
+      this.insertedLine = null;
       this.reportOpError(err);
     }
     await this.render();
+  }
+
+  /**
+   * Runs an op against the file as it is now, on the node found again in it.
+   * The map's line numbers are from its last render, and a render is debounced
+   * behind an edit in the Markdown pane - so by the time a click reaches an op,
+   * the file may already be a few lines off.
+   */
+  private async applyToNodes(
+    nodes: (MindNode | null)[],
+    mutate: (lines: string[], found: MindNode[]) => string[],
+  ): Promise<void> {
+    await this.applyOp((lines) => {
+      const fresh = parseMarkdown(lines.join('\n'), this.file?.basename ?? '');
+      const found = nodes.map((n) => (n ? relocateNode(fresh, n) : null));
+      const lost = nodes.find((n, i) => n && !found[i]);
+
+      if (lost) {
+        throw new Error(`Mindmap: "${lost.text}" is no longer in the file`);
+      }
+
+      return mutate(lines, found as MindNode[]);
+    });
+  }
+
+  /**
+   * Every write the map makes goes through here. One with no editor pane
+   * behind it has no history to step, so the map keeps that one step itself.
+   */
+  private async writeFile(
+    file: TFile,
+    mutate: (lines: string[]) => string[],
+  ): Promise<void> {
+    const wrote = await updateFileLines(this.app, file, mutate);
+
+    this.undoable = wrote ? { path: file.path, ...wrote } : null;
+  }
+
+  /**
+   * Puts back the last write the map made straight to the file, which happens
+   * when the note is only open in a reading pane - Obsidian keeps no history
+   * for those, and a delete from the map would otherwise be final.
+   *
+   * Only while the file still says what that write left, so it can never undo
+   * over something changed since, and only once: what was put back is what the
+   * map now shows, and the step is spent.
+   */
+  private undoLastWrite(): boolean {
+    const kept = this.undoable;
+    const file = this.file;
+
+    if (!kept || !file || file.path !== kept.path) {
+      return false;
+    }
+    void (async () => {
+      if ((await this.app.vault.read(file)) !== kept.after) {
+        new Notice('Mind map: the file has changed since, so it was left be.');
+        this.undoable = null;
+
+        return;
+      }
+      await this.app.vault.modify(file, kept.before);
+      this.undoable = null;
+      new Notice('Mind map: undid the last change.');
+      await this.render();
+    })();
+
+    return true;
   }
 
   private async applyOp(mutate: (lines: string[]) => string[]): Promise<void> {
@@ -1598,7 +1997,7 @@ export class MindmapView extends ItemView {
       return;
     }
     try {
-      await updateFileLines(this.app, this.file, mutate);
+      await this.writeFile(this.file, mutate);
     } catch (err) {
       this.reportOpError(err);
     }
@@ -1615,9 +2014,10 @@ export class MindmapView extends ItemView {
   }
 
   private startInlineEdit(node: MindNode, el: HTMLElement): void {
-    if (this.isInlineEditing) {
+    if (this.isBusy() || !this.file) {
       return;
     }
+    const file = this.file;
     // The caller's node/el may be stale: closures from a context menu or
     // dblclick outlive re-renders. Remap to the current DOM element, and
     // never start on a detached one — its input can't take focus, so
@@ -1637,87 +2037,96 @@ export class MindmapView extends ItemView {
     if (!textEl) {
       return;
     }
-    this.isInlineEditing = true;
     // Edit in a span carrying the same text styles as the label it
     // replaces, so the node keeps the same size while editing and after
     // confirming (an <input> has a fixed width and cannot wrap).
     const input = el.createSpan({
-      cls: 'mindmap-node-text mindmap-edit-input',
+      cls: `mindmap-node-text ${EDIT_INPUT}`,
     });
 
-    input.contentEditable = 'plaintext-only';
+    let label = node.text;
+
     input.textContent = node.text;
     // Exactly the label's place, so the node's contents do not shift.
     textEl.after(input);
     textEl.hide();
-    let done = false;
-    const finish = (save: boolean): void => {
-      if (done) {
-        return;
-      }
-      done = true;
-      this.isInlineEditing = false;
-      const value = (input.textContent ?? '').replace(/[\r\n]+/g, ' ').trim();
-
-      if (save && value !== node.text) {
-        void this.applyOp((lines) => setTextOp(lines, node, value));
-      } else if (this.renderQueued) {
-        void this.render();
-      } else {
+    this.closeEdit = runEditor({
+      ...this.editSession(),
+      input,
+      value: () => singleLineValue(input.innerText),
+      placeCaret: () => caretAtEnd(input),
+      restore: () => {
+        this.closeEdit = null;
         input.remove();
         textEl.show();
-      }
-    };
-
-    // Clicks inside the editor must not reach the node handlers, which
-    // would move focus to the map and close the edit via blur.
-    for (const type of ['pointerdown', 'click', 'dblclick'] as const) {
-      input.addEventListener(type, (ev) => ev.stopPropagation());
-    }
-    input.addEventListener('keydown', (ev) => {
-      ev.stopPropagation();
-      // IME candidate confirmation also fires a "real" Enter keydown
-      // with isComposing still true — that must only close the IME
-      // composition, not the inline edit itself.
-      if (ev.isComposing) {
-        return;
-      }
-      if (ev.key === 'Enter') {
-        ev.preventDefault();
-        finish(true);
-      } else if (ev.key === 'Escape') {
-        ev.preventDefault();
-        finish(false);
-      }
-    });
-    input.addEventListener('blur', () => finish(true));
-    const selectAll = (): void => {
-      const range = el.doc.createRange();
-
-      range.selectNodeContents(input);
-      const sel = el.win.getSelection();
-
-      sel?.removeAllRanges();
-      sel?.addRange(range);
-    };
-
-    input.focus();
-    selectAll();
-    // A closing menu or leaf activation can keep focus away right as the
-    // edit opens. Without focus the blur handler can never fire, so
-    // retry once, then abort the edit instead of leaving it stuck.
-    el.win.setTimeout(() => {
-      if (done || el.doc.activeElement === input) {
-        return;
-      }
-      input.focus();
-      selectAll();
-      el.win.setTimeout(() => {
-        if (!done && el.doc.activeElement !== input) {
-          finish(false);
+      },
+      // What the file says this node is called, kept up as it is typed: the
+      // next write has to find the node by the name the last one gave it.
+      write: (value) => {
+        if (value === label || !value) {
+          return;
         }
-      }, 50);
-    }, 0);
+        const named = { ...node, text: label };
+
+        void this.writeEdit(file, (lines, fresh) => {
+          const target = relocateNode(fresh, named);
+
+          if (!target) {
+            throw new Error(`Mindmap: "${label}" is no longer in the file`);
+          }
+
+          return setTextOp(lines, target, value);
+        }).then((ok) => {
+          if (ok) {
+            label = value;
+          }
+        });
+      },
+    });
+  }
+
+  /**
+   * Writes what an editor is holding. Renders are held off while editing, so
+   * the map's line numbers are from when it opened and the file may have moved
+   * on - every `mutate` is handed a fresh parse to aim itself at. False when
+   * the file no longer has what the edit was made against, which is a conflict
+   * rather than a mistake: the text goes to the clipboard and the map catches
+   * up with the file.
+   */
+  private async writeEdit(
+    file: TFile,
+    mutate: (lines: string[], fresh: MindNode) => string[],
+  ): Promise<boolean> {
+    try {
+      await this.writeFile(file, (lines) =>
+        mutate(lines, parseMarkdown(lines.join('\n'), file.basename)),
+      );
+    } catch (err) {
+      console.error('Mindmap: failed to write the edit', err);
+
+      return false;
+    }
+    await this.render();
+
+    return true;
+  }
+
+  /** The half of an inline edit every editor shares; see ./inline-edit.ts. */
+  private editSession(): Pick<EditSession, 'setEditing' | 'reflow' | 'settle'> {
+    return {
+      setEditing: (editing) => {
+        this.isInlineEditing = editing;
+      },
+      reflow: () => this.reflow(),
+      settle: () => {
+        if (!this.renderQueued) {
+          return false;
+        }
+        void this.render();
+
+        return true;
+      },
+    };
   }
 
   private async moveNode(
@@ -1731,191 +2140,32 @@ export class MindmapView extends ItemView {
       return;
     }
     this.selectedLine = null;
-    await this.applyOp((lines) => moveNodeOp(lines, source, target, before));
+    await this.applyToNodes([source, target, before], (lines, found) =>
+      moveNodeOp(lines, found[0]!, found[1]!, found[2] ?? null),
+    );
   }
 
+  /** The pointer handling for a node drag lives in ./drag.ts. */
   private setupDrag(node: MindNode, el: HTMLElement): void {
-    if (node.type === 'root') {
-      return;
-    }
-    el.addClass('is-draggable');
-    el.addEventListener('pointerdown', (e) => {
-      if (e.button !== 0 || this.isInlineEditing) {
-        return;
-      }
-      if (e.target instanceof HTMLInputElement) {
-        return;
-      }
-      e.stopPropagation();
-      const doc = el.doc;
-      const pointerId = e.pointerId;
-      const startX = e.clientX;
-      const startY = e.clientY;
-      let started = false;
-      let finished = false;
-      let ghost: HTMLElement | null = null;
-      let indicator: HTMLElement | null = null;
-      let drop: DropTarget | null = null;
-      const clearCues = (): void => {
-        drop?.laid.el.removeClass(
-          'is-drop-target',
-          'is-shift-down',
-          'is-shift-up',
-        );
-        indicator?.hide();
-      };
-      const applyCues = (): void => {
-        if (!drop) {
-          return;
-        }
-        const laid = drop.laid;
-
-        if (!drop.parent) {
-          laid.el.addClass('is-drop-target');
-
-          return;
-        }
-        // Sibling slot: nudge the anchor node aside and show an
-        // insertion bar in the gap the drop would fill.
-        const above = drop.before === laid.node;
-
-        laid.el.addClass(above ? 'is-shift-down' : 'is-shift-up');
-        if (!indicator) {
-          indicator = this.canvasEl.createDiv({
-            cls: 'mindmap-drop-indicator',
-          });
-        }
-        indicator.show();
-        indicator.setCssStyles({
-          left: `${laid.x}px`,
-          width: `${laid.w}px`,
-          top: `${above ? laid.y - 8 : laid.y + laid.h + 4}px`,
-        });
-      };
-      const onMove = (ev: PointerEvent): void => {
-        if (!started) {
-          const traveled =
-            Math.abs(ev.clientX - startX) + Math.abs(ev.clientY - startY);
-
-          if (traveled < DRAG_START_THRESHOLD) {
-            return;
+    setupNodeDrag(
+      {
+        canvasEl: this.canvasEl,
+        nodes: this.laidByLine,
+        isEditing: () => this.isInlineEditing,
+        setDragging: (dragging) => {
+          this.isDragging = dragging;
+        },
+        drop: (source, target, before) =>
+          void this.moveNode(source, target, before),
+        settle: () => {
+          if (this.renderQueued) {
+            void this.render();
           }
-          started = true;
-          this.isDragging = true;
-          // Capture the pointer so pointerup still arrives when the
-          // button is released outside the window. A missed
-          // pointerup leaves isDragging stuck, which blocks every
-          // re-render and desyncs the map from the Markdown.
-          try {
-            el.setPointerCapture(pointerId);
-          } catch {
-            // Pointer already gone; the doc listeners still
-            // cover the normal in-window case.
-          }
-          el.addClass('is-dragging');
-          this.canvasEl.addClass('is-drag-active');
-          for (const laid of this.laidByLine.values()) {
-            if (laid.el === el) {
-              continue;
-            }
-            const target = laid.node;
-
-            if (!canDrop(node, target) && !canDropAsSibling(node, target)) {
-              laid.el.addClass('is-invalid-target');
-            }
-          }
-          ghost = el.cloneNode(true) as HTMLElement;
-          ghost.removeClass('is-dragging', 'is-selected');
-          ghost.addClass('mindmap-ghost');
-          this.canvasEl.appendChild(ghost);
-        }
-        const rect = this.canvasEl.getBoundingClientRect();
-
-        ghost?.setCssStyles({
-          left: `${ev.clientX - rect.left + 10}px`,
-          top: `${ev.clientY - rect.top + 10}px`,
-        });
-        const next = findDrop(this.laidByLine, node, ev.clientX, ev.clientY);
-        const same =
-          drop === next ||
-          (drop &&
-            next &&
-            drop.laid === next.laid &&
-            drop.parent === next.parent &&
-            drop.before === next.before);
-
-        if (!same) {
-          clearCues();
-          drop = next;
-          applyCues();
-        }
-      };
-      const finish = (apply: boolean): void => {
-        if (finished) {
-          return;
-        }
-        finished = true;
-        doc.removeEventListener('pointermove', onMove);
-        doc.removeEventListener('pointerup', onUp);
-        doc.removeEventListener('pointercancel', onCancel);
-        el.removeEventListener('lostpointercapture', onCancel);
-        try {
-          if (el.hasPointerCapture(pointerId)) {
-            el.releasePointerCapture(pointerId);
-          }
-        } catch {
-          // Capture already released; nothing to clean up.
-        }
-        el.removeClass('is-dragging');
-        this.canvasEl.removeClass('is-drag-active');
-        for (const marked of Array.from(
-          this.canvasEl.querySelectorAll('.mindmap-node.is-invalid-target'),
-        )) {
-          marked.removeClass('is-invalid-target');
-        }
-        ghost?.remove();
-        const finalDrop = drop;
-
-        clearCues();
-        indicator?.remove();
-        this.isDragging = false;
-        if (started) {
-          // Swallow the click generated by this pointerup so it
-          // doesn't select a node or open a link under the cursor.
-          const suppress = (ce: MouseEvent): void => {
-            ce.stopPropagation();
-            ce.preventDefault();
-          };
-
-          doc.addEventListener('click', suppress, true);
-          el.win.setTimeout(
-            () => doc.removeEventListener('click', suppress, true),
-            0,
-          );
-          if (apply && finalDrop) {
-            if (finalDrop.parent) {
-              void this.moveNode(node, finalDrop.parent, finalDrop.before);
-            } else {
-              void this.moveNode(node, finalDrop.laid.node);
-            }
-
-            return;
-          }
-        }
-        if (this.renderQueued) {
-          void this.render();
-        }
-      };
-      const onUp = (): void => finish(true);
-      const onCancel = (): void => finish(false);
-
-      doc.addEventListener('pointermove', onMove);
-      doc.addEventListener('pointerup', onUp);
-      doc.addEventListener('pointercancel', onCancel);
-      // Fires if the node element is torn down mid-drag (e.g. the
-      // leaf is detached); ends the drag instead of leaving it stuck.
-      el.addEventListener('lostpointercapture', onCancel);
-    });
+        },
+      },
+      node,
+      el,
+    );
   }
 
   private onBackgroundPointerDown(e: PointerEvent): void {
@@ -1938,11 +2188,13 @@ export class MindmapView extends ItemView {
       this.scrollerEl.scrollTop = startTop - (ev.clientY - startY);
     };
     const onUp = (): void => {
+      this.scrollerEl.removeClass('is-panning');
       this.scrollerEl.removeEventListener('pointermove', onMove);
       this.scrollerEl.removeEventListener('pointerup', onUp);
       this.scrollerEl.removeEventListener('pointercancel', onUp);
     };
 
+    this.scrollerEl.addClass('is-panning');
     this.scrollerEl.setPointerCapture(e.pointerId);
     this.scrollerEl.addEventListener('pointermove', onMove);
     this.scrollerEl.addEventListener('pointerup', onUp);

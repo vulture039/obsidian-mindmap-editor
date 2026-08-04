@@ -9,8 +9,13 @@ export default defineConfig(
   globalIgnores([
     'node_modules',
     'dist',
+    // The dev vault holds fixtures and a third-party plugin, neither ours.
+    'dev-vault',
     'esbuild.config.mjs',
     'version-bump.mjs',
+    // Hand-run harness: a Node driver and a snippet the renderer evaluates,
+    // which is a function body rather than a module.
+    'test/e2e',
     'versions.json',
     'main.js',
     'package.json',
@@ -38,6 +43,19 @@ export default defineConfig(
     },
   },
   ...obsidianmd.configs.recommended,
+  {
+    // Tests and build config are not the plugin: they may reach for Node and
+    // build DOM the plain way, and no user ever sees their strings.
+    files: ['test/**/*.ts', 'vitest.config.ts'],
+    rules: {
+      'obsidianmd/prefer-create-el': 'off',
+      'obsidianmd/no-global-this': 'off',
+      'obsidianmd/no-nodejs-modules': 'off',
+      'obsidianmd/ui/sentence-case': 'off',
+      // The stub is what defines instanceOf; it cannot use it.
+      'obsidianmd/prefer-instanceof': 'off',
+    },
+  },
   eslintConfigPrettier,
   {
     // These sit after eslint-config-prettier on purpose. Prettier manages

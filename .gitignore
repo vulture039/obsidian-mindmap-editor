@@ -18,6 +18,22 @@ main.js
 # obsidian
 data.json
 
+# The dev vault is committed for its fixtures and its hot-reload marker; the
+# plugin build that lands in it, and Obsidian's per-machine state, are not.
+dev-vault/.obsidian/plugins/mindmap-editor/main.js
+dev-vault/.obsidian/plugins/mindmap-editor/manifest.json
+dev-vault/.obsidian/plugins/mindmap-editor/styles.css
+dev-vault/.obsidian/plugins/mindmap-editor/data.json
+dev-vault/.obsidian/plugins/hot-reload
+dev-vault/.obsidian/plugins/mm-recorder/writes.log
+# Not a build output like the others: this one is the recorder itself.
+!dev-vault/.obsidian/plugins/mm-recorder/main.js
+dev-vault/.obsidian/appearance.json
+dev-vault/.obsidian/hotkeys.json
+dev-vault/.obsidian/workspace*.json
+dev-vault/.obsidian/cache
+dev-vault/.trash
+
 # Exclude macOS Finder (System Explorer) View States
 .DS_Store
 

@@ -32,28 +32,53 @@ export function findEditingView(app: App, file: TFile): MarkdownView | null {
   return findView(app, file, true);
 }
 
+/** Both line endings, since a note can have come from anywhere. */
+const LINE = /\r?\n/;
+
+/**
+ * Puts lines back together the way `like` had them. A note written on Windows
+ * must not turn into a whole-file diff because one line of it was edited.
+ */
+export function joinLike(lines: string[], like: string): string {
+  return lines.join(like.includes('\r\n') ? '\r\n' : '\n');
+}
+
+/** A write that went straight to the file, and so has no history behind it. */
+export interface WroteToDisk {
+  before: string;
+  after: string;
+}
+
 /**
  * Applies a line-based mutation to the file. When the file is being edited,
  * the change goes through the editor (minimal replaceRange, so undo history is
- * preserved); otherwise it is written via vault.process.
+ * preserved) and there is nothing to hand back; otherwise it is written via
+ * vault.process, and both sides of it are returned - nothing else remembers a
+ * write like that, so the map has to.
  */
 export async function updateFileLines(
   app: App,
   file: TFile,
   mutate: (lines: string[]) => string[],
-): Promise<void> {
+): Promise<WroteToDisk | null> {
   const mdView = findEditingView(app, file);
 
   if (mdView) {
-    const oldLines = mdView.editor.getValue().split('\n');
+    const oldLines = mdView.editor.getValue().split(LINE);
     const newLines = mutate(oldLines.slice());
 
     applyLineDiff(mdView.editor, oldLines, newLines);
-  } else {
-    await app.vault.process(file, (data) =>
-      mutate(data.split('\n')).join('\n'),
-    );
+
+    return null;
   }
+  let before = '';
+  const after = await app.vault.process(file, (data) => {
+    before = data;
+
+    return joinLike(mutate(data.split(LINE)), data);
+  });
+
+  return { before, after };
 }
 
 function applyLineDiff(

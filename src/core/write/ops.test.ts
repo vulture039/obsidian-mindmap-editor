@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { MindNode, parseMarkdown } from './parser';
+import { MindNode, parseMarkdown } from '../parse/parser';
 import {
   addChildOp,
   addSiblingOp,
@@ -9,7 +9,7 @@ import {
   setCheckboxOp,
   setTextOp,
   toggleTaskOp,
-} from './markdown-ops';
+} from './ops';
 
 /** Parse `text`, exposing the root and a fresh mutable line array. */
 function setup(text: string): { root: MindNode; lines: string[] } {

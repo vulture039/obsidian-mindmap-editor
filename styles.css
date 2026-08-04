@@ -10,6 +10,13 @@
   cursor: grab;
 }
 
+/* Only while the background is actually being dragged, so the cursor answers
+   the press instead of staying on "you could grab this". */
+.mindmap-scroller.is-panning,
+.mindmap-scroller.is-panning .mindmap-node {
+  cursor: grabbing;
+}
+
 .mindmap-canvas {
   position: relative;
   min-width: 100%;
@@ -30,17 +37,29 @@
 .mindmap-node {
   --branch-color: var(--text-faint);
   position: absolute;
+  /* A column, so a node's own text is a block under its label rather than
+     another item beside it: a percentage flex-basis cannot make that row
+     break, since the node's width is what it is trying to be a share of. */
   display: flex;
-  align-items: center;
-  gap: 3px; /* checkbox-to-text: about one half-width space */
+  flex-direction: column;
+  align-items: stretch;
   max-width: 300px;
   padding: 4px 10px;
   border: 2px solid var(--branch-color);
-  border-radius: 999px;
+  /* A fixed radius, not a stadium: with the ends rounded to half the height, a
+     label that wraps to a third line turns the node into a lozenge. */
+  border-radius: 10px;
   background: var(--background-primary);
   font-size: var(--font-ui-small);
   cursor: pointer;
   user-select: none;
+}
+
+/* The label's own row: checkbox beside text, both centred on it. */
+.mindmap-node-head {
+  display: flex;
+  align-items: center;
+  gap: 3px; /* checkbox-to-text: about one half-width space */
 }
 
 .mindmap-node-text {
@@ -48,9 +67,16 @@
   overflow-wrap: anywhere;
 }
 
-/* All nodes share the same pill outline (uniform corners, edges meet them
-   cleanly); headings stand out by weight and a strong color-tinted fill
-   instead of shape. Dashed borders stay reserved for the drop-target state. */
+/* Hover feedback in the node's own branch color, so it cannot be mistaken for
+   the accent ring that means "selected". Not while dragging: the drop-target
+   and invalid-target cues own the nodes then. */
+.mindmap-canvas:not(.is-drag-active) .mindmap-node:not(.is-selected):hover {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--branch-color) 35%, transparent);
+}
+
+/* All nodes share one outline (uniform corners, edges meet them cleanly);
+   headings stand out by weight and a strong color-tinted fill instead of
+   shape. Dashed borders stay reserved for the drop-target state. */
 .mindmap-node-heading {
   font-weight: 600;
   background: color-mix(
@@ -58,6 +84,68 @@
     var(--branch-color) 30%,
     var(--background-primary)
   );
+}
+
+.mindmap-node-body {
+  margin-top: 4px;
+  /* The node's own color at half strength: enough to find the divider on a
+     tinted heading fill, still quieter than the border it echoes. */
+  border-top: 1px solid color-mix(in srgb, var(--branch-color) 50%, transparent);
+  padding-top: 4px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.4;
+  text-align: left;
+  /* Not the node's grab: this text answers to a double-click of its own. A
+     text caret would promise typing right here, which is the editor's job. */
+  cursor: pointer;
+}
+
+/* One element per source line, so a double-click knows which line it hit.
+   pre-wrap keeps indentation inside the text (a nested code block), which is
+   also what gets written back. An empty line is a paragraph break. */
+.mindmap-node-body-line {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* A line box, the same as the one the editor gives a blank line: opening an
+   edit must not change the height of what it replaces. */
+.mindmap-node-body-line:empty {
+  height: 1.4em;
+}
+
+/* Text picked up again after a child node; edited on its own, so spaced. The
+   editor takes the same spacing when it stands in for such a line. */
+.mindmap-node-body-line.is-run-start {
+  margin-top: 6px;
+  border-top: 1px dotted
+    color-mix(in srgb, var(--branch-color) 35%, transparent);
+  padding-top: 4px;
+}
+
+/* Lines light up one at a time, so it reads as "this line is the target". */
+.mindmap-node-body-line:not(.is-cursor-line):hover {
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--text-normal) 8%, transparent);
+  color: var(--text-normal);
+}
+
+/* The line the editor's caret is on, and what Delete acts on: a selection, so
+   it is filled like one. The node keeps its ring around it. */
+.mindmap-node-body-line.is-cursor-line {
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--interactive-accent) 20%, transparent);
+  color: var(--text-normal);
+}
+
+/* The note's own pill is filled with the accent already, so an accent tint on
+   it is no mark at all: on that one, the line is picked out in its text
+   colour instead. */
+.mindmap-node-root .mindmap-node-body-line.is-cursor-line,
+.mindmap-node-root .mindmap-node-body-line:not(.is-cursor-line):hover {
+  background: color-mix(in srgb, var(--text-on-accent) 25%, transparent);
+  color: var(--text-on-accent);
 }
 
 /* Collapse handle: grey chrome, so the branch colors stay the nodes'. The
@@ -79,6 +167,36 @@
   user-select: none;
 }
 
+/* The text handle rides the node's top-right corner instead of the side, so a
+   node with children can carry it next to its branch handle - smaller, since
+   two same-size chips on one corner read as clutter. */
+.mindmap-collapse.is-body {
+  transform: translate(-50%, -50%);
+  /* Under the branch handle, so a contested pixel goes to the branch: this
+     one can be reached from anywhere along the node's top. */
+  z-index: 0;
+  min-width: 16px;
+  padding: 0;
+  line-height: 16px;
+  opacity: 0;
+  /* Invisible means gone: left clickable it would swallow presses aimed at
+     the node's corner. */
+  pointer-events: none;
+  transition: opacity 80ms ease;
+}
+
+/* Shown on the node it belongs to - and pinned while the text is folded, the
+   only thing left saying that the node has any. */
+.mindmap-collapse.is-body.is-visible,
+.mindmap-collapse.is-body.is-collapsed {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.mindmap-collapse.is-body.is-collapsed {
+  border-color: var(--branch-color, var(--text-faint));
+}
+
 /* Hover stays grey too: the branch color is not a hover cue here. */
 .mindmap-collapse:hover {
   border-color: var(--text-muted);
@@ -97,7 +215,13 @@
   color: var(--text-normal);
 }
 
-/* Read-only "✓ n done" pill standing in for hidden completed tasks. */
+/* A header button whose whole subject is switched off. */
+.mindmap-view .is-hidden,
+.view-header .is-hidden {
+  display: none;
+}
+
+/* Read-only "✓ n done" node standing in for hidden completed tasks. */
 .mindmap-node-summary {
   border-style: dotted;
   color: var(--text-muted);
@@ -199,11 +323,44 @@
     color-mix(in srgb, var(--interactive-accent) 30%, transparent);
 }
 
-/* Inline editor: a contenteditable span that shares .mindmap-node-text
-   styles, so the node size does not change between viewing and editing. */
+/* Inline editor for a node's label: a contenteditable span sharing
+   .mindmap-node-text styles, so the node is the same size viewing and
+   editing. */
 .mindmap-edit-input {
   outline: none;
   white-space: pre-wrap;
+  /* As the lines it replaces wrap, so a long word leaves the height alone. */
+  overflow-wrap: anywhere;
+  /* Exactly the line box the drawn text has: anything else moves the node as
+     the edit opens. Empty still keeps its line, so the node does not jump. */
+  min-height: 1lh;
   cursor: text;
   user-select: text;
+}
+
+/* Obsidian flashes a line by tinting it, and a code span inside that line
+   paints its own background over the tint: all that showed of a flashed code
+   line was its indent. While the flash is up, the code lets it through - and
+   its own rule is as specific as anything that can be written from here. */
+.is-flashing .cm-hmd-indented-code,
+.is-flashing .cm-inline-code,
+.is-flashing .HyperMD-codeblock,
+.is-flashing code {
+  background: transparent !important;
+}
+
+/* A reading pane's mark, narrowed to the line the map has selected. The block
+   flash underneath it would light the lines either side, so it stands down for
+   as long as ours is up. */
+::highlight(mindmap-line) {
+  /* Obsidian's own flash colour, spelled out: a highlight pseudo-element does
+     not inherit the theme's custom properties, so var() here paints nothing. */
+  background-color: rgb(255 208 0 / 40%);
+}
+
+/* Obsidian's own rule for the flash is as specific as anything we can write
+   from here, so this is the one place the plugin has to insist. */
+.mindmap-quiet-flash .is-flashing {
+  animation: none !important;
+  background-color: transparent !important;
 }

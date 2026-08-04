@@ -7,20 +7,103 @@ npm install
 npm run dev    # watch build
 npm run build  # type check + production build
 npm run lint
-npm test       # run the Vitest unit tests (npm run test:watch to watch)
+npm test       # the Vitest unit tests (npm run test:watch to watch)
+npm run e2e    # the checks that need Obsidian itself; see below
 ```
 
-## Testing
+## The dev vault
 
-Unit tests (Vitest) exercise the pure logic — Markdown parsing, the line-editing operations, palette and drop-target rules.
-The Obsidian-API-facing view code is exercised manually in a vault rather than mocked.
+`dev-vault/` is an Obsidian vault kept in the repo. `npm run dev` builds
+straight into `dev-vault/.obsidian/plugins/mindmap-editor/`, so there is
+nothing to copy: open the folder as a vault once, and every save lands in it.
 
-To test the plugin in a vault, copy the following files into
-`<Vault>/.obsidian/plugins/mindmap-editor/`:
+Set it up once:
 
-- `main.js`
-- `manifest.json`
-- `styles.css`
+1. Install [Hot Reload](https://github.com/pjeby/hot-reload) into the vault. It
+   is a developer tool and is not in Obsidian's plugin browser, so clone it:
+
+   ```bash
+   git clone https://github.com/pjeby/hot-reload.git \
+     dev-vault/.obsidian/plugins/hot-reload
+   ```
+
+   It reloads any plugin whose folder holds a `.hotreload` file (or a `.git`
+   one) as soon as its `main.js` changes. Ours has the marker.
+
+2. Obsidian → Open folder as vault → pick `dev-vault/`, and turn off Restricted
+   mode. Both plugins are listed as enabled already, so there is nothing to
+   switch on.
+
+`npm run dev` then gives: save a `.ts` or `styles.css` → esbuild rebuilds →
+Hot Reload reloads the plugin, no manual copying and no restart.
+
+A second plugin sits in the vault: **Write recorder**, which logs every write
+to `.obsidian/plugins/mm-recorder/writes.log` - what changed, what is no longer
+in the file, and the code that asked for it. It is how "a line disappeared"
+stops being a guess. Nothing else depends on it; turn it off if it is in the way.
+
+`Tabs.md` and `Crlf.md` are notes from elsewhere - tab indentation, and the line
+endings Windows writes - which the checks edit to prove neither is disturbed.
+`Fixtures.md` holds one of everything the parser and the map have
+to handle — nested lists, tasks, descriptions before and after a child, an
+indented code block, a long unbroken URL, links, deep headings. Walk it top to
+bottom for a manual pass instead of improvising. `Linked.md` is what its
+wikilink points at, so following one can be seen going somewhere.
+
+## Checking a change
+
+`npm test` covers everything below the Obsidian API, including the whole write
+path. What is left needs the app, and it splits in two.
+
+### Driven from a terminal (no hands)
+
+Obsidian is Electron, so it can be opened with a debugging port and driven over
+CDP - enough to open a note, click a handle, measure an element and read the
+editor back. Close Obsidian, then:
+
+```bash
+open -a Obsidian --args --remote-debugging-port=9222
+npm run e2e     # Fixtures.md open in a map and in an editing pane
+```
+
+`harness.js` goes in front of whichever check runs - the map, the pane, and the
+few ways of acting on either, so a check file is nothing but its cases. It waits
+for conditions rather than on a clock. Two checks live there, a line per case:
+
+- **`fidelity.js`** (the default) - every write against the file it should
+  leave, character for character, and everything the map draws against what the
+  file says. Run it twice, once with the pane editing and once in reading view,
+  since the map writes through the editor in one and straight to the file in
+  the other.
+- **`keys.js`** - real keystrokes through Obsidian's keymap. It sees a key
+  before the page does, so this is the only way to tell whether the map claims
+  one that belonged to the editor open on top of it.
+- **`root.js`** - the note itself as a node: its own prose, and its folds.
+
+None of them are in CI.
+
+A one-off goes the same way (`npm run e2e my-check.js`): a snippet evaluated in
+the renderer, returning whatever you want printed. It reaches the map's DOM and
+its measurements, every click, the editor's text and fold state, the plugin's
+commands and settings, and a screenshot of the window. Two traps: read the text
+back from the editor rather than the file, which lags it, and pick the node you
+mean by its label - the first `.mindmap-collapse` in the DOM is rarely the one
+you are thinking of.
+
+### By hand
+
+Only what a synthetic event cannot be: **an IME**, a **real drag**, and any
+judgement about how it looks. In `Fixtures.md`:
+
+- Edit a node's text with a Japanese IME - the Enter that confirms it does not
+  close the editor, nothing lands in the file until the composition is, and the
+  text comes out as composed
+- Drag a node onto another - it becomes its child; drag to a sibling's edge - it
+  lands there
+- Click `[[Linked]]` - map and editor both move to that note, and Obsidian's
+  back button returns
+- Turn `¶` on with the map beside a reading pane - selecting a line marks that
+  line, and the pane does not scroll if the line is already on screen
 
 ## Issues
 

@@ -1,5 +1,5 @@
 import { App, Keymap } from 'obsidian';
-import { parseNodeText } from '../core/node-text';
+import { parseNodeText } from '../../core/parse/node-text';
 
 /**
  * Renders node text with [[wikilinks]] and [label](url) as clickable links;

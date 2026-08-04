@@ -27,13 +27,18 @@ export class MindmapSettingTab extends PluginSettingTab {
       },
       {
         name: 'Hide completed tasks',
-        desc: 'Collapse checked tasks into one "✓ n done" node per parent. Also toggled with the check-check button in the view header.',
+        desc: 'Hide checked tasks behind one "✓ n done" node per parent. Also toggled with the check-check button in the view header.',
         control: { type: 'toggle', key: 'hideCompleted' },
       },
       {
         name: 'Sync collapse state with Markdown folding',
-        desc: 'Collapsing a branch on the map folds the same heading or list item in the Markdown editor, and folding it there collapses the branch here. Needs the file open in an editor pane.',
+        desc: 'Collapsing a branch on the map folds the same heading or list item in the Markdown pane, and folding it there collapses the branch here. A pane in reading view follows along by its headings only.',
         control: { type: 'toggle', key: 'syncFolds' },
+      },
+      {
+        name: 'Show node text on the map',
+        desc: 'Draw the text under a node - the lines that are no node of their own - inside the node. The "≡" handle folds one node\'s away again. Also toggled with the pilcrow button in the view header.',
+        control: { type: 'toggle', key: 'showBodyText' },
       },
       {
         name: 'Split direction',

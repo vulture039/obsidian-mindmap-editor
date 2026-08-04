@@ -1,4 +1,4 @@
-import { lineMatchesNode, MindNode } from './parser';
+import { lineMatchesNode, MindNode } from '../parse/parser';
 import {
   CHECKBOX_RE,
   HEADING_SHIFT_RE,
@@ -6,7 +6,7 @@ import {
   LIST_PREFIX_RE,
   MARKER_PREFIX_RE,
   TASK_BOX_RE,
-} from './patterns';
+} from '../parse/patterns';
 
 export interface InsertResult {
   lines: string[];
@@ -51,6 +51,10 @@ function listInsertPoint(target: MindNode): number {
  * to the wrong line. applyOp catches the throw, notifies, and re-renders.
  */
 function requireNodeLine(lines: string[], node: MindNode): string {
+  // The note itself has no line of its own; there is nothing to be stale.
+  if (node.type === 'root') {
+    return '';
+  }
   const line = lines[node.line];
 
   if (line === undefined || !lineMatchesNode(line, node)) {

@@ -12,7 +12,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "e2e": "node test/e2e/run.mjs"
   },
   "keywords": [],
   "license": "MIT",
@@ -27,6 +28,7 @@
     "eslint-plugin-obsidianmd": "^0.4.0",
     "globals": "^17.6.0",
     "jiti": "^2.6.1",
+    "jsdom": "^27.0.1",
     "obsidian": "^1.13.1",
     "prettier": "3.9.6",
     "typescript": "^5.8.3",

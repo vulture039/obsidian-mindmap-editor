@@ -64,9 +64,10 @@ export default class MindmapPlugin extends Plugin {
   }
 
   /**
-   * "Open mind map" on a note's own menu - the file explorer, a tab header,
-   * a link. Without it a note has to be opened just to open its map, since
-   * the command reads the active file.
+   * A note's own menu - the file explorer, a tab header, a link. It names the
+   * note, so the map it opens is linked to it: one that followed the active
+   * file would leave the note you just picked the moment you opened another.
+   * The title says so, since the menu is where the user finds out.
    */
   private addFileMenuItem(): void {
     this.registerEvent(
@@ -76,9 +77,9 @@ export default class MindmapPlugin extends Plugin {
         }
         menu.addItem((item) =>
           item
-            .setTitle('Open mind map')
+            .setTitle('Open mind map linked to this note')
             .setIcon('git-fork')
-            .onClick(() => void this.openMindmap(file)),
+            .onClick(() => void this.openMindmap(file, true)),
         );
       }),
     );

@@ -117,6 +117,29 @@ const res = await send('Runtime.evaluate', {
   returnByValue: true,
 });
 
+// Every check asserts it starts on Fixtures.md, so every check has to leave it
+// there - a run that moved the map (renaming the note, opening another one)
+// would otherwise fail the next one for a reason it cannot name.
+await send('Runtime.evaluate', {
+  expression: `(async () => {
+    const path = 'Fixtures.md';
+    const md = app.workspace
+      .getLeavesOfType('markdown')
+      .find((l) => l.view.file?.path === path);
+
+    if (!md) {
+      return;
+    }
+    app.workspace.setActiveLeaf(md, { focus: true });
+    const map = app.workspace.getLeavesOfType('mindmap-editor')[0];
+
+    for (let i = 0; i < 40 && map?.view.currentFile?.path !== path; i++) {
+      await new Promise((r) => setTimeout(r, 50));
+    }
+  })()`,
+  awaitPromise: true,
+});
+
 ws.close();
 const thrown = res.result?.exceptionDetails;
 

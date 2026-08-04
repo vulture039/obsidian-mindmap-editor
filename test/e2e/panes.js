@@ -115,6 +115,52 @@ try {
       `it stayed on ${second.view.currentFile?.path}`,
     );
   }
+  // A note's own menu names the note, so the map it opens is linked to it.
+  {
+    const items = [];
+    const menu = {
+      addItem(build) {
+        const item = {
+          setTitle: (t) => ((item.title = t), item),
+          setIcon: (i) => ((item.icon = i), item),
+          onClick: (fn) => ((item.click = fn), item),
+        };
+
+        build(item);
+        items.push(item);
+
+        return menu;
+      },
+    };
+
+    app.workspace.trigger(
+      'file-menu',
+      menu,
+      app.vault.getAbstractFileByPath('Tabs.md'),
+      'file-explorer',
+    );
+    const ours = items.find((i) => i.title?.startsWith('Open mind map'));
+
+    ours?.click(new MouseEvent('click'));
+    const opened = await until(() => mapsFor('Tabs.md')[0]);
+
+    await settle();
+    check(
+      "the note menu opens that note's map, linked to its tab",
+      !!opened?.group,
+      `${items.length} items offered, group ${opened?.group ?? null}`,
+    );
+
+    await activate(OTHER);
+    await settle();
+    check(
+      'and it stays there while the active file moves',
+      mapsFor('Tabs.md').length === 1,
+      `${maps()
+        .map((l) => l.view.currentFile?.path)
+        .join(', ')}`,
+    );
+  }
 } finally {
   for (const leaf of maps()) {
     if (leaf !== ours) {
@@ -125,6 +171,9 @@ try {
   // the active file, and its setup would fail for no reason it can name.
   ours.setGroup(null);
   await activate('Fixtures.md');
+  // Following is a render behind the active file, and the next check's setup
+  // reads the map, not the workspace.
+  await until(() => ours.view.currentFile?.path === 'Fixtures.md');
 }
 
 return { results };

@@ -9,7 +9,8 @@ No new file format, no markup to add.
 
 1. Open a Markdown file.
 2. Press Ctrl+P (Cmd+P on macOS) and run `Open mind map for the active file` (or click the ribbon icon).
-   Any note's map also opens from `Open mind map` on its right-click menu, in the file explorer or on its tab.
+   Any note's map also opens from `Open mind map linked to this note` on its right-click menu, in the file
+   explorer or on its tab.
 3. The map opens in a split and stays in sync while you type.
 
 ## Features

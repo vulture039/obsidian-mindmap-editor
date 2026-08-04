@@ -28,9 +28,9 @@ No new file format, no markup to add.
   the map folds its headings by their own handles; its lists stay the reader's. The header buttons and the
   fold commands do the whole map at once.
 - **Show a node's own text** - Off by default; the `¶` header button draws the lines under a node that are no
-  node of their own inside it, and `≡` on its corner folds them away. Click a line to put the editor's cursor
-  on it, double-click to open it there - the map draws this text, the editor writes it. The `¶` button is that
-  map's own, so a second map can leave its text alone.
+  node of their own inside it, and `≡` on its corner folds them away. The map only draws this text - it is
+  written in the Markdown pane: click a line to put the cursor on it, double-click to open it there. The `¶`
+  button is that map's own, so a second map can leave its text alone.
 - **Hide completed tasks** - The `✓✓` header button hides checked tasks behind one `✓ n done` node per parent.
   Click it to reveal just that parent (`− hide done` puts them back). Per map, and remembered across sessions.
 - **Map and editor follow each other** - Selecting a node brings its note to the front of the Markdown side

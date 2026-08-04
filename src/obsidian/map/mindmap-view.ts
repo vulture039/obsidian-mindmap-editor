@@ -84,6 +84,12 @@ const KEEP_IN_VIEW: ScrollIntoViewOptions = {
   inline: 'nearest',
 };
 
+/** One word for one thing: the tab menu, the command and this all say link. */
+const LINK_LABEL = 'Link this map to its note';
+
+/** How long a notice the user has to act on stays up (ms). */
+const HELD_NOTICE = 10000;
+
 /** How long the map waits before redrawing after a change to the file. */
 const RENDER_DELAY = 250;
 
@@ -137,6 +143,9 @@ export class MindmapView extends ItemView {
   private laidRoot: LaidNode | null = null;
   private hideCompletedActionEl: HTMLElement | null = null;
   private bodyTextActionEl: HTMLElement | null = null;
+  private linkActionEl: HTMLElement | null = null;
+  /** How many `pointEditorAtFile` calls this map has in flight. */
+  private pointing = 0;
   /** The two bulk-fold buttons in the header, by what each one folds. */
   private foldAllActionEls = new Map<FoldKind, HTMLElement>();
   /**
@@ -159,12 +168,13 @@ export class MindmapView extends ItemView {
   private readonly editor: EditorPane;
 
   /**
-   * Checked tasks collapse into one "✓ n done" pill per parent. Backed by
-   * plugin settings so the choice survives restarts.
+   * The two the header can flip. Per pane, not settings: with maps side by
+   * side, one header button must not redraw every other map. The settings
+   * they start from are the defaults for a map being opened, nothing more,
+   * and the workspace remembers what each pane was left showing.
    */
-  private get hideCompleted(): boolean {
-    return this.plugin.settings.hideCompleted;
-  }
+  private hideCompleted: boolean;
+  private showBodyText: boolean;
 
   /** Whether collapsed branches and the editor's folds track each other. */
   private get syncFolds(): boolean {
@@ -206,11 +216,16 @@ export class MindmapView extends ItemView {
   constructor(leaf: WorkspaceLeaf, plugin: MindmapPlugin) {
     super(leaf);
     this.plugin = plugin;
+    // The settings are where a map starts; setState has the last word for one
+    // the workspace is restoring.
+    this.hideCompleted = plugin.settings.hideCompleted;
+    this.showBodyText = plugin.settings.showBodyText;
     this.editor = new EditorPane({
       app: this.app,
       leaf,
       file: () => this.file,
       openSplit: () => plugin.openSplit(),
+      hasFocus: () => this.containerEl.contains(document.activeElement),
       focusMap: () => this.scrollerEl.focus({ preventScroll: true }),
     });
     // This view navigates between files (wikilink follows), so it takes
@@ -599,6 +614,11 @@ export class MindmapView extends ItemView {
     return this.file ? `Mind map: ${this.file.basename}` : 'Mind map';
   }
 
+  /** The file this map is showing, so the plugin can find the map for one. */
+  get currentFile(): TFile | null {
+    return this.file;
+  }
+
   getIcon(): string {
     return 'git-fork';
   }
@@ -751,7 +771,7 @@ export class MindmapView extends ItemView {
     if (kind === FoldKind.Text) {
       return {
         branch: [],
-        text: this.plugin.settings.showBodyText ? textTargets(this.root) : [],
+        text: this.showBodyText ? textTargets(this.root) : [],
       };
     }
 
@@ -777,7 +797,7 @@ export class MindmapView extends ItemView {
 
   /** Folds or unfolds every handle of one kind; what the commands call. */
   setAllCollapsed(kind: FoldKind, collapse: boolean): void {
-    if (kind === FoldKind.Text && !this.plugin.settings.showBodyText) {
+    if (kind === FoldKind.Text && !this.showBodyText) {
       new Notice('Mind map: the map is not drawing node text right now.');
 
       return;
@@ -923,28 +943,48 @@ export class MindmapView extends ItemView {
     if (this.hideCompleted === value) {
       return;
     }
-    this.plugin.settings.hideCompleted = value;
-    void this.plugin.saveSettings();
+    this.hideCompleted = value;
+    this.app.workspace.requestSaveLayout();
     this.expandedDone.clear();
     this.syncToggleActions();
     void this.render();
   }
 
-  /**
-   * Flips the map-wide "draw a node's own text" setting; the header button
-   * and the command share it, and every open map follows.
-   */
+  /** Flips whether this map draws a node's own text; the `¶` button. */
   toggleBodyText(): void {
-    this.plugin.settings.showBodyText = !this.plugin.settings.showBodyText;
-    void this.plugin.saveSettings();
+    this.showBodyText = !this.showBodyText;
+    this.app.workspace.requestSaveLayout();
     this.syncToggleActions();
     void this.render();
   }
 
-  /** Lights up the header buttons that stand for a stored setting. */
-  private syncToggleActions(): void {
-    const text = this.plugin.settings.showBodyText;
+  /**
+   * Links this map to its note's tab, or hands it back to the active file.
+   * The header's way of saying what the linked-open command does, since a
+   * shortcut nobody can see is a shortcut nobody uses.
+   */
+  private toggleLink(): void {
+    if (this.editor.linkedLeaf()) {
+      // Obsidian's own Unlink; not in the typings, like `group` beside it.
+      (
+        this.leaf as WorkspaceLeaf & { setGroup(g: string | null): void }
+      ).setGroup(null);
 
+      return;
+    }
+    void this.linkToEditor();
+  }
+
+  /** Lights up the header buttons that stand for what this map is showing. */
+  private syncToggleActions(): void {
+    const text = this.showBodyText;
+    const linked = !!this.editor.linkedLeaf();
+
+    this.linkActionEl?.toggleClass('is-active', linked);
+    this.linkActionEl?.setAttribute(
+      'aria-label',
+      linked ? 'Unlink this map, so it follows the active file' : LINK_LABEL,
+    );
     this.hideCompletedActionEl?.toggleClass('is-active', this.hideCompleted);
     this.bodyTextActionEl?.toggleClass('is-active', text);
     // Nothing to fold while the map draws no text, and the map only folds
@@ -963,6 +1003,9 @@ export class MindmapView extends ItemView {
       'pilcrow',
       'Show/hide node text on the map',
       () => this.toggleBodyText(),
+    );
+    this.linkActionEl = this.addAction('link', LINK_LABEL, () =>
+      this.toggleLink(),
     );
     this.syncToggleActions();
     this.foldAllActionEls.set(
@@ -1030,32 +1073,26 @@ export class MindmapView extends ItemView {
       }),
     );
     this.registerEvent(
-      this.app.workspace.on('active-leaf-change', (leaf) =>
-        this.editor.noteActiveLeaf(leaf),
-      ),
-    );
-    this.registerEvent(
-      this.app.workspace.on('file-open', (file) => {
-        // An explicit choice of source, so it wins over the active file and
-        // over followActiveFile. Nothing to track means nothing to win.
-        if (this.editor.linkedLeaf()) {
-          this.followLinkedLeaf();
-
-          return;
-        }
-        const shouldFollow =
-          this.plugin.settings.followActiveFile &&
-          file &&
-          file.extension === 'md' &&
-          !this.isCurrentFile(file);
-
-        if (shouldFollow) {
-          void this.setFile(file);
+      this.app.workspace.on('active-leaf-change', (leaf) => {
+        this.editor.noteActiveLeaf(leaf);
+        // Clicking a map points the Markdown side at its note: with maps side
+        // by side, the one just picked is the note being worked on. The
+        // keyboard goes back where the click put it.
+        if (leaf === this.leaf) {
+          void this.pointEditorAtFile();
         }
       }),
     );
     this.registerEvent(
-      this.leaf.on('group-change', () => this.followLinkedLeaf()),
+      this.app.workspace.on('file-open', (file) => this.followFile(file)),
+    );
+    // Unlinking hands the pane back to the active file, and no file-open
+    // follows it: the note the user wants is the one already open.
+    this.registerEvent(
+      this.leaf.on('group-change', () => {
+        this.syncToggleActions();
+        this.followFile(this.app.workspace.getActiveFile());
+      }),
     );
     this.registerDomEvent(this.scrollerEl, 'pointerdown', (e) =>
       this.onBackgroundPointerDown(e),
@@ -1077,26 +1114,27 @@ export class MindmapView extends ItemView {
     this.registerEvent(
       this.app.workspace.on('active-leaf-change', () => checkFolds()),
     );
-    // Remember how the user arranged the map pane (side by side vs
-    // stacked), so reopening the view recreates the same split without
-    // touching the settings dropdown.
-    this.registerEvent(
-      this.app.workspace.on('layout-change', () => {
-        const dir = this.detectSplitDirection();
-
-        if (dir && dir !== this.plugin.settings.splitDirection) {
-          this.plugin.settings.splitDirection = dir;
-          void this.plugin.saveSettings();
-        }
-      }),
-    );
   }
 
   getState(): Record<string, unknown> {
-    return { file: this.file?.path ?? null };
+    return {
+      file: this.file?.path ?? null,
+      hideCompleted: this.hideCompleted,
+      showBodyText: this.showBodyText,
+    };
   }
 
   async setState(state: unknown, result: ViewStateResult): Promise<void> {
+    // What this pane was left drawing, which is its own and not the settings'.
+    const shown = (state ?? {}) as Record<string, unknown>;
+
+    if (typeof shown.hideCompleted === 'boolean') {
+      this.hideCompleted = shown.hideCompleted;
+    }
+    if (typeof shown.showBodyText === 'boolean') {
+      this.showBodyText = shown.showBodyText;
+    }
+    this.syncToggleActions();
     if (
       state &&
       typeof state === 'object' &&
@@ -1138,8 +1176,6 @@ export class MindmapView extends ItemView {
   }
 
   refresh(): void {
-    // Settings may have changed (e.g. hideCompleted from the settings
-    // tab or another view's header button); keep the actions in sync.
     this.syncToggleActions();
     this.requestRender();
   }
@@ -1166,35 +1202,6 @@ export class MindmapView extends ItemView {
     if (this.renderQueued && this.contentEl.offsetHeight > 0) {
       void this.render();
     }
-  }
-
-  /**
-   * Reads the split orientation the map currently sits in from the DOM
-   * (Obsidian: mod-vertical = side by side, mod-horizontal = stacked).
-   * Returns null when the map is not actually sharing a split with
-   * another pane, so a lone maximized map never rewrites the setting.
-   */
-  private detectSplitDirection(): 'vertical' | 'horizontal' | null {
-    const split = this.containerEl.closest('.workspace-split');
-
-    if (!split) {
-      return null;
-    }
-    const panes = split.querySelectorAll(
-      ':scope > .workspace-tabs, :scope > .workspace-split, :scope > .workspace-leaf',
-    ).length;
-
-    if (panes < 2) {
-      return null;
-    }
-    if (split.classList.contains('mod-horizontal')) {
-      return 'horizontal';
-    }
-    if (split.classList.contains('mod-vertical')) {
-      return 'vertical';
-    }
-
-    return null;
   }
 
   /**
@@ -1398,7 +1405,7 @@ export class MindmapView extends ItemView {
    * click can name the line it hit.
    */
   private addBodyText(node: MindNode, el: HTMLElement): void {
-    if (!this.plugin.settings.showBodyText || !node.body.length) {
+    if (!this.showBodyText || !node.body.length) {
       return;
     }
     if (this.isTextFolded(node)) {
@@ -1476,7 +1483,7 @@ export class MindmapView extends ItemView {
 
   /** Whether the node gets a "≡": it has text of its own the map can fold. */
   private hasTextToggle(node: MindNode): boolean {
-    return this.plugin.settings.showBodyText && node.body.length > 0;
+    return this.showBodyText && node.body.length > 0;
   }
 
   /**
@@ -1748,11 +1755,13 @@ export class MindmapView extends ItemView {
     // Here rather than from the editor's own event: with the map holding
     // focus that event may never come, leaving the last mark standing.
     this.markCursorLine(line ?? node.line);
-    // The editor always follows the current selection, whether it came
-    // from a click or from arrow-key navigation.
-    void this.editor.goToLine(
-      line ?? node.line,
-      blockOf(node, line ?? node.line),
+    // Picking a node is asking to read that note, so it goes to the front
+    // first - and the cursor only once it is there. Both open the note when
+    // no pane has it, and side by side that is two tabs of the same file.
+    // The editor always follows the current selection, whether it came from
+    // a click or from arrow-key navigation.
+    void this.pointEditorAtFile().then(() =>
+      this.editor.goToLine(line ?? node.line, blockOf(node, line ?? node.line)),
     );
   }
 
@@ -1760,6 +1769,72 @@ export class MindmapView extends ItemView {
     this.canvasEl
       .querySelector('.mindmap-node.is-selected')
       ?.removeClass('is-selected');
+  }
+
+  /**
+   * Moves this map onto `file` if it is the map's to follow. A map tracks the
+   * active file, like Obsidian's own outline; one linked to a tab tracks that
+   * tab instead, which is how a map is kept on one note.
+   */
+  private followFile(file: TFile | null): void {
+    if (this.editor.linkedLeaf()) {
+      this.followLinkedLeaf();
+
+      return;
+    }
+    const shouldFollow =
+      this.plugin.mapDrivenOpen !== file?.path &&
+      file &&
+      file.extension === 'md' &&
+      !this.isCurrentFile(file);
+
+    if (shouldFollow) {
+      void this.setFile(file);
+    }
+  }
+
+  /**
+   * Brings this map's note to the front of the Markdown side - picking a node
+   * is asking to read it there, and a tab behind another one answers nothing.
+   * The note it shows becomes the active file, so it is flagged on the way:
+   * without that, working in one map drags every other one onto its note.
+   */
+  private async pointEditorAtFile(): Promise<void> {
+    if (!this.file) {
+      return;
+    }
+    const had = this.containerEl.contains(document.activeElement);
+
+    // Counted, because clicking a node calls this twice - once for the leaf
+    // going active, once for the node. The second finds the tab already up and
+    // returns at once; clearing the flag there would leave the first one
+    // revealing unguarded, which is the whole window it exists to cover.
+    this.pointing++;
+    this.plugin.mapDrivenOpen = this.file.path;
+    try {
+      // Only the focus we took is given back: grabbing it unasked makes this
+      // map the active leaf, and Obsidian then has no active file at all -
+      // the next note the user opens goes nowhere.
+      if ((await this.editor.showFile(this.file)) && had) {
+        this.scrollerEl.focus({ preventScroll: true });
+      }
+    } finally {
+      if (--this.pointing === 0) {
+        this.plugin.mapDrivenOpen = null;
+      }
+    }
+  }
+
+  /**
+   * Ties this map to the tab its note is in - Obsidian's own "Link with tab",
+   * so the pairing shows in its tab menu and comes undone there. This is what
+   * keeps a map on one note: it now tracks that tab rather than the active
+   * file, and the two move together from either side.
+   */
+  async linkToEditor(): Promise<void> {
+    if (this.file) {
+      this.leaf.setGroupMember(await this.editor.tabFor(this.file));
+    }
   }
 
   /** Follows the tab this map is linked to onto its file. */

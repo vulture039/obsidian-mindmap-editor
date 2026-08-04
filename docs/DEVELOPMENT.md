@@ -68,19 +68,28 @@ npm run e2e     # Fixtures.md open in a map and in an editing pane
 
 `harness.js` goes in front of whichever check runs - the map, the pane, and the
 few ways of acting on either, so a check file is nothing but its cases. It waits
-for conditions rather than on a clock. Two checks live there, a line per case:
+for conditions rather than on a clock. Each file below is a check, a line per
+case:
 
 - **`fidelity.js`** (the default) - every write against the file it should
   leave, character for character, and everything the map draws against what the
   file says. Run it twice, once with the pane editing and once in reading view,
   since the map writes through the editor in one and straight to the file in
   the other.
-- **`keys.js`** - real keystrokes through Obsidian's keymap. It sees a key
-  before the page does, so this is the only way to tell whether the map claims
-  one that belonged to the editor open on top of it.
-- **`root.js`** - the note itself as a node: its own prose, and its folds.
+- **`keys.js`** (`npm run e2e test/e2e/keys.js`) - real keystrokes through
+  Obsidian's keymap. It sees a key before the page does, so this is the only
+  way to tell whether the map claims one that belonged to the editor open on
+  top of it.
+- **`root.js`** (`npm run e2e test/e2e/root.js`) - the note itself as a node:
+  its own prose, and its folds.
+- **`panes.js`** (`npm run e2e test/e2e/panes.js`) - a map follows the active
+  file, and the linked-open command opens one tied to a note's tab instead. Only a real
+  workspace has a second leaf to get this wrong with. It opens and closes panes
+  of its own, and puts them back afterwards.
 
-None of them are in CI.
+None of them are in CI. Each one asserts it starts with Fixtures.md in the map,
+so `run.mjs` puts it back there afterwards - a check that moved the map would
+otherwise fail the next one for a reason it cannot name.
 
 A one-off goes the same way (`npm run e2e my-check.js`): a snippet evaluated in
 the renderer, returning whatever you want printed. It reaches the map's DOM and

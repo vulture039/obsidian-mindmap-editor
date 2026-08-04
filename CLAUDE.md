@@ -10,7 +10,10 @@ to the .md file.
 - **Write ops validate line freshness** - each node keeps `line`/`endLine`; ops check `lineMatchesNode` and
   throw on mismatch → notice + re-render.
 - **Nodes are HTML elements, edges are SVG** - checkboxes are real `<input>`s.
-- **Three verbs, one job each** - **show/hide** is the setting (does the map draw node text at all),
+- **A setting is a default, a header button is this map's own** - `hideCompleted` and `showBodyText` start a
+  map off; the pane then keeps its own in the view state. With maps side by side, one header must not redraw
+  the others.
+- **Three verbs, one job each** - **show/hide** is what one map draws (does it draw node text at all),
   **collapse/expand** is a branch (`−`/`+n`), **fold/unfold** is a node's own text (`≡`), which is the word
   Obsidian uses for the fold it mirrors.
 - **The map draws a node's own text; the editor writes it** - a double-click on a line opens it there.
@@ -42,7 +45,8 @@ Two questions, in order. Does the file import the `obsidian` package -
 part on each side, the two share a basename (`core/folds.ts` maps the ranges,
 `obsidian/markdown/folds.ts` reads and writes them).
 
-- **main.ts** - Plugin entry: view registration, commands, settings, openSplit
+- **main.ts** - Plugin entry: view registration, commands, the note's own menu, settings, which leaf a new
+  map lands on
 - **core/** - No `obsidian` import, so it is unit-testable in plain Node:
   - **parse/** - Markdown in:
     - **parser.ts** - Markdown → MindNode tree; `body` is a node's own lines (its range minus every child's)
@@ -76,7 +80,8 @@ part on each side, the two share a basename (`core/folds.ts` maps the ranges,
   `write-ops`, `stale-edit`, and `inline-edit`, which runs the real editor under jsdom with
   `test/stubs/` standing in for what Obsidian adds to the DOM. What needs the API itself is driven over
   Obsidian's debugging port by **test/e2e/** (`npm run e2e`, app open): `harness.js` is the ground every check
-  stands on, the files beside it are cases. docs/DEVELOPMENT.md has both halves.
+  stands on, the files beside it are cases - `panes.js` among them, since only a real workspace has the
+  second leaf that pane resolution can get wrong. docs/DEVELOPMENT.md has both halves.
 
 ## Pitfalls (guards against past bugs)
 
@@ -133,6 +138,17 @@ code already carries belongs there, not here.
   editing pane the write goes to the file and nothing remembers it, so the map keeps that one step itself.
 - **Wikilinks navigate via `leaf.setViewState` + `result.history`** - it joins the leaf history, so Obsidian's
   own back/forward works; a custom mouse handler can be swallowed before the DOM ever sees it.
+- **What moves a map onto a file** - a linked tab if there is one, else the active file. Both are Obsidian's
+  own, and there is nothing else: a follow setting and a private per-pane flag were each tried and each only
+  added a second vocabulary for what "Link with tab" already says from the tab menu.
+- **Opening a map is two requests through one gesture** - "show me this note's map" and "give me another
+  pane". A map follows the active file, so asking for the map of the note in front of you can only mean the
+  first, and the second needs to be asked for separately: a command and the `🔗` header button, which is where
+  Obsidian's own Backlinks puts it ("open backlinks for the current note", link icon and all). A modifier would do the same
+  job invisibly, and a shortcut nobody can see is a shortcut nobody uses. Either way the new map is a tab
+  beside the maps already there - splitting again would divide a pane that is half of one. A menu on the note
+  itself names the note, so what it opens is linked; only the ribbon and the plain command mean "the note I
+  am on", which is the one that may roam.
 
 ### Drawing
 

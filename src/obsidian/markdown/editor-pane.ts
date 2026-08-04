@@ -124,27 +124,37 @@ export class EditorPane {
    * back, and doing that for nothing is what makes the map fight the user.
    */
   async showFile(file: TFile): Promise<boolean> {
-    // The linked tab moves with the map even when another tab has the file.
-    if (this.linkedLeaf()) {
-      if (this.linkedFile()?.path === file.path) {
-        return false;
-      }
-      await this.resolveLeaf().openFile(file, { active: false });
+    // The linked tab moves with the map even when another tab has the file,
+    // so while there is one it is the only tab looked at.
+    const linked = this.linkedLeaf();
 
-      return true;
+    if (linked) {
+      return this.linkedFile()?.path === file.path
+        ? this.reveal(linked)
+        : this.openThere(file);
     }
     const open = findMarkdownView(this.deps.app, file);
 
-    if (open) {
-      // Only a tab that is behind another one: revealing takes the focus.
-      if (open.containerEl.isShown()) {
-        return false;
-      }
-      await this.deps.app.workspace.revealLeaf(open.leaf);
+    return open ? this.reveal(open.leaf) : this.openThere(file);
+  }
 
-      return true;
-    }
+  /** Opens `file` in the pane it belongs in; always a move, so always true. */
+  private async openThere(file: TFile): Promise<boolean> {
     await this.resolveLeaf().openFile(file, { active: false });
+
+    return true;
+  }
+
+  /**
+   * Brings a tab to the front, if it is behind another one. Revealing takes
+   * the focus, so a pane already on screen is left alone: handing the focus
+   * back would make the map active again, and the two would bounce.
+   */
+  private async reveal(leaf: WorkspaceLeaf): Promise<boolean> {
+    if (leaf.view.containerEl.isShown()) {
+      return false;
+    }
+    await this.deps.app.workspace.revealLeaf(leaf);
 
     return true;
   }

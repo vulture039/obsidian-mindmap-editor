@@ -208,10 +208,9 @@ export default class MindmapPlugin extends Plugin {
     if (pane === 'window') {
       return this.app.workspace.getLeaf('window');
     }
-    const beside =
-      pane === 'split' ? null : this.mindmapViews()[0]?.leaf.parent;
+    const beside = this.mindmapViews()[0]?.leaf.parent;
 
-    return beside
+    return pane !== 'split' && beside
       ? this.app.workspace.createLeafInParent(beside, -1)
       : this.openSplit();
   }

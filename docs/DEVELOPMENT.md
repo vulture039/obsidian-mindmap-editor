@@ -90,7 +90,9 @@ case:
   workspace has a second leaf to get this wrong with. It opens and closes panes
   of its own, and puts them back afterwards.
 
-None of them are in CI.
+None of them are in CI. Each one asserts it starts with Fixtures.md in the map,
+so `run.mjs` puts it back there afterwards - a check that moved the map would
+otherwise fail the next one for a reason it cannot name.
 
 A one-off goes the same way (`npm run e2e my-check.js`): a snippet evaluated in
 the renderer, returning whatever you want printed. It reaches the map's DOM and

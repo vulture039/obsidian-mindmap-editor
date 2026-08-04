@@ -1260,9 +1260,12 @@ export class MindmapView extends ItemView {
     this.lastEditorFoldsKey = null;
     await this.render(true);
     void this.loadStoredCollapse();
-    const leaf = this.leaf as WorkspaceLeaf & {
-      updateHeader?: () => void;
-    };
+    this.updateHeader();
+  }
+
+  /** Retitles the tab: its title is getDisplayText(), which is the file's. */
+  private updateHeader(): void {
+    const leaf = this.leaf as WorkspaceLeaf & { updateHeader?: () => void };
 
     leaf.updateHeader?.();
   }
@@ -2437,6 +2440,10 @@ export class MindmapView extends ItemView {
 
     try {
       await this.app.fileManager.renameFile(file, path);
+      // Both sides draw the file's name and the rename redraws neither: the
+      // pill is what the last parse put there, the tab is getDisplayText().
+      this.updateHeader();
+      await this.render();
     } catch (err) {
       console.error('Mindmap: could not rename the note', err);
       new Notice(`Mind map: the note could not be renamed to "${name}".`);

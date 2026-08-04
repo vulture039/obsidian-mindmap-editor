@@ -19,7 +19,7 @@ export interface EditSession {
   /** What the editor is holding, as it would go into the file. */
   value: () => string;
   placeCaret: () => void;
-  /** Puts the drawn text back when the editor goes. */
+  /** The editor is over: puts the drawn text back, and whatever else ends. */
   restore: () => void;
   /** Writes what is in the editor; called as it is typed, and once at the end. */
   write: (value: string) => void;
@@ -85,9 +85,11 @@ export function runEditor(session: EditSession): () => void {
     // after this can reach the file.
     put();
     done = true;
-    if (!session.settle()) {
-      restore();
-    }
+    // Always, and before the render: restore is the end of the edit, not only
+    // how the drawn text comes back - the note's rename hangs off it. A queued
+    // render then redraws over whatever it put back.
+    restore();
+    session.settle();
   };
 
   // Clicks inside the editor must not reach the node handlers, which would

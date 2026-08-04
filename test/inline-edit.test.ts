@@ -11,7 +11,12 @@ installObsidianDom();
  * elements the view makes: a textarea for a node's own text, a span for its
  * label.
  */
-function open(options: { multiline: boolean; text?: string }) {
+function open(options: {
+  multiline: boolean;
+  text?: string;
+  /** True stands for a render the edit held off, which is about to redraw. */
+  settle?: () => boolean;
+}) {
   const host = document.createElement('div');
   const input = options.multiline
     ? document.createElement('textarea')
@@ -47,7 +52,7 @@ function open(options: { multiline: boolean; text?: string }) {
     write,
     setEditing,
     reflow: () => undefined,
-    settle: () => false,
+    settle: options.settle ?? (() => false),
   });
 
   const press = (key: string, mods: Partial<KeyboardEvent> = {}): void => {
@@ -127,6 +132,19 @@ describe('leaving an edit', () => {
     e.press('Escape');
 
     expect(e.write).toHaveBeenCalledWith('one more');
+    expect(e.restore).toHaveBeenCalled();
+  });
+
+  // A render coming does not make the end of the edit skippable: renaming the
+  // note hangs off restore, and a held-off render used to swallow it.
+  it('ends the edit even when a held-off render is about to redraw', () => {
+    const e = open({ multiline: false, text: 'note', settle: () => true });
+
+    e.input.focus();
+    e.type('renamed');
+    e.press('Enter');
+
+    expect(e.write).toHaveBeenCalledWith('renamed');
     expect(e.restore).toHaveBeenCalled();
   });
 

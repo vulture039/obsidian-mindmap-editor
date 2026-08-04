@@ -121,7 +121,9 @@ check(
   const path = 'Renamable.md';
   const made =
     app.vault.getAbstractFileByPath(path) ??
-    (await app.vault.create(path, '# Renamable\n\n- a node\n'));
+    // No heading may repeat the note's name: openLabel would not say which of
+    // the two it opened, and only the pill's editor renames anything.
+    (await app.vault.create(path, 'Prose of its own.\n\n# A section\n'));
 
   await view.setFile(made);
   await drawn();
@@ -143,6 +145,22 @@ check(
       'renaming the note renames the file',
       view.file?.basename === 'Renamed by the map',
       `the file is ${view.file?.path}`,
+    );
+    // The file being renamed is half of it: the pill draws what the last
+    // parse put there, and the tab draws getDisplayText().
+    await until(() => rootEl()?.textContent?.includes('Renamed by the map'));
+    check(
+      'the pill draws the new name',
+      !!rootEl()?.textContent?.includes('Renamed by the map'),
+      `the pill still says ${rootEl()?.textContent}`,
+    );
+    const tab = () => view.leaf.tabHeaderInnerTitleEl?.textContent;
+
+    await until(() => tab()?.includes('Renamed by the map'));
+    check(
+      'the tab is retitled with it',
+      !!tab()?.includes('Renamed by the map'),
+      `the tab says ${tab()}`,
     );
   }
   for (const name of ['Renamable.md', 'Renamed by the map.md']) {

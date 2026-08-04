@@ -86,7 +86,7 @@ case:
 - **`root.js`** (`npm run e2e test/e2e/root.js`) - the note itself as a node:
   its own prose, its folds, and renaming the file from its pill.
 - **`panes.js`** (`npm run e2e test/e2e/panes.js`) - a map follows the active
-  file, and Mod-click opens one linked to a note's tab instead. Only a real
+  file, and the linked-open command opens one tied to a note's tab instead. Only a real
   workspace has a second leaf to get this wrong with. It opens and closes panes
   of its own, and puts them back afterwards.
 

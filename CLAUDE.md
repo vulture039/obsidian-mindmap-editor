@@ -156,10 +156,11 @@ code already carries belongs there, not here.
   own, and there is nothing else: a follow setting and a private per-pane flag were each tried and each only
   added a second vocabulary for what "Link with tab" already says from the tab menu.
 - **Opening a map is two requests through one gesture** - "show me this note's map" and "give me another
-  pane". A map follows the active file, so a plain click on the note in front of you can only mean the first,
-  and there is nothing left to express the second. Obsidian never guesses between them: Mod-click is the
-  second, everywhere in the app. It opens a tab beside the maps already there - splitting again would divide
-  a pane that is half of one - and links it to its note's tab.
+  pane". A map follows the active file, so asking for the map of the note in front of you can only mean the
+  first, and the second needs to be asked for separately: a command and the `🔗` header button, which is where
+  Obsidian's own Backlinks puts it ("open backlinks for the current note", link icon and all). A modifier would do the same
+  job invisibly, and a shortcut nobody can see is a shortcut nobody uses. Either way the new map is a tab
+  beside the maps already there - splitting again would divide a pane that is half of one.
 
 ### Drawing
 

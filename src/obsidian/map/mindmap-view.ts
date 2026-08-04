@@ -101,6 +101,9 @@ const KEEP_IN_VIEW: ScrollIntoViewOptions = {
   inline: 'nearest',
 };
 
+/** One word for one thing: the tab menu, the command and this all say link. */
+const LINK_LABEL = 'Link this map to its note';
+
 /** How long a notice the user has to act on stays up (ms). */
 const HELD_NOTICE = 10000;
 
@@ -176,6 +179,7 @@ export class MindmapView extends ItemView {
   private laidRoot: LaidNode | null = null;
   private hideCompletedActionEl: HTMLElement | null = null;
   private bodyTextActionEl: HTMLElement | null = null;
+  private linkActionEl: HTMLElement | null = null;
   /** The two bulk-fold buttons in the header, by what each one folds. */
   private foldAllActionEls = new Map<FoldKind, HTMLElement>();
   /**
@@ -1079,10 +1083,33 @@ export class MindmapView extends ItemView {
     void this.render();
   }
 
+  /**
+   * Links this map to its note's tab, or hands it back to the active file.
+   * The header's way of saying what the linked-open command does, since a
+   * shortcut nobody can see is a shortcut nobody uses.
+   */
+  private toggleLink(): void {
+    if (this.editor.linkedLeaf()) {
+      // Obsidian's own Unlink; not in the typings, like `group` beside it.
+      (
+        this.leaf as WorkspaceLeaf & { setGroup(g: string | null): void }
+      ).setGroup(null);
+
+      return;
+    }
+    void this.linkToEditor();
+  }
+
   /** Lights up the header buttons that stand for what this map is showing. */
   private syncToggleActions(): void {
     const text = this.showBodyText;
+    const linked = !!this.editor.linkedLeaf();
 
+    this.linkActionEl?.toggleClass('is-active', linked);
+    this.linkActionEl?.setAttribute(
+      'aria-label',
+      linked ? 'Unlink this map, so it follows the active file' : LINK_LABEL,
+    );
     this.hideCompletedActionEl?.toggleClass('is-active', this.hideCompleted);
     this.bodyTextActionEl?.toggleClass('is-active', text);
     // Nothing to fold while the map draws no text, and the map only folds
@@ -1101,6 +1128,9 @@ export class MindmapView extends ItemView {
       'pilcrow',
       'Show/hide node text on the map',
       () => this.toggleBodyText(),
+    );
+    this.linkActionEl = this.addAction('link', LINK_LABEL, () =>
+      this.toggleLink(),
     );
     this.syncToggleActions();
     this.foldAllActionEls.set(
@@ -1184,9 +1214,10 @@ export class MindmapView extends ItemView {
     // Unlinking hands the pane back to the active file, and no file-open
     // follows it: the note the user wants is the one already open.
     this.registerEvent(
-      this.leaf.on('group-change', () =>
-        this.followFile(this.app.workspace.getActiveFile()),
-      ),
+      this.leaf.on('group-change', () => {
+        this.syncToggleActions();
+        this.followFile(this.app.workspace.getActiveFile());
+      }),
     );
     this.registerDomEvent(this.scrollerEl, 'pointerdown', (e) =>
       this.onBackgroundPointerDown(e),

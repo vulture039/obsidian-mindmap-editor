@@ -36,8 +36,13 @@ if (!targets) {
   process.exit(1);
 }
 
+// By URL as well as title: a settings window carries the vault's name too,
+// and it is an about:blank with no `app` on it.
 const page = targets.find(
-  (t) => t.type === 'page' && t.title.includes('dev-vault'),
+  (t) =>
+    t.type === 'page' &&
+    t.title.includes('dev-vault') &&
+    t.url.startsWith('app://obsidian.md'),
 );
 
 if (!page) {

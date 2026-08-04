@@ -10,7 +10,10 @@ to the .md file.
 - **Write ops validate line freshness** - each node keeps `line`/`endLine`; ops check `lineMatchesNode` and
   throw on mismatch → notice + re-render.
 - **Nodes are HTML elements, edges are SVG** - checkboxes are real `<input>`s.
-- **Three verbs, one job each** - **show/hide** is the setting (does the map draw node text at all),
+- **A setting is a default, a header button is this map's own** - `hideCompleted` and `showBodyText` start a
+  map off; the pane then keeps its own in the view state. With maps side by side, one header must not redraw
+  the others.
+- **Three verbs, one job each** - **show/hide** is what one map draws (does it draw node text at all),
   **collapse/expand** is a branch (`−`/`+n`), **fold/unfold** is a node's own text (`≡`), which is the word
   Obsidian uses for the fold it mirrors.
 

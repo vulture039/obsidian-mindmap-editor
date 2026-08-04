@@ -93,6 +93,9 @@ const FOLD_CHECK_DELAY = 120;
 /** How long an inline edit may grow before the map is laid out again. */
 const REFLOW_DELAY = 60;
 
+/** What a map draws by its own choice, kept in the pane's view state. */
+type ShownFlag = 'hideCompleted' | 'showBodyText';
+
 /** A completed task node ('- [x]'), the unit hidden by hideCompleted. */
 function isCompletedTask(node: MindNode): boolean {
   return node.type === 'list' && node.checked === true;
@@ -159,12 +162,13 @@ export class MindmapView extends ItemView {
   private readonly editor: EditorPane;
 
   /**
-   * Checked tasks collapse into one "✓ n done" pill per parent. Backed by
-   * plugin settings so the choice survives restarts.
+   * The two the header can flip. Per pane, not settings: with maps side by
+   * side, one header button must not redraw every other map. The settings
+   * they start from are the defaults for a map being opened, nothing more,
+   * and the workspace remembers what each pane was left showing.
    */
-  private get hideCompleted(): boolean {
-    return this.plugin.settings.hideCompleted;
-  }
+  private hideCompleted: boolean;
+  private showBodyText: boolean;
 
   /** Whether collapsed branches and the editor's folds track each other. */
   private get syncFolds(): boolean {
@@ -206,6 +210,10 @@ export class MindmapView extends ItemView {
   constructor(leaf: WorkspaceLeaf, plugin: MindmapPlugin) {
     super(leaf);
     this.plugin = plugin;
+    // The settings are where a map starts; setState has the last word for one
+    // the workspace is restoring.
+    this.hideCompleted = plugin.settings.hideCompleted;
+    this.showBodyText = plugin.settings.showBodyText;
     this.editor = new EditorPane({
       app: this.app,
       leaf,
@@ -757,7 +765,7 @@ export class MindmapView extends ItemView {
     if (kind === FoldKind.Text) {
       return {
         branch: [],
-        text: this.plugin.settings.showBodyText ? textTargets(this.root) : [],
+        text: this.showBodyText ? textTargets(this.root) : [],
       };
     }
 
@@ -783,7 +791,7 @@ export class MindmapView extends ItemView {
 
   /** Folds or unfolds every handle of one kind; what the commands call. */
   setAllCollapsed(kind: FoldKind, collapse: boolean): void {
-    if (kind === FoldKind.Text && !this.plugin.settings.showBodyText) {
+    if (kind === FoldKind.Text && !this.showBodyText) {
       new Notice('Mind map: the map is not drawing node text right now.');
 
       return;
@@ -929,27 +937,24 @@ export class MindmapView extends ItemView {
     if (this.hideCompleted === value) {
       return;
     }
-    this.plugin.settings.hideCompleted = value;
-    void this.plugin.saveSettings();
+    this.hideCompleted = value;
+    this.app.workspace.requestSaveLayout();
     this.expandedDone.clear();
     this.syncToggleActions();
     void this.render();
   }
 
-  /**
-   * Flips the map-wide "draw a node's own text" setting; the header button
-   * and the command share it, and every open map follows.
-   */
+  /** Flips whether this map draws a node's own text; the `¶` button. */
   toggleBodyText(): void {
-    this.plugin.settings.showBodyText = !this.plugin.settings.showBodyText;
-    void this.plugin.saveSettings();
+    this.showBodyText = !this.showBodyText;
+    this.app.workspace.requestSaveLayout();
     this.syncToggleActions();
     void this.render();
   }
 
-  /** Lights up the header buttons that stand for a stored setting. */
+  /** Lights up the header buttons that stand for what this map is showing. */
   private syncToggleActions(): void {
-    const text = this.plugin.settings.showBodyText;
+    const text = this.showBodyText;
 
     this.hideCompletedActionEl?.toggleClass('is-active', this.hideCompleted);
     this.bodyTextActionEl?.toggleClass('is-active', text);
@@ -1092,10 +1097,24 @@ export class MindmapView extends ItemView {
   }
 
   getState(): Record<string, unknown> {
-    return { file: this.file?.path ?? null };
+    return {
+      file: this.file?.path ?? null,
+      hideCompleted: this.hideCompleted,
+      showBodyText: this.showBodyText,
+    };
   }
 
   async setState(state: unknown, result: ViewStateResult): Promise<void> {
+    if (state && typeof state === 'object') {
+      const shown = state as Partial<Record<ShownFlag, unknown>>;
+
+      for (const key of ['hideCompleted', 'showBodyText'] as const) {
+        if (typeof shown[key] === 'boolean') {
+          this[key] = shown[key];
+        }
+      }
+      this.syncToggleActions();
+    }
     if (
       state &&
       typeof state === 'object' &&
@@ -1137,8 +1156,6 @@ export class MindmapView extends ItemView {
   }
 
   refresh(): void {
-    // Settings may have changed (e.g. hideCompleted from the settings
-    // tab or another view's header button); keep the actions in sync.
     this.syncToggleActions();
     this.requestRender();
   }
@@ -1368,7 +1385,7 @@ export class MindmapView extends ItemView {
    * click can name the line it hit.
    */
   private addBodyText(node: MindNode, el: HTMLElement): void {
-    if (!this.plugin.settings.showBodyText || !node.body.length) {
+    if (!this.showBodyText || !node.body.length) {
       return;
     }
     if (this.isTextFolded(node)) {
@@ -1446,7 +1463,7 @@ export class MindmapView extends ItemView {
 
   /** Whether the node gets a "≡": it has text of its own the map can fold. */
   private hasTextToggle(node: MindNode): boolean {
-    return this.plugin.settings.showBodyText && node.body.length > 0;
+    return this.showBodyText && node.body.length > 0;
   }
 
   /**

@@ -28,10 +28,10 @@ No new file format, no markup to add.
   fold commands do the whole map at once.
 - **Show a node's own text** - Off by default; the `¶` header button draws the lines under a node that are no
   node of their own inside it, and `≡` on its corner folds them away. Click a line to put the editor's cursor
-  on it, double-click to open it there - the map draws this text, the editor writes it.
+  on it, double-click to open it there - the map draws this text, the editor writes it. The button is that
+  map's own, so a second map can leave its text alone.
 - **Hide completed tasks** - The `✓✓` header button hides checked tasks behind one `✓ n done` node per parent.
-  Click it to reveal just that parent (`− hide done` puts them back).
-  Remembered across sessions.
+  Click it to reveal just that parent (`− hide done` puts them back). Per map, and remembered across sessions.
 - **Map and editor follow each other** - Selecting a node moves the editor's cursor to its line, and moving
   the cursor selects the node it belongs to - down to the line, where a node's text is drawn.
   Neither side steals the focus.
@@ -81,10 +81,10 @@ None of these come with a hotkey; bind the ones you want in Settings → Hotkeys
 
 **Settings → Mind map editor**:
 
-- **Hide completed tasks**
+- **Hide completed tasks by default** / **Show node text by default** - What a map starts with; each one is
+  then switched on its own from its header (`✓✓`, `¶`).
 - **Sync collapse state with Markdown folding** (default on) - An editing pane folds both ways; a reading pane
   follows along by its headings. List folding also follows Obsidian's Editor → Fold settings.
-- **Show node text on the map** - Draw a node's own text inside the node; also the `¶` header button.
 - **Split direction** - Side by side / stacked, for the split the first map opens in.
 - **Branch colors** - Custom palette, one hex color per line.
 

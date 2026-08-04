@@ -1,13 +1,13 @@
 export interface MindmapSettings {
   palette: string;
-  // Collapse checked tasks into "✓ n done" pills; toggled from the view
-  // header too, and remembered across sessions.
+  // What a map being opened starts with; each pane then holds its own,
+  // since one header button must not redraw every other map.
   hideCompleted: boolean;
   // Mirror collapsed branches and the editor's folded headings/lists onto
   // each other, in both directions.
   syncFolds: boolean;
-  // Draw a node's own text (the lines under it that are no node of their
-  // own) inside the node, instead of leaving it to the editor.
+  // Likewise: the map draws a node's own text (the lines under it that are
+  // no node of their own) rather than leaving it to the editor.
   showBodyText: boolean;
   // Direction used whenever the plugin opens a split (map ⇄ editor).
   splitDirection: 'vertical' | 'horizontal';

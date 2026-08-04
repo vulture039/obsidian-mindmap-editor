@@ -1,11 +1,4 @@
-import {
-  Keymap,
-  Notice,
-  PaneType,
-  Plugin,
-  TFile,
-  WorkspaceLeaf,
-} from 'obsidian';
+import { Notice, Plugin, TFile, WorkspaceLeaf } from 'obsidian';
 import { MindmapView, VIEW_TYPE_MINDMAP } from './obsidian/map/mindmap-view';
 import { FoldKind } from './core/folds';
 import { DEFAULT_SETTINGS, MindmapSettings } from './core/settings';
@@ -27,15 +20,21 @@ export default class MindmapPlugin extends Plugin {
       VIEW_TYPE_MINDMAP,
       (leaf: WorkspaceLeaf) => new MindmapView(leaf, this),
     );
-    // Mod-click for a pane of its own, the way Obsidian opens anything else.
-    this.addRibbonIcon('git-fork', 'Open mind map', (e) => {
-      void this.openMindmap(undefined, Keymap.isModEvent(e));
+    this.addRibbonIcon('git-fork', 'Open mind map', () => {
+      void this.openMindmap();
     });
     this.addCommand({
       id: 'open-mindmap',
       name: 'Open mind map for the active file',
       callback: () => {
         void this.openMindmap();
+      },
+    });
+    this.addCommand({
+      id: 'open-mindmap-linked',
+      name: 'Open mind map linked to the active file',
+      callback: () => {
+        void this.openMindmap(undefined, true);
       },
     });
     this.addCommand({
@@ -79,7 +78,7 @@ export default class MindmapPlugin extends Plugin {
           item
             .setTitle('Open mind map')
             .setIcon('git-fork')
-            .onClick((e) => void this.openMindmap(file, Keymap.isModEvent(e))),
+            .onClick(() => void this.openMindmap(file)),
         );
       }),
     );
@@ -159,14 +158,11 @@ export default class MindmapPlugin extends Plugin {
 
   /**
    * Opens the map for `target`, or for the active file when given none.
-   * `newPane` (Mod-click) is how you say "and leave one here": a map follows
-   * the active file, so a plain click on the note in front of you can only
-   * mean "show me the one I already have".
+   * `linked` is how you say "and leave one here": a map follows the active
+   * file, so asking for the map of the note in front of you can only mean
+   * "show me the one I already have".
    */
-  private async openMindmap(
-    target?: TFile,
-    newPane: PaneType | boolean = false,
-  ): Promise<void> {
+  private async openMindmap(target?: TFile, linked = false): Promise<void> {
     const file = target ?? this.app.workspace.getActiveFile();
 
     if (!file || file.extension !== 'md') {
@@ -178,12 +174,12 @@ export default class MindmapPlugin extends Plugin {
       (view) => view.currentFile?.path === file.path,
     );
 
-    if (showing && !newPane) {
+    if (showing && !linked) {
       await this.app.workspace.revealLeaf(showing.leaf);
 
       return;
     }
-    const leaf = this.newMapLeaf(newPane);
+    const leaf = this.newMapLeaf();
 
     await leaf.setViewState({
       type: VIEW_TYPE_MINDMAP,
@@ -193,24 +189,20 @@ export default class MindmapPlugin extends Plugin {
     // Asked for by note, so it is tied to that note's tab rather than left to
     // the active file. Obsidian's own link, undone from the tab menu - the
     // map keeps no follow flag of its own.
-    if (newPane && leaf.view instanceof MindmapView) {
+    if (linked && leaf.view instanceof MindmapView) {
       await leaf.view.linkToEditor();
     }
     await this.app.workspace.revealLeaf(leaf);
   }
 
   /**
-   * Where a new map goes. Beside the maps already open, as a tab, the way
-   * Obsidian opens anything with Mod-click: splitting again would divide a
-   * pane that is already half of one.
+   * Where a new map goes: a tab beside the maps already open. Splitting again
+   * would divide a pane that is already half of one.
    */
-  private newMapLeaf(pane: PaneType | boolean): WorkspaceLeaf {
-    if (pane === 'window') {
-      return this.app.workspace.getLeaf('window');
-    }
+  private newMapLeaf(): WorkspaceLeaf {
     const beside = this.mindmapViews()[0]?.leaf.parent;
 
-    return pane !== 'split' && beside
+    return beside
       ? this.app.workspace.createLeafInParent(beside, -1)
       : this.openSplit();
   }

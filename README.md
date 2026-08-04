@@ -10,7 +10,6 @@ No new file format, no markup to add.
 1. Open a Markdown file.
 2. Press Ctrl+P (Cmd+P on macOS) and run `Open mind map for the active file` (or click the ribbon icon).
    Any note's map also opens from `Open mind map` on its right-click menu, in the file explorer or on its tab.
-   `Ctrl/Cmd + click` either one for a second map, linked to that note's tab.
 3. The map opens in a split and stays in sync while you type.
 
 ## Features
@@ -37,9 +36,9 @@ No new file format, no markup to add.
   a node's text is drawn. Neither side steals the focus.
 - **Follow wikilinks** - Clicking a `[[wikilink]]` switches map and editor to the linked note together.
 - **Maps side by side, one note each** - A map follows whichever note you open, like Obsidian's own outline.
-  `Ctrl/Cmd + click` the ribbon or the right-click item opens a second one as a tab beside it, linked to that
-  note's tab so it stays there while the first carries on. The link is Obsidian's own: unlink it from the tab
-  menu and it follows the active file again.
+  The `🔗` header button links one to its note's tab instead, so it stays there; `Open mind map linked to the
+active file` opens a second one already linked. The link is Obsidian's own - its tab shows it, and its tab
+  menu or the button again undoes it.
 - **Branch colors** - Each top-level branch gets a palette color by position and its subtree inherits it.
   Customize the palette in settings, one hex color per line.
 
@@ -71,6 +70,7 @@ None of these come with a hotkey; bind the ones you want in Settings → Hotkeys
 | Command                                             | What it does                                          |
 | --------------------------------------------------- | ----------------------------------------------------- |
 | `Open mind map for the active file`                 | Same as the ribbon icon                               |
+| `Open mind map linked to the active file`           | A second map, tied to that note while the first roams |
 | `Toggle focus between mind map and Markdown editor` | Jumps between the two panes                           |
 | `Collapse all branches` / `Expand all branches`     | The `⌄⌃` header button, one direction at a time       |
 | `Fold all node text` / `Unfold all node text`       | The `≡` header button, likewise                       |

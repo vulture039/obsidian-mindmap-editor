@@ -1,8 +1,8 @@
 /**
- * A map follows the active file; Mod-click opens one linked to a note's tab,
- * which is what keeps it there. Only a real workspace can answer this: the
- * whole question is which leaf "Open mind map" lands on, and what the active
- * file does to the maps already open.
+ * A map follows the active file; the linked-open command opens one tied to a
+ * note's tab, and the header button says so. Only a real workspace can answer
+ * this: the whole question is which leaf "Open mind map" lands on, and what
+ * the active file does to the maps already open.
  *
  * Leaves the workspace as it found it - the extra panes are closed, whichever
  * case fails.
@@ -26,7 +26,7 @@ const mapsFor = (path) =>
 const openMap = () =>
   app.commands.executeCommandById('mindmap-editor:open-mindmap');
 /** The map pane the harness came in on, which is not ours to close. */
-const kept = view.leaf;
+const ours = view.leaf;
 
 /** Makes `path` the active file, the way the command reads it. */
 const activate = async (path) => {
@@ -42,27 +42,18 @@ const activate = async (path) => {
 };
 
 /**
- * The ribbon's Mod-click, which is what asks for a map that keeps its note.
- * Opening a pane ends by focusing it, and anything that switches notes before
- * that lands is taken straight back, so wait for it.
+ * The command that asks for a map which keeps its note. Opening a pane ends by
+ * focusing it, and anything that switches notes before that lands is taken
+ * straight back, so wait for it.
  */
 const openLinked = async () => {
   const before = maps().length;
-  const mac = navigator.platform.startsWith('Mac');
 
-  document
-    .querySelector('.side-dock-ribbon-action[aria-label*="mind map" i]')
-    .dispatchEvent(
-      new MouseEvent('click', {
-        bubbles: true,
-        ctrlKey: !mac,
-        metaKey: mac,
-      }),
-    );
+  app.commands.executeCommandById('mindmap-editor:open-mindmap-linked');
   await until(() => maps().length > before);
   await settle();
 
-  return maps().find((l) => l !== kept);
+  return maps().find((l) => l !== ours);
 };
 
 try {
@@ -71,8 +62,8 @@ try {
     await activate(OTHER);
     check(
       'a map on its own follows the active file',
-      !!(await until(() => kept.view.currentFile?.path === OTHER)),
-      `it stayed on ${kept.view.currentFile?.path}`,
+      !!(await until(() => ours.view.currentFile?.path === OTHER)),
+      `it stayed on ${ours.view.currentFile?.path}`,
     );
 
     openMap();
@@ -84,14 +75,14 @@ try {
     );
   }
 
-  // Mod-click: a second map, in the same tab group, linked to the note's tab.
+  // A linked map: a second one, in the same tab group, tied to its note's tab.
   {
     const second = await openLinked();
 
     check(
-      'Mod-click opens a second map as a tab beside the first',
-      !!second && second.parent === kept.parent,
-      `${maps().length} map panes, same group ${second?.parent === kept.parent}`,
+      'the linked command opens a second map as a tab beside the first',
+      !!second && second.parent === ours.parent,
+      `${maps().length} map panes, same group ${second?.parent === ours.parent}`,
     );
 
     check(
@@ -108,7 +99,7 @@ try {
     check(
       'the linked one keeps its note while the other follows',
       mapsFor(OTHER).length === 1 &&
-        kept.view.currentFile?.path === 'Fixtures.md',
+        ours.view.currentFile?.path === 'Fixtures.md',
       `${maps()
         .map((l) => l.view.currentFile?.path)
         .join(', ')} after activating Fixtures.md`,
@@ -126,10 +117,13 @@ try {
   }
 } finally {
   for (const leaf of maps()) {
-    if (leaf !== kept) {
+    if (leaf !== ours) {
       leaf.detach();
     }
   }
+  // A link left behind outlives this run: the next check's map would ignore
+  // the active file, and its setup would fail for no reason it can name.
+  ours.setGroup(null);
   await activate('Fixtures.md');
 }
 

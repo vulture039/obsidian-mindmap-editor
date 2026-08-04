@@ -102,7 +102,12 @@ export class EditorPane {
       : this.deps.openSplit();
   }
 
-  /** The Markdown tab holding `file`, opened beside the others if there is none. */
+  /**
+   * The Markdown tab holding `file`, opened beside the others if there is
+   * none. Any tab that has it will do - this is what a map is linked to, and
+   * linking to the tab the note is already in is the point. `showFile` cannot
+   * use it: while a map is linked, only the linked tab may be written to.
+   */
   async tabFor(file: TFile): Promise<WorkspaceLeaf> {
     const open = findMarkdownView(this.deps.app, file);
 

@@ -123,9 +123,6 @@ const KEEP_IN_VIEW: ScrollIntoViewOptions = {
 /** One word for one thing: the tab menu, the command and this all say link. */
 const LINK_LABEL = 'Link this map to its note';
 
-/** How long a notice the user has to act on stays up (ms). */
-const HELD_NOTICE = 10000;
-
 /** How long the map waits before redrawing after a change to the file. */
 const RENDER_DELAY = 250;
 

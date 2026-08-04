@@ -82,6 +82,10 @@ for conditions rather than on a clock. Two checks live there, a line per case:
   the file it should leave, character for character, both ways round. Run it
   twice, once with the pane editing and once in reading view, since the map
   writes through the editor in one and straight to the file in the other.
+- **`panes.js`** (`npm run e2e test/e2e/panes.js`) - a map follows the active
+  file, and Mod-click opens one linked to a note's tab instead. Only a real
+  workspace has a second leaf to get this wrong with. It opens and closes panes
+  of its own, and puts them back afterwards.
 
 Neither is in CI.
 

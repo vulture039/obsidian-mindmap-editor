@@ -16,6 +16,8 @@ export interface EditorPaneDeps {
   file: () => TFile | null;
   /** A new pane in the user's configured direction, when there is none. */
   openSplit: () => WorkspaceLeaf;
+  /** Whether the keyboard is on the map right now. */
+  hasFocus: () => boolean;
   /** Hands the keyboard back to the map after a jump. */
   focusMap: () => void;
 }
@@ -101,22 +103,65 @@ export class EditorPane {
   }
 
   /**
-   * Shows `file` in a Markdown pane (reusing an existing one, else splitting)
-   * without stealing focus, so the editor tracks the file the map shows.
+   * The Markdown tab holding `file`, opened beside the others if there is
+   * none. Any tab that has it will do - this is what a map is linked to, and
+   * linking to the tab the note is already in is the point. `showFile` cannot
+   * use it: while a map is linked, only the linked tab may be written to.
    */
-  async showFile(file: TFile): Promise<void> {
-    // The linked tab moves with the map even when another tab has the file.
-    if (this.linkedLeaf()) {
-      if (this.linkedFile()?.path !== file.path) {
-        await this.resolveLeaf().openFile(file, { active: false });
-      }
+  async tabFor(file: TFile): Promise<WorkspaceLeaf> {
+    const open = findMarkdownView(this.deps.app, file);
 
-      return;
+    if (open) {
+      return open.leaf;
     }
-    if (findMarkdownView(this.deps.app, file)) {
-      return;
+    const leaf = this.resolveLeaf();
+
+    await leaf.openFile(file, { active: false });
+
+    return leaf;
+  }
+
+  /**
+   * Shows `file` in a Markdown pane, so the editor tracks the file the map
+   * shows. A tab that has it already is brought to the front rather than
+   * replaced: the note in the pane beside the map is not ours to close.
+   * True when a pane was actually moved - the caller may have focus to put
+   * back, and doing that for nothing is what makes the map fight the user.
+   */
+  async showFile(file: TFile): Promise<boolean> {
+    // The linked tab moves with the map even when another tab has the file,
+    // so while there is one it is the only tab looked at.
+    const linked = this.linkedLeaf();
+
+    if (linked) {
+      return this.linkedFile()?.path === file.path
+        ? this.reveal(linked)
+        : this.openThere(file);
     }
+    const open = findMarkdownView(this.deps.app, file);
+
+    return open ? this.reveal(open.leaf) : this.openThere(file);
+  }
+
+  /** Opens `file` in the pane it belongs in; always a move, so always true. */
+  private async openThere(file: TFile): Promise<boolean> {
     await this.resolveLeaf().openFile(file, { active: false });
+
+    return true;
+  }
+
+  /**
+   * Brings a tab to the front, if it is behind another one. Revealing takes
+   * the focus, so a pane already on screen is left alone: handing the focus
+   * back would make the map active again, and the two would bounce.
+   */
+  private async reveal(leaf: WorkspaceLeaf): Promise<boolean> {
+    if (leaf.view.containerEl.isShown()) {
+      return false;
+    }
+    await this.deps.app.workspace.revealLeaf(leaf);
+
+    return true;
   }
 
   /**
@@ -151,6 +196,10 @@ export class EditorPane {
     if (!file || line < 0) {
       return;
     }
+    // Only what the jump takes is given back. Focusing the map unasked makes
+    // it the active leaf, and Obsidian then has no active file at all - the
+    // note the user opens next goes nowhere.
+    const had = this.deps.hasFocus();
     const mdView = findMarkdownView(this.deps.app, file);
 
     if (!mdView) {
@@ -186,7 +235,9 @@ export class EditorPane {
     }
     editor.setCursor({ line, ch });
     editor.scrollIntoView({ from: { line, ch: 0 }, to: { line, ch } }, true);
-    this.deps.focusMap();
+    if (had) {
+      this.deps.focusMap();
+    }
   }
 
   /**

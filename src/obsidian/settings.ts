@@ -21,13 +21,8 @@ export class MindmapSettingTab extends PluginSettingTab {
   getSettingDefinitions(): SettingDefinitionItem[] {
     return [
       {
-        name: 'Follow active file',
-        desc: 'Switch the mind map to whichever Markdown file becomes active. Ignored while the mind map tab is linked to another tab.',
-        control: { type: 'toggle', key: 'followActiveFile' },
-      },
-      {
-        name: 'Hide completed tasks',
-        desc: 'Hide checked tasks behind one "✓ n done" node per parent. Also toggled with the check-check button in the view header.',
+        name: 'Hide completed tasks by default',
+        desc: 'What a map being opened starts with: checked tasks hidden behind one "✓ n done" node per parent. Each map is then switched on its own, with the check-check button in its header.',
         control: { type: 'toggle', key: 'hideCompleted' },
       },
       {
@@ -36,13 +31,13 @@ export class MindmapSettingTab extends PluginSettingTab {
         control: { type: 'toggle', key: 'syncFolds' },
       },
       {
-        name: 'Show node text on the map',
-        desc: 'Draw the text under a node - the lines that are no node of their own - inside the node. The "≡" handle folds one node\'s away again. Also toggled with the pilcrow button in the view header.',
+        name: 'Show node text by default',
+        desc: 'What a map being opened starts with: the text under a node - the lines that are no node of their own - drawn inside it. Each map is then switched on its own, with the pilcrow button in its header.',
         control: { type: 'toggle', key: 'showBodyText' },
       },
       {
         name: 'Split direction',
-        desc: 'How the workspace splits when the plugin opens a new pane (mind map or editor). Updates automatically when you rearrange the mind map pane.',
+        desc: 'How the workspace splits when the plugin opens a new pane (mind map or editor). A map opened beside one already on screen is a tab in its group, so this is the split the first one makes.',
         control: {
           type: 'dropdown',
           key: 'splitDirection',

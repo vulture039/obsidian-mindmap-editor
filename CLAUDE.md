@@ -10,10 +10,12 @@ to the .md file.
 - **Write ops validate line freshness** - each node keeps `line`/`endLine`; ops check `lineMatchesNode` and
   throw on mismatch → notice + re-render.
 - **Nodes are HTML elements, edges are SVG** - checkboxes are real `<input>`s.
-- **Three verbs, one job each** - **show/hide** is the setting (does the map draw node text at all),
+- **A setting is a default, a header button is this map's own** - `hideCompleted` and `showBodyText` start a
+  map off; the pane then keeps its own in the view state. With maps side by side, one header must not redraw
+  the others.
+- **Three verbs, one job each** - **show/hide** is what one map draws (does it draw node text at all),
   **collapse/expand** is a branch (`−`/`+n`), **fold/unfold** is a node's own text (`≡`), which is the word
   Obsidian uses for the fold it mirrors.
-- **The map draws a node's own text; the editor writes it** - a double-click on a line opens it there.
 
 ## Comments, docs and names
 
@@ -42,7 +44,8 @@ Two questions, in order. Does the file import the `obsidian` package -
 part on each side, the two share a basename (`core/folds.ts` maps the ranges,
 `obsidian/markdown/folds.ts` reads and writes them).
 
-- **main.ts** - Plugin entry: view registration, commands, settings, openSplit
+- **main.ts** - Plugin entry: view registration, commands, the note's own menu, settings, which leaf a new
+  map lands on
 - **core/** - No `obsidian` import, so it is unit-testable in plain Node:
   - **parse/** - Markdown in:
     - **parser.ts** - Markdown → MindNode tree; `body` is a node's own lines (its range minus every child's)
@@ -50,8 +53,8 @@ part on each side, the two share a basename (`core/folds.ts` maps the ranges,
     - **node-text.ts** - A node's own text → link/plain segments, for drawing
   - **write/** - Markdown out:
     - **ops.ts** - Every write the map can make, as a pure edit over `string[]`
-    - **relocate.ts** - Finds a node again in a fresh parse, by what it says and what it sits under
-    - **edit-value.ts** - What a typed name becomes before it goes back into the document
+    - **relocate.ts** - Finds a node or a run again in a fresh parse, by what it says and what it sits under
+    - **edit-value.ts** - What typed text becomes before it goes back into the document
   - **render/** - Where it all goes on the canvas:
     - **colors.ts** - Per-branch colors, cycled by position from the palette setting
     - **layout.ts** - Left-to-right tree layout (measures real offsetWidth/Height, so not unit-tested)
@@ -73,10 +76,11 @@ part on each side, the two share a basename (`core/folds.ts` maps the ranges,
   - **settings.ts** - Settings tab (MindmapSettingTab)
 - **styles.css** - All styles
 - **\*.test.ts** - Vitest. A test for one module sits beside it; one that crosses modules lives in **test/**:
-  `write-ops`, `stale-edit`, and `inline-edit`, which runs the real editor under jsdom with
+  `body-edit`, `write-ops`, `stale-edit`, and `inline-edit`, which runs the real editor under jsdom with
   `test/stubs/` standing in for what Obsidian adds to the DOM. What needs the API itself is driven over
   Obsidian's debugging port by **test/e2e/** (`npm run e2e`, app open): `harness.js` is the ground every check
-  stands on, the files beside it are cases. docs/DEVELOPMENT.md has both halves.
+  stands on, the files beside it are cases - `panes.js` among them, since only a real workspace has the
+  second leaf that pane resolution can get wrong. docs/DEVELOPMENT.md has both halves.
 
 ## Pitfalls (guards against past bugs)
 
@@ -95,11 +99,23 @@ code already carries belongs there, not here.
   two matches with the lines moved is a refusal.
 - **An open edit reflows the map, it does not re-render it** - `applyLayout` re-measures what is on the canvas.
 - **What is typed on the map goes to the file as it is typed** - a debounce behind the keys, never mid-IME.
-  There is nothing to confirm, so nothing is held back.
+  There is nothing to confirm, so nothing is held back: the run the write aims at is found by what the last
+  write left there, which keeps the two sides at most one debounce apart.
 - **Node ops must survive a stale tree** - `lineMatchesNode` is the last check, after relocation, not instead.
 
 ### Writing to the file
 
+- **A body edit may not change a line nobody touched** - `test/body-edit.test.ts` is the guard: opening and
+  saving leaves the file byte for byte, deleting a line takes that line only, typing moves nothing outside the
+  run. It caught trailing spaces (a hard line break in Markdown) being stripped, an indented blank line
+  flattened, a deletion swallowing the blank beside it, and a run of blank lines erased by a save that typed
+  nothing - the view compares against the value the editor _would hand back_, not the one it was given.
+- **Body text is edited one run at a time** - a child between two stretches keeps them apart in the file, so
+  `bodyRunOf` picks the run holding the clicked line. The indent is the one common to the whole body, which is
+  what the parser stripped.
+- **A refused write must not eat what was typed** - the ops check before they write (both write paths run the
+  mutation before touching the file, so a throw means no partial write), and the view keeps the text in
+  `pendingBodyEdit`, reopening the editor with it once the file and the node's own text still match.
 - **Unmarked continuation lines extend a list item's `endLine`** - `fixLists` rolls up from the existing
   `endLine`, not from `n.line`, or a description paragraph is left behind by a move or a delete.
 
@@ -126,13 +142,27 @@ code already carries belongs there, not here.
 
 - **Obsidian's keymap sees a key before the page does** - so every key the map claims is registered through
   `onKey`, which hands it back while an editor is on the map. Without that, a Backspace typed into a node's
-  name reached the map and deleted the node under it. The editor's own keys come through a document
+  own text reached the map and deleted the line under it. The editor's own keys come through a document
   capture listener gated on it holding the focus.
 - **Enter must ignore IME composition** - a CJK IME's confirming Enter is a real keydown with `isComposing`.
+- **A node's own text is edited in a `<textarea>`** - its value is the text, exactly. A contenteditable's is
+  whatever the browser made of it: a typed break can come back as two newlines, and that reaches the file as a
+  blank line nobody typed. The label keeps its span - one line has no break to get wrong.
 - **Undo is the editor's** - every write goes through it, so `Mod+Z` on the map steps that same history. With no
   editing pane the write goes to the file and nothing remembers it, so the map keeps that one step itself.
 - **Wikilinks navigate via `leaf.setViewState` + `result.history`** - it joins the leaf history, so Obsidian's
   own back/forward works; a custom mouse handler can be swallowed before the DOM ever sees it.
+- **What moves a map onto a file** - a linked tab if there is one, else the active file. Both are Obsidian's
+  own, and there is nothing else: a follow setting and a private per-pane flag were each tried and each only
+  added a second vocabulary for what "Link with tab" already says from the tab menu.
+- **Opening a map is two requests through one gesture** - "show me this note's map" and "give me another
+  pane". A map follows the active file, so asking for the map of the note in front of you can only mean the
+  first, and the second needs to be asked for separately: a command and the `🔗` header button, which is where
+  Obsidian's own Backlinks puts it ("open backlinks for the current note", link icon and all). A modifier would do the same
+  job invisibly, and a shortcut nobody can see is a shortcut nobody uses. Either way the new map is a tab
+  beside the maps already there - splitting again would divide a pane that is half of one. A menu on the note
+  itself names the note, so what it opens is linked; only the ribbon and the plain command mean "the note I
+  am on", which is the one that may roam.
 
 ### Drawing
 

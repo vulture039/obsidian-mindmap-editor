@@ -1,3 +1,5 @@
+import { BodyLine } from '../../core/parse/parser';
+
 /** How long focus is given to arrive before the edit is retried, then given up. */
 const FOCUS_RETRY_DELAY = 50;
 
@@ -12,10 +14,12 @@ const SETTLE_DELAY = 300;
 export interface EditSession {
   /** The element to run in; already in place, already styled. */
   input: HTMLElement;
+  /** Enter breaks the line here, rather than ending the edit. */
+  multiline: boolean;
   /** What the editor is holding, as it would go into the file. */
   value: () => string;
   placeCaret: () => void;
-  /** Puts the drawn text back when the editor goes. */
+  /** The editor is over: puts the drawn text back, and whatever else ends. */
   restore: () => void;
   /** Writes what is in the editor; called as it is typed, and once at the end. */
   write: (value: string) => void;
@@ -29,17 +33,20 @@ export interface EditSession {
 }
 
 /**
- * Runs an inline edit of a node's label. What is typed goes to the file as it
- * is typed, a moment behind the keys - the map is one side of a note, not a
- * form to submit - so there is nothing here to confirm and nothing to lose by
- * leaving. Undo is the editor's, as it is for every other way this plugin
- * writes.
+ * Runs an inline edit. What is typed goes to the file as it is typed, a moment
+ * behind the keys - the map is one side of a note, not a form to submit - so
+ * there is nothing here to confirm and nothing to lose by leaving. Undo is the
+ * editor's, as it is for every other way this plugin writes.
  */
 export function runEditor(session: EditSession): () => void {
-  const { input, placeCaret, restore, write, value } = session;
+  const { input, multiline, placeCaret, restore, write, value } = session;
 
   session.setEditing(true);
-  input.contentEditable = 'plaintext-only';
+  // A label is edited in place, in the span that draws it; a node's own text
+  // has a textarea of its own, which is editable by being one.
+  if (!input.instanceOf(HTMLTextAreaElement)) {
+    input.contentEditable = 'plaintext-only';
+  }
   let done = false;
   let composing = false;
   let pending: number | null = null;
@@ -78,9 +85,11 @@ export function runEditor(session: EditSession): () => void {
     // after this can reach the file.
     put();
     done = true;
-    if (!session.settle()) {
-      restore();
-    }
+    // Always, and before the render: restore is the end of the edit, not only
+    // how the drawn text comes back - the note's rename hangs off it. A queued
+    // render then redraws over whatever it put back.
+    restore();
+    session.settle();
   };
 
   // Clicks inside the editor must not reach the node handlers, which would
@@ -102,7 +111,7 @@ export function runEditor(session: EditSession): () => void {
     if (ev.isComposing) {
       return;
     }
-    if (ev.key === 'Escape' || ev.key === 'Enter') {
+    if (ev.key === 'Escape' || (ev.key === 'Enter' && !multiline)) {
       ev.preventDefault();
       finish();
     } else if (ev.key === 'Tab') {
@@ -181,4 +190,15 @@ export function caretAtEnd(input: HTMLElement): void {
 
   sel?.removeAllRanges();
   sel?.addRange(range);
+}
+
+/**
+ * The end of the body line the double-click landed on - where the editor's own
+ * cursor lands when the map sends it to a line.
+ */
+export function offsetOfBodyLine(run: BodyLine[], line: number): number {
+  const index = run.findIndex((b) => b.line === line);
+  const upto = index < 0 ? run.length : index + 1;
+
+  return run.slice(0, upto).reduce((n, b) => n + b.text.length + 1, 0) - 1;
 }

@@ -21,11 +21,6 @@ export class MindmapSettingTab extends PluginSettingTab {
   getSettingDefinitions(): SettingDefinitionItem[] {
     return [
       {
-        name: 'Follow active file',
-        desc: 'Switch the mind map to whichever Markdown file becomes active. Ignored while the mind map tab is linked to another tab.',
-        control: { type: 'toggle', key: 'followActiveFile' },
-      },
-      {
         name: 'Hide completed tasks',
         desc: 'Hide checked tasks behind one "✓ n done" node per parent. Also toggled with the check-check button in the view header.',
         control: { type: 'toggle', key: 'hideCompleted' },

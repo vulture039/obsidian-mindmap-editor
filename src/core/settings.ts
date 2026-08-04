@@ -1,5 +1,4 @@
 export interface MindmapSettings {
-  followActiveFile: boolean;
   palette: string;
   // Collapse checked tasks into "✓ n done" pills; toggled from the view
   // header too, and remembered across sessions.
@@ -15,7 +14,6 @@ export interface MindmapSettings {
 }
 
 export const DEFAULT_SETTINGS: MindmapSettings = {
-  followActiveFile: true,
   palette: '',
   hideCompleted: false,
   syncFolds: true,

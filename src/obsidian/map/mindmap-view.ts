@@ -211,6 +211,7 @@ export class MindmapView extends ItemView {
       leaf,
       file: () => this.file,
       openSplit: () => plugin.openSplit(),
+      hasFocus: () => this.containerEl.contains(document.activeElement),
       focusMap: () => this.scrollerEl.focus({ preventScroll: true }),
     });
     // This view navigates between files (wikilink follows), so it takes
@@ -597,6 +598,11 @@ export class MindmapView extends ItemView {
 
   getDisplayText(): string {
     return this.file ? `Mind map: ${this.file.basename}` : 'Mind map';
+  }
+
+  /** The file this map is showing, so the plugin can find the map for one. */
+  get currentFile(): TFile | null {
+    return this.file;
   }
 
   getIcon(): string {
@@ -1030,32 +1036,38 @@ export class MindmapView extends ItemView {
       }),
     );
     this.registerEvent(
-      this.app.workspace.on('active-leaf-change', (leaf) =>
-        this.editor.noteActiveLeaf(leaf),
-      ),
-    );
-    this.registerEvent(
-      this.app.workspace.on('file-open', (file) => {
-        // An explicit choice of source, so it wins over the active file and
-        // over followActiveFile. Nothing to track means nothing to win.
-        if (this.editor.linkedLeaf()) {
-          this.followLinkedLeaf();
-
-          return;
-        }
-        const shouldFollow =
-          this.plugin.settings.followActiveFile &&
-          file &&
-          file.extension === 'md' &&
-          !this.isCurrentFile(file);
-
-        if (shouldFollow) {
-          void this.setFile(file);
+      this.app.workspace.on('active-leaf-change', (leaf) => {
+        this.editor.noteActiveLeaf(leaf);
+        // Clicking a map points the Markdown side at its note: with maps side
+        // by side, the one just picked is the note being worked on. The
+        // keyboard goes back where the click put it.
+        if (leaf === this.leaf && this.file) {
+          this.plugin.mapDrivenOpen = this.file.path;
+          void this.editor
+            .showFile(this.file)
+            .then((moved) => {
+              // Only what we took: grabbing the focus back unasked makes this
+              // map the active leaf, and Obsidian then has no active file at
+              // all - the next note the user opens goes nowhere.
+              if (moved) {
+                this.scrollerEl.focus({ preventScroll: true });
+              }
+            })
+            .finally(() => {
+              this.plugin.mapDrivenOpen = null;
+            });
         }
       }),
     );
     this.registerEvent(
-      this.leaf.on('group-change', () => this.followLinkedLeaf()),
+      this.app.workspace.on('file-open', (file) => this.followFile(file)),
+    );
+    // Unlinking hands the pane back to the active file, and no file-open
+    // follows it: the note the user wants is the one already open.
+    this.registerEvent(
+      this.leaf.on('group-change', () =>
+        this.followFile(this.app.workspace.getActiveFile()),
+      ),
     );
     this.registerDomEvent(this.scrollerEl, 'pointerdown', (e) =>
       this.onBackgroundPointerDown(e),
@@ -1076,19 +1088,6 @@ export class MindmapView extends ItemView {
     }
     this.registerEvent(
       this.app.workspace.on('active-leaf-change', () => checkFolds()),
-    );
-    // Remember how the user arranged the map pane (side by side vs
-    // stacked), so reopening the view recreates the same split without
-    // touching the settings dropdown.
-    this.registerEvent(
-      this.app.workspace.on('layout-change', () => {
-        const dir = this.detectSplitDirection();
-
-        if (dir && dir !== this.plugin.settings.splitDirection) {
-          this.plugin.settings.splitDirection = dir;
-          void this.plugin.saveSettings();
-        }
-      }),
     );
   }
 
@@ -1166,35 +1165,6 @@ export class MindmapView extends ItemView {
     if (this.renderQueued && this.contentEl.offsetHeight > 0) {
       void this.render();
     }
-  }
-
-  /**
-   * Reads the split orientation the map currently sits in from the DOM
-   * (Obsidian: mod-vertical = side by side, mod-horizontal = stacked).
-   * Returns null when the map is not actually sharing a split with
-   * another pane, so a lone maximized map never rewrites the setting.
-   */
-  private detectSplitDirection(): 'vertical' | 'horizontal' | null {
-    const split = this.containerEl.closest('.workspace-split');
-
-    if (!split) {
-      return null;
-    }
-    const panes = split.querySelectorAll(
-      ':scope > .workspace-tabs, :scope > .workspace-split, :scope > .workspace-leaf',
-    ).length;
-
-    if (panes < 2) {
-      return null;
-    }
-    if (split.classList.contains('mod-horizontal')) {
-      return 'horizontal';
-    }
-    if (split.classList.contains('mod-vertical')) {
-      return 'vertical';
-    }
-
-    return null;
   }
 
   /**
@@ -1760,6 +1730,40 @@ export class MindmapView extends ItemView {
     this.canvasEl
       .querySelector('.mindmap-node.is-selected')
       ?.removeClass('is-selected');
+  }
+
+  /**
+   * Moves this map onto `file` if it is the map's to follow. A map tracks the
+   * active file, like Obsidian's own outline; one linked to a tab tracks that
+   * tab instead, which is how a map is kept on one note.
+   */
+  private followFile(file: TFile | null): void {
+    if (this.editor.linkedLeaf()) {
+      this.followLinkedLeaf();
+
+      return;
+    }
+    const shouldFollow =
+      this.plugin.mapDrivenOpen !== file?.path &&
+      file &&
+      file.extension === 'md' &&
+      !this.isCurrentFile(file);
+
+    if (shouldFollow) {
+      void this.setFile(file);
+    }
+  }
+
+  /**
+   * Ties this map to the tab its note is in - Obsidian's own "Link with tab",
+   * so the pairing shows in its tab menu and comes undone there. This is what
+   * keeps a map on one note: it now tracks that tab rather than the active
+   * file, and the two move together from either side.
+   */
+  async linkToEditor(): Promise<void> {
+    if (this.file) {
+      this.leaf.setGroupMember(await this.editor.tabFor(this.file));
+    }
   }
 
   /** Follows the tab this map is linked to onto its file. */

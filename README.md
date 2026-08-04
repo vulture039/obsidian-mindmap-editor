@@ -9,6 +9,8 @@ No new file format, no markup to add.
 
 1. Open a Markdown file.
 2. Press Ctrl+P (Cmd+P on macOS) and run `Open mind map for the active file` (or click the ribbon icon).
+   Any note's map also opens from `Open mind map` on its right-click menu, in the file explorer or on its tab.
+   `Ctrl/Cmd + click` either one for a second map, linked to that note's tab.
 3. The map opens in a split and stays in sync while you type.
 
 ## Features
@@ -34,6 +36,10 @@ No new file format, no markup to add.
   the cursor selects the node it belongs to - down to the line, where a node's text is drawn.
   Neither side steals the focus.
 - **Follow wikilinks** - Clicking a `[[wikilink]]` switches map and editor to the linked note together.
+- **Maps side by side, one note each** - A map follows whichever note you open, like Obsidian's own outline.
+  `Ctrl/Cmd + click` the ribbon or the right-click item opens a second one as a tab beside it, linked to that
+  note's tab so it stays there while the first carries on. The link is Obsidian's own: unlink it from the tab
+  menu and it follows the active file again.
 - **Branch colors** - Each top-level branch gets a palette color by position and its subtree inherits it.
   Customize the palette in settings, one hex color per line.
 
@@ -75,12 +81,11 @@ None of these come with a hotkey; bind the ones you want in Settings → Hotkeys
 
 **Settings → Mind map editor**:
 
-- **Follow active file** (default on)
 - **Hide completed tasks**
 - **Sync collapse state with Markdown folding** (default on) - An editing pane folds both ways; a reading pane
   follows along by its headings. List folding also follows Obsidian's Editor → Fold settings.
 - **Show node text on the map** - Draw a node's own text inside the node; also the `¶` header button.
-- **Split direction** - Side by side / stacked; also updates itself when you rearrange the map pane.
+- **Split direction** - Side by side / stacked, for the split the first map opens in.
 - **Branch colors** - Custom palette, one hex color per line.
 
 ---

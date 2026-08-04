@@ -1,4 +1,11 @@
-import { Notice, Plugin, WorkspaceLeaf } from 'obsidian';
+import {
+  Keymap,
+  Notice,
+  PaneType,
+  Plugin,
+  TFile,
+  WorkspaceLeaf,
+} from 'obsidian';
 import { MindmapView, VIEW_TYPE_MINDMAP } from './obsidian/map/mindmap-view';
 import { FoldKind } from './core/folds';
 import { DEFAULT_SETTINGS, MindmapSettings } from './core/settings';
@@ -6,6 +13,13 @@ import { MindmapSettingTab } from './obsidian/settings';
 
 export default class MindmapPlugin extends Plugin {
   settings!: MindmapSettings;
+  /**
+   * The note a map is pointing the Markdown side at right now. Showing it
+   * makes it the active file, and the roaming map would follow it there -
+   * clicking a map would drag every other one onto the same note. By path
+   * rather than a flag: a note the user opens meanwhile is still theirs.
+   */
+  mapDrivenOpen: string | null = null;
 
   async onload(): Promise<void> {
     await this.loadSettings();
@@ -13,8 +27,9 @@ export default class MindmapPlugin extends Plugin {
       VIEW_TYPE_MINDMAP,
       (leaf: WorkspaceLeaf) => new MindmapView(leaf, this),
     );
-    this.addRibbonIcon('git-fork', 'Open mind map', () => {
-      void this.openMindmap();
+    // Mod-click for a pane of its own, the way Obsidian opens anything else.
+    this.addRibbonIcon('git-fork', 'Open mind map', (e) => {
+      void this.openMindmap(undefined, Keymap.isModEvent(e));
     });
     this.addCommand({
       id: 'open-mindmap',
@@ -45,7 +60,29 @@ export default class MindmapPlugin extends Plugin {
       },
     });
     this.addFoldCommands();
+    this.addFileMenuItem();
     this.addSettingTab(new MindmapSettingTab(this.app, this));
+  }
+
+  /**
+   * "Open mind map" on a note's own menu - the file explorer, a tab header,
+   * a link. Without it a note has to be opened just to open its map, since
+   * the command reads the active file.
+   */
+  private addFileMenuItem(): void {
+    this.registerEvent(
+      this.app.workspace.on('file-menu', (menu, file) => {
+        if (!(file instanceof TFile) || file.extension !== 'md') {
+          return;
+        }
+        menu.addItem((item) =>
+          item
+            .setTitle('Open mind map')
+            .setIcon('git-fork')
+            .onClick((e) => void this.openMindmap(file, Keymap.isModEvent(e))),
+        );
+      }),
+    );
   }
 
   /**
@@ -77,13 +114,27 @@ export default class MindmapPlugin extends Plugin {
     }
   }
 
-  /** Runs `run` on the focused mind map, else on any open one. */
-  private withMindmap(run: (view: MindmapView) => void): void {
-    const active = this.app.workspace.getActiveViewOfType(MindmapView);
-    const view =
-      active ?? this.app.workspace.getLeavesOfType(VIEW_TYPE_MINDMAP)[0]?.view;
+  /** Every open mind map, in workspace order. */
+  private mindmapViews(): MindmapView[] {
+    return this.app.workspace
+      .getLeavesOfType(VIEW_TYPE_MINDMAP)
+      .map((leaf) => leaf.view)
+      .filter((view): view is MindmapView => view instanceof MindmapView);
+  }
 
-    if (!(view instanceof MindmapView)) {
+  /**
+   * Runs `run` on the focused mind map, else on the one showing the active
+   * file - with several maps open, "the first one" is rarely the one meant.
+   */
+  private withMindmap(run: (view: MindmapView) => void): void {
+    const file = this.app.workspace.getActiveFile();
+    const views = this.mindmapViews();
+    const view =
+      this.app.workspace.getActiveViewOfType(MindmapView) ??
+      (file && views.find((v) => v.currentFile?.path === file.path)) ??
+      views[0];
+
+    if (!view) {
       new Notice('No mind map is open.');
 
       return;
@@ -106,23 +157,63 @@ export default class MindmapPlugin extends Plugin {
     await this.openMindmap();
   }
 
-  private async openMindmap(): Promise<void> {
-    const file = this.app.workspace.getActiveFile();
+  /**
+   * Opens the map for `target`, or for the active file when given none.
+   * `newPane` (Mod-click) is how you say "and leave one here": a map follows
+   * the active file, so a plain click on the note in front of you can only
+   * mean "show me the one I already have".
+   */
+  private async openMindmap(
+    target?: TFile,
+    newPane: PaneType | boolean = false,
+  ): Promise<void> {
+    const file = target ?? this.app.workspace.getActiveFile();
 
     if (!file || file.extension !== 'md') {
       new Notice('Open a Markdown file first.');
 
       return;
     }
-    const existing = this.app.workspace.getLeavesOfType(VIEW_TYPE_MINDMAP)[0];
-    const leaf = existing ?? this.openSplit();
+    const showing = this.mindmapViews().find(
+      (view) => view.currentFile?.path === file.path,
+    );
+
+    if (showing && !newPane) {
+      await this.app.workspace.revealLeaf(showing.leaf);
+
+      return;
+    }
+    const leaf = this.newMapLeaf(newPane);
 
     await leaf.setViewState({
       type: VIEW_TYPE_MINDMAP,
       active: true,
       state: { file: file.path },
     });
+    // Asked for by note, so it is tied to that note's tab rather than left to
+    // the active file. Obsidian's own link, undone from the tab menu - the
+    // map keeps no follow flag of its own.
+    if (newPane && leaf.view instanceof MindmapView) {
+      await leaf.view.linkToEditor();
+    }
     await this.app.workspace.revealLeaf(leaf);
+  }
+
+  /**
+   * Where a new map goes. Beside the maps already open, as a tab, the way
+   * Obsidian opens anything with Mod-click: splitting again would divide a
+   * pane that is already half of one.
+   */
+  private newMapLeaf(pane: PaneType | boolean): WorkspaceLeaf {
+    if (pane === 'window') {
+      return this.app.workspace.getLeaf('window');
+    }
+    const beside =
+      pane === 'split' ? null : this.mindmapViews()[0]?.leaf.parent;
+
+    return beside
+      ? this.app.workspace.createLeafInParent(beside, -1)
+      : this.openSplit();
   }
 
   /** Opens a new pane split in the user's configured direction. */

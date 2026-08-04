@@ -76,7 +76,8 @@ part on each side, the two share a basename (`core/folds.ts` maps the ranges,
   `write-ops`, `stale-edit`, and `inline-edit`, which runs the real editor under jsdom with
   `test/stubs/` standing in for what Obsidian adds to the DOM. What needs the API itself is driven over
   Obsidian's debugging port by **test/e2e/** (`npm run e2e`, app open): `harness.js` is the ground every check
-  stands on, the files beside it are cases. docs/DEVELOPMENT.md has both halves.
+  stands on, the files beside it are cases - `panes.js` among them, since only a real workspace has the
+  second leaf that pane resolution can get wrong. docs/DEVELOPMENT.md has both halves.
 
 ## Pitfalls (guards against past bugs)
 
@@ -133,6 +134,14 @@ code already carries belongs there, not here.
   editing pane the write goes to the file and nothing remembers it, so the map keeps that one step itself.
 - **Wikilinks navigate via `leaf.setViewState` + `result.history`** - it joins the leaf history, so Obsidian's
   own back/forward works; a custom mouse handler can be swallowed before the DOM ever sees it.
+- **What moves a map onto a file** - a linked tab if there is one, else the active file. Both are Obsidian's
+  own, and there is nothing else: a follow setting and a private per-pane flag were each tried and each only
+  added a second vocabulary for what "Link with tab" already says from the tab menu.
+- **Opening a map is two requests through one gesture** - "show me this note's map" and "give me another
+  pane". A map follows the active file, so a plain click on the note in front of you can only mean the first,
+  and there is nothing left to express the second. Obsidian never guesses between them: Mod-click is the
+  second, everywhere in the app. It opens a tab beside the maps already there - splitting again would divide
+  a pane that is half of one - and links it to its note's tab.
 
 ### Drawing
 

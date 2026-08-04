@@ -34,6 +34,46 @@
   color: var(--text-muted);
 }
 
+/* One rung of the level ladder, picked by data-depth below. Nearer the branch
+   is the louder end: a map is read from the trunk outwards, and nothing deeper
+   may draw louder than what holds it. Every rung differs from its neighbour in
+   fill, outline and size at once - one kind only ever sits beside its own, so
+   a channel two rungs share says nothing where it is needed.
+   --level-size is added to the UI font size, so it follows the app's own. */
+.mindmap-node {
+  --level-fill: 50%;
+  --level-line: var(--branch-color);
+  --level-size: 4px;
+  --level-border: 2px;
+  --level-text: var(--text-normal);
+}
+
+.mindmap-node[data-depth='1'] {
+  --level-fill: 33%;
+  --level-line: color-mix(in srgb, var(--branch-color) 85%, transparent);
+  --level-size: 2px;
+  --level-border: 2px;
+}
+
+.mindmap-node[data-depth='2'] {
+  --level-fill: 17%;
+  --level-line: color-mix(in srgb, var(--branch-color) 68%, transparent);
+  --level-size: 0px;
+  --level-border: 1.5px;
+}
+
+/* The view caps the level here, so this is every level from the fourth in.
+   The last of the fill goes, so the text takes the muted color to carry the
+   step the fill can no longer make. Still an ordinary node: these are levels
+   people work in, not a tail. */
+.mindmap-node[data-depth='3'] {
+  --level-fill: 0%;
+  --level-line: color-mix(in srgb, var(--branch-color) 45%, transparent);
+  --level-size: -1px;
+  --level-border: 1px;
+  --level-text: var(--text-muted);
+}
+
 .mindmap-node {
   --branch-color: var(--text-faint);
   position: absolute;
@@ -45,12 +85,20 @@
   align-items: stretch;
   max-width: 300px;
   padding: 4px 10px;
-  border: 2px solid var(--branch-color);
+  border: var(--level-border) solid var(--level-line);
   /* A fixed radius, not a stadium: with the ends rounded to half the height, a
      label that wraps to a third line turns the node into a lozenge. */
   border-radius: 10px;
-  background: var(--background-primary);
-  font-size: var(--font-ui-small);
+  /* A tint, not just the outline: the border alone is too little color to read
+     a level off. One ladder for every kind of node - the heading's doubled
+     border is what says "heading", so the fill is free to say only "level". */
+  background: color-mix(
+    in srgb,
+    var(--branch-color) var(--level-fill),
+    var(--background-primary)
+  );
+  color: var(--level-text);
+  font-size: calc(var(--font-ui-small) + var(--level-size));
   cursor: pointer;
   user-select: none;
 }
@@ -74,16 +122,17 @@
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--branch-color) 35%, transparent);
 }
 
-/* All nodes share one outline (uniform corners, edges meet them cleanly);
-   headings stand out by weight and a strong color-tinted fill instead of
-   shape. Dashed borders stay reserved for the drop-target state. */
-.mindmap-node-heading {
+/* A heading is a different kind of node, not a louder one, so it says so in
+   the one channel the level ladder does not use: its corners. Square against
+   the list items' rounded ones reads across the whole canvas at once, and it
+   survives every rung - a doubled border only got thick and hard to read.
+   Dashed borders stay reserved for the drop-target state. */
+.mindmap-node.mindmap-node-heading {
+  /* Matched to the level rules' specificity, so no rung can round a heading's
+     corners off: the kind outlives every level. */
+  border-radius: 3px;
+  font-size: calc(var(--font-ui-small) + var(--level-size) + 3px);
   font-weight: 600;
-  background: color-mix(
-    in srgb,
-    var(--branch-color) 30%,
-    var(--background-primary)
-  );
 }
 
 .mindmap-node-body {
@@ -138,15 +187,6 @@
   border-radius: 3px;
   background: color-mix(in srgb, var(--interactive-accent) 20%, transparent);
   color: var(--text-normal);
-}
-
-/* The note's own pill is filled with the accent already, so an accent tint on
-   it is no mark at all: on that one, the line is picked out in its text
-   colour instead. */
-.mindmap-node-root .mindmap-node-body-line.is-cursor-line,
-.mindmap-node-root .mindmap-node-body-line:not(.is-cursor-line):hover {
-  background: color-mix(in srgb, var(--text-on-accent) 25%, transparent);
-  color: var(--text-on-accent);
 }
 
 /* Collapse handle: grey chrome, so the branch colors stay the nodes'. The
@@ -298,10 +338,17 @@
   text-decoration: line-through;
 }
 
-.mindmap-node-root {
-  border-color: var(--interactive-accent);
-  background: var(--interactive-accent);
-  color: var(--text-on-accent);
+/* The note itself: what every branch hangs off, so it is the largest thing on
+   the canvas. Square, like the headings: a file is the outline's top, not an
+   item in it. It says that with a doubled border and no fill at all - it is
+   one node and it is off the ladder, so it takes none of the fill range the
+   four rungs have to share, and the accent it is drawn in is not a level of
+   anything. */
+.mindmap-node.mindmap-node-root {
+  border: 4px double var(--interactive-accent);
+  border-radius: 3px;
+  background: var(--background-primary);
+  font-size: calc(var(--font-ui-small) + 9px);
   font-weight: 600;
 }
 

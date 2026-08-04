@@ -32,9 +32,9 @@ No new file format, no markup to add.
   The button is that map's own, so a second map can leave its text to the editor.
 - **Hide completed tasks** - The `✓✓` header button hides checked tasks behind one `✓ n done` node per parent.
   Click it to reveal just that parent (`− hide done` puts them back). Per map, and remembered across sessions.
-- **Map and editor follow each other** - Selecting a node moves the editor's cursor to its line, and moving
-  the cursor selects the node it belongs to - down to the line, where a node's text is drawn.
-  Neither side steals the focus.
+- **Map and editor follow each other** - Selecting a node brings its note to the front of the Markdown side
+  and moves the cursor to its line; moving the cursor selects the node it belongs to - down to the line, where
+  a node's text is drawn. Neither side steals the focus.
 - **Follow wikilinks** - Clicking a `[[wikilink]]` switches map and editor to the linked note together.
 - **Maps side by side, one note each** - A map follows whichever note you open, like Obsidian's own outline.
   `Ctrl/Cmd + click` the ribbon or the right-click item opens a second one as a tab beside it, linked to that

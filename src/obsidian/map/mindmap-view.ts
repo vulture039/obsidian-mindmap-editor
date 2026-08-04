@@ -113,9 +113,6 @@ const FOLD_CHECK_DELAY = 120;
 /** How long an inline edit may grow before the map is laid out again. */
 const REFLOW_DELAY = 60;
 
-/** What a map draws by its own choice, kept in the pane's view state. */
-type ShownFlag = 'hideCompleted' | 'showBodyText';
-
 /** A completed task node ('- [x]'), the unit hidden by hideCompleted. */
 /** What a run of a node's own text says, which is what an editor is opened on. */
 function runText(run: BodyLine[]): string {
@@ -1176,21 +1173,8 @@ export class MindmapView extends ItemView {
         // Clicking a map points the Markdown side at its note: with maps side
         // by side, the one just picked is the note being worked on. The
         // keyboard goes back where the click put it.
-        if (leaf === this.leaf && this.file) {
-          this.plugin.mapDrivenOpen = this.file.path;
-          void this.editor
-            .showFile(this.file)
-            .then((moved) => {
-              // Only what we took: grabbing the focus back unasked makes this
-              // map the active leaf, and Obsidian then has no active file at
-              // all - the next note the user opens goes nowhere.
-              if (moved) {
-                this.scrollerEl.focus({ preventScroll: true });
-              }
-            })
-            .finally(() => {
-              this.plugin.mapDrivenOpen = null;
-            });
+        if (leaf === this.leaf) {
+          void this.pointEditorAtFile();
         }
       }),
     );
@@ -1235,16 +1219,16 @@ export class MindmapView extends ItemView {
   }
 
   async setState(state: unknown, result: ViewStateResult): Promise<void> {
-    if (state && typeof state === 'object') {
-      const shown = state as Partial<Record<ShownFlag, unknown>>;
+    // What this pane was left drawing, which is its own and not the settings'.
+    const shown = (state ?? {}) as Record<string, unknown>;
 
-      for (const key of ['hideCompleted', 'showBodyText'] as const) {
-        if (typeof shown[key] === 'boolean') {
-          this[key] = shown[key];
-        }
-      }
-      this.syncToggleActions();
+    if (typeof shown.hideCompleted === 'boolean') {
+      this.hideCompleted = shown.hideCompleted;
     }
+    if (typeof shown.showBodyText === 'boolean') {
+      this.showBodyText = shown.showBodyText;
+    }
+    this.syncToggleActions();
     if (
       state &&
       typeof state === 'object' &&
@@ -1876,11 +1860,13 @@ export class MindmapView extends ItemView {
     // Here rather than from the editor's own event: with the map holding
     // focus that event may never come, leaving the last mark standing.
     this.markCursorLine(line ?? node.line);
-    // The editor always follows the current selection, whether it came
-    // from a click or from arrow-key navigation.
-    void this.editor.goToLine(
-      line ?? node.line,
-      blockOf(node, line ?? node.line),
+    // Picking a node is asking to read that note, so it goes to the front
+    // first - and the cursor only once it is there. Both open the note when
+    // no pane has it, and side by side that is two tabs of the same file.
+    // The editor always follows the current selection, whether it came from
+    // a click or from arrow-key navigation.
+    void this.pointEditorAtFile().then(() =>
+      this.editor.goToLine(line ?? node.line, blockOf(node, line ?? node.line)),
     );
   }
 
@@ -1909,6 +1895,31 @@ export class MindmapView extends ItemView {
 
     if (shouldFollow) {
       void this.setFile(file);
+    }
+  }
+
+  /**
+   * Brings this map's note to the front of the Markdown side - picking a node
+   * is asking to read it there, and a tab behind another one answers nothing.
+   * The note it shows becomes the active file, so it is flagged on the way:
+   * without that, working in one map drags every other one onto its note.
+   */
+  private async pointEditorAtFile(): Promise<void> {
+    if (!this.file) {
+      return;
+    }
+    const had = this.containerEl.contains(document.activeElement);
+
+    this.plugin.mapDrivenOpen = this.file.path;
+    try {
+      // Only the focus we took is given back: grabbing it unasked makes this
+      // map the active leaf, and Obsidian then has no active file at all -
+      // the next note the user opens goes nowhere.
+      if ((await this.editor.showFile(this.file)) && had) {
+        this.scrollerEl.focus({ preventScroll: true });
+      }
+    } finally {
+      this.plugin.mapDrivenOpen = null;
     }
   }
 

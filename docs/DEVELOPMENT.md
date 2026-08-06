@@ -121,6 +121,18 @@ judgement about how it looks. In `Fixtures.md`:
 - Turn `¶` on with the map beside a reading pane - selecting a line marks that
   line, and the pane does not scroll if the line is already on screen
 
+## The demo gif
+
+`docs/demo.gif` is a screen recording put through ffmpeg, which halves the file
+size against a plain export. Record the map, then:
+
+```bash
+ffmpeg -i "Screen Recording.mov" -vf "fps=12,scale=800:-1:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=3" -loop 0 demo.gif
+```
+
+`stats_mode=diff` builds the palette from what moves rather than from the whole
+frame, which is what keeps the nodes readable at 800px.
+
 ## Issues
 
 - Branch as `feat/issue-<issue-no>` and fix it there

@@ -39,41 +39,45 @@
    may draw louder than what holds it. Every rung differs from its neighbour in
    fill, outline and size at once - one kind only ever sits beside its own, so
    a channel two rungs share says nothing where it is needed.
-   --level-size is added to the UI font size, so it follows the app's own. */
+
+   The steps are the eye's, not the number line's. The fill is mixed in Oklab,
+   where an even run of percentages is an even run of lightness; --level-size
+   steps by about a twelfth each time, since what the eye reads is the ratio -
+   a flat 1px is a step at 12px and nothing at 18px. */
 .mindmap-node {
-  --level-fill: 50%;
+  --level-fill: 70%;
   --level-line: var(--branch-color);
-  --level-size: 4px;
-  --level-border: 2px;
+  --level-size: 5px;
+  --level-border: 2.5px;
   --level-text: var(--text-normal);
 }
 
 .mindmap-node[data-depth='1'] {
-  --level-fill: 38%;
-  --level-line: color-mix(in srgb, var(--branch-color) 88%, transparent);
-  --level-size: 3px;
+  --level-fill: 56%;
+  --level-line: color-mix(in oklab, var(--branch-color) 86%, transparent);
+  --level-size: 3.5px;
   --level-border: 2px;
 }
 
 .mindmap-node[data-depth='2'] {
-  --level-fill: 28%;
-  --level-line: color-mix(in srgb, var(--branch-color) 76%, transparent);
-  --level-size: 2px;
-  --level-border: 1.5px;
+  --level-fill: 42%;
+  --level-line: color-mix(in oklab, var(--branch-color) 72%, transparent);
+  --level-size: 2.2px;
+  --level-border: 1.75px;
 }
 
 .mindmap-node[data-depth='3'] {
-  --level-fill: 19%;
-  --level-line: color-mix(in srgb, var(--branch-color) 64%, transparent);
-  --level-size: 1px;
+  --level-fill: 28%;
+  --level-line: color-mix(in oklab, var(--branch-color) 58%, transparent);
+  --level-size: 1.1px;
   --level-border: 1.5px;
 }
 
 .mindmap-node[data-depth='4'] {
-  --level-fill: 10%;
-  --level-line: color-mix(in srgb, var(--branch-color) 52%, transparent);
+  --level-fill: 14%;
+  --level-line: color-mix(in oklab, var(--branch-color) 44%, transparent);
   --level-size: 0px;
-  --level-border: 1px;
+  --level-border: 1.25px;
 }
 
 /* The view caps the level here, so this is every level from the sixth in.
@@ -82,7 +86,7 @@
    people work in, not a tail. */
 .mindmap-node[data-depth='5'] {
   --level-fill: 0%;
-  --level-line: color-mix(in srgb, var(--branch-color) 40%, transparent);
+  --level-line: color-mix(in oklab, var(--branch-color) 30%, transparent);
   --level-size: -1px;
   --level-border: 1px;
   --level-text: var(--text-muted);
@@ -90,6 +94,13 @@
 
 .mindmap-node {
   --branch-color: var(--text-faint);
+  /* One lightness for every branch, so a level is the same step down whichever
+     color it is in: taken as configured, a yellow branch's whole way to the
+     background is half a blue one's, and its levels would step half as far.
+     Only the fill is levelled - the outline and the edges keep the palette's
+     own color, which is what says which branch this is. 0.55 is as dark as the
+     loudest rung can go with the note's text still reading on it. */
+  --branch-fill: oklch(from var(--branch-color) 0.55 c h);
   position: absolute;
   /* A column, so a node's own text is a block under its label rather than
      another item beside it: a percentage flex-basis cannot make that row
@@ -107,8 +118,8 @@
      a level off. One ladder for every kind of node - the heading's doubled
      border is what says "heading", so the fill is free to say only "level". */
   background: color-mix(
-    in srgb,
-    var(--branch-color) var(--level-fill),
+    in oklab,
+    var(--branch-fill) var(--level-fill),
     var(--background-primary)
   );
   color: var(--level-text);
@@ -258,7 +269,7 @@
 }
 
 /* The only branch color on a handle, so color means "folded". A tint, not a
-   fill: a control must stay quieter than a heading node's 30%. */
+   fill: a control must stay quieter than the nodes it hangs between. */
 .mindmap-collapse.is-collapsed {
   border-color: var(--branch-color, var(--text-faint));
   background: color-mix(

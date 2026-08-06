@@ -172,6 +172,11 @@ code already carries belongs there, not here.
 - **A rung has to differ from its neighbour in every channel at once** - fill, outline, size. Whichever one
   two rungs share says nothing where it is needed, and one channel alone (a tint 8% lighter, a border half a
   pixel thinner) is invisible at a glance.
+- **The rungs are spaced by what the eye reads, not by the number line** - the fill is mixed in Oklab and the
+  text size steps by ratio. The palette color goes into the fill pulled to one lightness first: taken as
+  configured, a pale hue's whole way to the background is half a strong one's, so a yellow branch's levels
+  stepped half as far as a blue one's. The outline and the edges keep the color as configured - that is what
+  says which branch this is.
 - **The ladder may never go back up** - a child drawn louder than its parent reads as a new start, so the rung
   is plain depth. Counting a heading by its heading level and a list by its indent was tried: a list item
   under an H3 restarted at the loudest rung, inside the node that held it.

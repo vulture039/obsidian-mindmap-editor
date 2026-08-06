@@ -58,8 +58,9 @@ part on each side, the two share a basename (`core/folds.ts` maps the ranges,
   `write-ops`, `stale-edit`, and `inline-edit`, which runs the real editor under jsdom with
   `test/stubs/` standing in for what Obsidian adds to the DOM. What needs the API itself is driven over
   Obsidian's debugging port by **test/e2e/** (`npm run e2e`, app open): `harness.js` is the ground every check
-  stands on, the files beside it are cases - `panes.js` among them, since only a real workspace has the
-  second leaf that pane resolution can get wrong. docs/DEVELOPMENT.md has both halves.
+  stands on, the files beside it are cases - `panes.js` and `popout.js` among them, since only a real
+  workspace has the second leaf, and the second window, that pane resolution can get wrong.
+  docs/DEVELOPMENT.md has both halves.
 
 ## Pitfalls (guards against past bugs)
 

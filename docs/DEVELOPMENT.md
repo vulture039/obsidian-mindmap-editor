@@ -66,6 +66,9 @@ open -a Obsidian --args --remote-debugging-port=9222
 npm run e2e     # Fixtures.md open in a map and in an editing pane
 ```
 
+The runner talks CDP over a WebSocket, which Node has as a global from 21 on:
+on an older one it dies with `WebSocket is not defined`.
+
 `harness.js` goes in front of whichever check runs - the map, the pane, and the
 few ways of acting on either, so a check file is nothing but its cases. It waits
 for conditions rather than on a clock. Each file below is a check, a line per
@@ -86,6 +89,10 @@ case:
   file, and the linked-open command opens one tied to a note's tab instead. Only a real
   workspace has a second leaf to get this wrong with. It opens and closes panes
   of its own, and puts them back afterwards.
+- **`popout.js`** (`npm run e2e test/e2e/popout.js`) - a note in a window of its
+  own: which window the map lands in, and whether it drives the editor there
+  rather than the one in the main window. It pops a window out and closes it
+  again.
 
 None of them are in CI. Each one asserts it starts with Fixtures.md in the map,
 so `run.mjs` puts it back there afterwards - a check that moved the map would

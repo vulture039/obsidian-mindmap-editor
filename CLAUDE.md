@@ -58,8 +58,9 @@ part on each side, the two share a basename (`core/folds.ts` maps the ranges,
   `write-ops`, `stale-edit`, and `inline-edit`, which runs the real editor under jsdom with
   `test/stubs/` standing in for what Obsidian adds to the DOM. What needs the API itself is driven over
   Obsidian's debugging port by **test/e2e/** (`npm run e2e`, app open): `harness.js` is the ground every check
-  stands on, the files beside it are cases - `panes.js` among them, since only a real workspace has the
-  second leaf that pane resolution can get wrong. docs/DEVELOPMENT.md has both halves.
+  stands on, the files beside it are cases - `panes.js` and `popout.js` among them, since only a real
+  workspace has the second leaf, and the second window, that pane resolution can get wrong.
+  docs/DEVELOPMENT.md has both halves.
 
 ## Pitfalls (guards against past bugs)
 
@@ -123,10 +124,25 @@ code already carries belongs there, not here.
   pane". A map follows the active file, so asking for the map of the note in front of you can only mean the
   first, and the second needs to be asked for separately: a command and the `🔗` header button, which is where
   Obsidian's own Backlinks puts it ("open backlinks for the current note", link icon and all). A modifier would do the same
-  job invisibly, and a shortcut nobody can see is a shortcut nobody uses. Either way the new map is a tab
-  beside the maps already there - splitting again would divide a pane that is half of one. A menu on the note
+  job invisibly, and a shortcut nobody can see is a shortcut nobody uses. A menu on the note
   itself names the note, so what it opens is linked; only the ribbon and the plain command mean "the note I
   am on", which is the one that may roam.
+- **A linked map goes beside its note, a roaming one beside the maps** - the pair is the point, so a linked map
+  splits off its note's pane, and a map already split off that pane takes the next one as a tab: without that,
+  switching a note's tab adds a column each time. A roaming map has no note to sit by, so it joins the maps
+  already open. Only in that window, and only the map tied to the tab that asked - a map a window away is
+  neither the one to sit beside nor the one you already have.
+
+### A popout is a window of its own
+
+- **Nothing global is the map's** - `document`, `CSS.highlights` and `setTimeout` all belong to one window, and
+  a popout has its own of each. Reach them through the element at hand (`el.doc`, `el.win`), and where a
+  listener has to hear every editor there is, put one on every window and on `window-open` too - a caret moves
+  and a fold handle is clicked in the editor's document, not in ours.
+- **The same note can be open in two windows** - so every pane lookup takes the pane it is asked from and
+  prefers the nearest match: `file-io`'s `near`, which is the linked tab if there is one and the map's own leaf
+  otherwise. Without it the first pane the workspace lists wins, and a map in a popout drives the editor in the
+  main window.
 
 ### Drawing
 

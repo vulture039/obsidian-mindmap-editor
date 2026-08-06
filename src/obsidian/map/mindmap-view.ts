@@ -257,8 +257,11 @@ export class MindmapView extends ItemView {
       app: this.app,
       leaf,
       file: () => this.file,
-      openSplit: () => plugin.openSplit(),
-      hasFocus: () => this.containerEl.contains(document.activeElement),
+      openSplit: (near) => plugin.openSplit(near ?? leaf),
+      // This map's own document: in a window of its own, the main window's
+      // active element is never anything of ours.
+      hasFocus: () =>
+        this.containerEl.contains(this.containerEl.doc.activeElement),
       focusMap: () => this.scrollerEl.focus({ preventScroll: true }),
     });
     // This view navigates between files (wikilink follows), so it takes
@@ -1132,20 +1135,50 @@ export class MindmapView extends ItemView {
     );
     // The caret moving in an editor fires no workspace event, but it does
     // move the document selection, which does.
-    this.registerDomEvent(document, 'selectionchange', () =>
-      this.followEditorCursor(),
-    );
+    this.everyDocument(['selectionchange'], () => this.followEditorCursor());
     // Nothing fires on a fold, so check once clicks and keys settle.
     const checkFolds = debounce(
       () => this.syncCollapseFromEditor(),
       FOLD_CHECK_DELAY,
     );
 
-    for (const type of ['click', 'keyup'] as const) {
-      this.registerDomEvent(document, type, () => checkFolds());
-    }
+    this.everyDocument(['click', 'keyup'], () => checkFolds());
     this.registerEvent(
       this.app.workspace.on('active-leaf-change', () => checkFolds()),
+    );
+  }
+
+  /**
+   * A listener in every window's document: a caret moves and a fold handle is
+   * clicked in the editor's, and a popout has one of its own.
+   */
+  private everyDocument<K extends keyof DocumentEventMap>(
+    types: readonly K[],
+    run: () => void,
+  ): void {
+    const listening = new Set<Document>();
+    const listen = (doc: Document): void => {
+      if (listening.has(doc)) {
+        return;
+      }
+      listening.add(doc);
+      for (const type of types) {
+        this.registerDomEvent(doc, type, run);
+      }
+    };
+    const everywhere = (): void => {
+      listen(this.containerEl.doc);
+      this.app.workspace.iterateAllLeaves((leaf) =>
+        listen(leaf.getContainer().doc),
+      );
+    };
+
+    everywhere();
+    // Again on every move: a map split into a popout opens before it is put
+    // there, so right now its own window is still the main one.
+    this.registerEvent(this.app.workspace.on('layout-change', everywhere));
+    this.registerEvent(
+      this.app.workspace.on('window-open', (win) => listen(win.doc)),
     );
   }
 
@@ -1820,7 +1853,7 @@ export class MindmapView extends ItemView {
     if (!this.file) {
       return;
     }
-    const had = this.containerEl.contains(document.activeElement);
+    const had = this.containerEl.contains(this.containerEl.doc.activeElement);
 
     // Counted, because clicking a node calls this twice - once for the leaf
     // going active, once for the node. The second finds the tab already up and

@@ -1,35 +1,78 @@
-import { App, Editor, MarkdownView, TFile } from 'obsidian';
+import { App, Editor, MarkdownView, TFile, WorkspaceLeaf } from 'obsidian';
+
+/** Whether two panes are in the same window - a popout is a window of its own. */
+export function sameWindow(a: WorkspaceLeaf, b: WorkspaceLeaf): boolean {
+  return a.getContainer() === b.getContainer();
+}
+
+/** Whether two panes were split off each other - a pair read side by side. */
+export function sameSplit(a: WorkspaceLeaf, b: WorkspaceLeaf): boolean {
+  const split = a.parent?.parent;
+
+  return !!split && split === b.parent?.parent;
+}
+
+/** Itself, its window, or neither: how close a pane is to the one asking. */
+function nearness(leaf: WorkspaceLeaf, near?: WorkspaceLeaf): number {
+  if (!near) {
+    return 0;
+  }
+
+  return leaf === near ? 2 : sameWindow(leaf, near) ? 1 : 0;
+}
 
 function findView(
   app: App,
   file: TFile,
   sourceOnly: boolean,
+  near?: WorkspaceLeaf,
 ): MarkdownView | null {
+  let best: MarkdownView | null = null;
+  let closest = -1;
+
   for (const leaf of app.workspace.getLeavesOfType('markdown')) {
     const view = leaf.view;
 
     if (
-      view instanceof MarkdownView &&
-      view.file?.path === file.path &&
-      (!sourceOnly || view.getMode() === 'source')
+      !(view instanceof MarkdownView) ||
+      view.file?.path !== file.path ||
+      (sourceOnly && view.getMode() !== 'source')
     ) {
-      return view;
+      continue;
+    }
+    const how = nearness(leaf, near);
+
+    if (how > closest) {
+      best = view;
+      closest = how;
     }
   }
 
-  return null;
+  return best;
 }
 
-export function findMarkdownView(app: App, file: TFile): MarkdownView | null {
-  return findView(app, file, false);
+/**
+ * The pane showing `file`, nearest `near` first: the same note can be open in
+ * two windows, and the map's own is the one it was opened beside.
+ */
+export function findMarkdownView(
+  app: App,
+  file: TFile,
+  near?: WorkspaceLeaf,
+): MarkdownView | null {
+  return findView(app, file, false, near);
 }
 
 /**
  * Only a pane in source mode. A reading pane keeps an editor too, but it is
  * not the surface the user sees and a write there never reaches the file.
  */
-export function findEditingView(app: App, file: TFile): MarkdownView | null {
-  return findView(app, file, true);
+export function findEditingView(
+  app: App,
+  file: TFile,
+  near?: WorkspaceLeaf,
+): MarkdownView | null {
+  return findView(app, file, true, near);
 }
 
 /** Both line endings, since a note can have come from anywhere. */

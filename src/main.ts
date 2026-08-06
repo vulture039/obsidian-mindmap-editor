@@ -2,7 +2,11 @@ import { Notice, Plugin, TFile, WorkspaceLeaf } from 'obsidian';
 import { MindmapView, VIEW_TYPE_MINDMAP } from './obsidian/map/mindmap-view';
 import { FoldKind } from './core/folds';
 import { DEFAULT_SETTINGS, MindmapSettings } from './core/settings';
-import { findMarkdownView, sameWindow } from './obsidian/markdown/file-io';
+import {
+  findMarkdownView,
+  sameSplit,
+  sameWindow,
+} from './obsidian/markdown/file-io';
 import { MindmapSettingTab } from './obsidian/settings';
 
 export default class MindmapPlugin extends Plugin {
@@ -72,7 +76,9 @@ export default class MindmapPlugin extends Plugin {
    */
   private addFileMenuItem(): void {
     this.registerEvent(
-      this.app.workspace.on('file-menu', (menu, file) => {
+      // The leaf the menu was opened on: a right-click leaves the active
+      // pane where it was, so the window it names cannot be found afterwards.
+      this.app.workspace.on('file-menu', (menu, file, _source, leaf) => {
         if (!(file instanceof TFile) || file.extension !== 'md') {
           return;
         }
@@ -80,7 +86,7 @@ export default class MindmapPlugin extends Plugin {
           item
             .setTitle('Open mind map linked to this note')
             .setIcon('git-fork')
-            .onClick(() => void this.openMindmap(file, true)),
+            .onClick(() => void this.openMindmap(file, true, leaf)),
         );
       }),
     );
@@ -121,6 +127,33 @@ export default class MindmapPlugin extends Plugin {
       .getLeavesOfType(VIEW_TYPE_MINDMAP)
       .map((leaf) => leaf.view)
       .filter((view): view is MindmapView => view instanceof MindmapView);
+  }
+
+  /** Every open map as a pane, deferred tabs included. */
+  private mapLeaves(): WorkspaceLeaf[] {
+    return this.app.workspace.getLeavesOfType(VIEW_TYPE_MINDMAP);
+  }
+
+  /**
+   * The note a map pane shows, off its view state: a tab not opened since the
+   * app started has no view of ours yet, and is still a map that is open.
+   */
+  private mapFile(leaf: WorkspaceLeaf): string | null {
+    const path = leaf.getViewState().state?.file;
+
+    return typeof path === 'string' ? path : null;
+  }
+
+  /**
+   * Whether a map pane is tied to `tab`, by the leaf group "Link with tab"
+   * puts them in - `EditorPane.linkedLeaf`, asked of a pane with no view yet.
+   */
+  private tiedTo(leaf: WorkspaceLeaf, tab: WorkspaceLeaf): boolean {
+    const group = (leaf as WorkspaceLeaf & { group?: string }).group;
+
+    return (
+      !!group && group === (tab as WorkspaceLeaf & { group?: string }).group
+    );
   }
 
   /**
@@ -164,7 +197,11 @@ export default class MindmapPlugin extends Plugin {
    * file, so asking for the map of the note in front of you can only mean
    * "show me the one I already have".
    */
-  private async openMindmap(target?: TFile, linked = false): Promise<void> {
+  private async openMindmap(
+    target?: TFile,
+    linked = false,
+    from?: WorkspaceLeaf,
+  ): Promise<void> {
     const file = target ?? this.app.workspace.getActiveFile();
 
     if (!file || file.extension !== 'md') {
@@ -172,16 +209,21 @@ export default class MindmapPlugin extends Plugin {
 
       return;
     }
-    const showing = this.mindmapViews().find(
-      (view) => view.currentFile?.path === file.path,
+    const near = this.paneFor(file, from);
+    // The map this ask already has: the one tied to the note's tab when the
+    // ask names the note, else any map on that file - in this window only.
+    const already = this.mapLeaves().find((leaf) =>
+      linked
+        ? !!near && this.tiedTo(leaf, near)
+        : this.mapFile(leaf) === file.path && (!near || sameWindow(leaf, near)),
     );
 
-    if (showing && !linked) {
-      await this.app.workspace.revealLeaf(showing.leaf);
+    if (already) {
+      await this.app.workspace.revealLeaf(already);
 
       return;
     }
-    const leaf = this.newMapLeaf(file);
+    const leaf = this.newMapLeaf(near, linked);
 
     await leaf.setViewState({
       type: VIEW_TYPE_MINDMAP,
@@ -198,20 +240,38 @@ export default class MindmapPlugin extends Plugin {
   }
 
   /**
-   * Where a new map goes: a tab beside the maps already open in the window the
-   * note is in. Splitting again would divide a pane that is already half of
-   * one - but a map two windows away is not the one to sit beside either, and
-   * the note in a window of its own is the reason there is a second map.
+   * The pane every window question is answered from: the one showing `file`
+   * nearest whoever asked - a tab menu names its own, a command has none.
    */
-  private newMapLeaf(file: TFile): WorkspaceLeaf {
-    // The pane the user is in decides which of them, when the note is open in
-    // two windows at once.
-    const active = this.app.workspace.getMostRecentLeaf();
-    const near =
-      findMarkdownView(this.app, file, active ?? undefined)?.leaf ?? active;
-    const beside = this.mindmapViews().find(
-      (view) => !near || sameWindow(view.leaf, near),
-    )?.leaf.parent;
+  private paneFor(file: TFile, from?: WorkspaceLeaf): WorkspaceLeaf | null {
+    const asked = from ?? this.app.workspace.getMostRecentLeaf();
+
+    return findMarkdownView(this.app, file, asked ?? undefined)?.leaf ?? asked;
+  }
+
+  /**
+   * Where a new map goes. A linked map is its note's, so the pane already
+   * split off that note takes it as a tab and failing that it splits one off.
+   * A roaming map has none, so it joins the maps open in that window instead.
+   */
+  private newMapLeaf(
+    near: WorkspaceLeaf | null,
+    linked: boolean,
+  ): WorkspaceLeaf {
+    if (linked && near) {
+      // Switching a note's tab and asking again would add a column each
+      // time, so the pane already split off it takes this one.
+      const column = this.mapLeaves().find((leaf) =>
+        sameSplit(leaf, near),
+      )?.parent;
+
+      return column
+        ? this.app.workspace.createLeafInParent(column, -1)
+        : this.openSplit(near);
+    }
+    const beside = this.mapLeaves().find(
+      (leaf) => !near || sameWindow(leaf, near),
+    )?.parent;
 
     return beside
       ? this.app.workspace.createLeafInParent(beside, -1)
@@ -219,9 +279,8 @@ export default class MindmapPlugin extends Plugin {
   }
 
   /**
-   * Opens a new pane split in the user's configured direction, in `near`'s
-   * window: the active leaf that `getLeaf` splits is not always in the window
-   * the map was asked for.
+   * A new pane in the configured direction, split off `near`: the active leaf
+   * `getLeaf` would split is not always in the window that asked.
    */
   openSplit(near?: WorkspaceLeaf | null): WorkspaceLeaf {
     return near

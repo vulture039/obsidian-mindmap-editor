@@ -19,8 +19,8 @@ let watch: MutationObserver | null = null;
 let marked: Window | null = null;
 
 /**
- * A window's own highlight registry. Every window has one, and a mark set in
- * the main window's paints nothing in a popout - the same for its timers.
+ * A window's own highlight registry: a mark set in the main window's paints
+ * nothing in a popout, and the same goes for its timers.
  */
 function registry(win: Window): HighlightRegistry {
   return (win as unknown as { CSS: { highlights: HighlightRegistry } }).CSS

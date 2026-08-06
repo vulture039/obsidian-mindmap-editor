@@ -5,6 +5,13 @@ export function sameWindow(a: WorkspaceLeaf, b: WorkspaceLeaf): boolean {
   return a.getContainer() === b.getContainer();
 }
 
+/** Whether two panes were split off each other - a pair read side by side. */
+export function sameSplit(a: WorkspaceLeaf, b: WorkspaceLeaf): boolean {
+  const split = a.parent?.parent;
+
+  return !!split && split === b.parent?.parent;
+}
+
 /** Itself, its window, or neither: how close a pane is to the one asking. */
 function nearness(leaf: WorkspaceLeaf, near?: WorkspaceLeaf): number {
   if (!near) {
@@ -45,9 +52,8 @@ function findView(
 }
 
 /**
- * The pane showing `file`, the one nearest `near` first. The same note can be
- * open in two windows, and the map's own is the one it was opened beside;
- * without `near` it is whichever the workspace lists first, as before.
+ * The pane showing `file`, nearest `near` first: the same note can be open in
+ * two windows, and the map's own is the one it was opened beside.
  */
 export function findMarkdownView(
   app: App,

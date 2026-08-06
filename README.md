@@ -38,9 +38,8 @@ No new file format, no markup to add.
   a node's text is drawn. Neither side steals the focus.
 - **Follow wikilinks** - Clicking a `[[wikilink]]` switches map and editor to the linked note together.
 - **Maps side by side, one note each** - A map follows whichever note you open, like Obsidian's own outline.
-  The `🔗` header button links one to its note's tab instead, so it stays there; `Open mind map linked to the
-active file` opens a second one already linked. The link is Obsidian's own - its tab shows it, and its tab
-  menu or the button again undoes it.
+  The `🔗` button and `Open mind map linked to the active file` tie one to its note's tab instead, beside that
+  note; asking again fills that map pane rather than another. Obsidian's own link, undone from its tab menu.
 - **Branch colors** - Each top-level branch gets a palette color by position and its subtree keeps it.
   Customize the palette in settings, one hex color per line.
 - **Levels tell apart** - Every node of a level starts on the same left edge, so the depth is read off the
@@ -91,8 +90,8 @@ None of these come with a hotkey; bind the ones you want in Settings → Hotkeys
   then switched on its own from its header (`✓✓`, `¶`).
 - **Sync collapse state with Markdown folding** (default on) - An editing pane folds both ways; a reading pane
   follows along by its headings. List folding also follows Obsidian's Editor → Fold settings.
-- **Split direction** - Side by side / stacked, for any pane the plugin splits open (the first map, or an
-  editor for a note that has none). Later maps are tabs beside the first.
+- **Split direction** - Side by side / stacked, for any pane the plugin splits open. A map that can join one
+  already there opens as a tab instead, wherever that pane sits.
 - **Branch colors** - Custom palette, one hex color per line.
 
 ---

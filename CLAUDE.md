@@ -124,11 +124,14 @@ code already carries belongs there, not here.
   pane". A map follows the active file, so asking for the map of the note in front of you can only mean the
   first, and the second needs to be asked for separately: a command and the `🔗` header button, which is where
   Obsidian's own Backlinks puts it ("open backlinks for the current note", link icon and all). A modifier would do the same
-  job invisibly, and a shortcut nobody can see is a shortcut nobody uses. Either way the new map is a tab
-  beside the maps already open in the note's own window - splitting again would divide a pane that is half of
-  one, and a map a window away is not the one to sit beside either. A menu on the note
+  job invisibly, and a shortcut nobody can see is a shortcut nobody uses. A menu on the note
   itself names the note, so what it opens is linked; only the ribbon and the plain command mean "the note I
   am on", which is the one that may roam.
+- **A linked map goes beside its note, a roaming one beside the maps** - the pair is the point, so a linked map
+  splits off its note's pane, and a map already split off that pane takes the next one as a tab: without that,
+  switching a note's tab adds a column each time. A roaming map has no note to sit by, so it joins the maps
+  already open. Only in that window, and only the map tied to the tab that asked - a map a window away is
+  neither the one to sit beside nor the one you already have.
 
 ### A popout is a window of its own
 

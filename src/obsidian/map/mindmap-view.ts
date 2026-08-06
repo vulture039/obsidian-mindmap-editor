@@ -1149,9 +1149,8 @@ export class MindmapView extends ItemView {
   }
 
   /**
-   * A document listener in every window there is, and in any opened later.
-   * What the map watches for here - a caret moving, a fold handle clicked -
-   * happens in the editor's document, and a popout has one of its own.
+   * A listener in every window's document: a caret moves and a fold handle is
+   * clicked in the editor's, and a popout has one of its own.
    */
   private everyDocument<K extends keyof DocumentEventMap>(
     types: readonly K[],
@@ -1175,9 +1174,8 @@ export class MindmapView extends ItemView {
     };
 
     everywhere();
-    // Again on every move, not once: a map split into a popout opens before
-    // it is placed there, so at this point its own window is still the main
-    // one - and the note it will follow is in the window it has not reached.
+    // Again on every move: a map split into a popout opens before it is put
+    // there, so right now its own window is still the main one.
     this.registerEvent(this.app.workspace.on('layout-change', everywhere));
     this.registerEvent(
       this.app.workspace.on('window-open', (win) => listen(win.doc)),

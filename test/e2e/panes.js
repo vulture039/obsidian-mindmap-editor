@@ -80,9 +80,21 @@ try {
     const second = await openLinked();
 
     check(
-      'the linked command opens a second map as a tab beside the first',
+      'the linked command opens a second map in the map pane beside its note',
       !!second && second.parent === ours.parent,
       `${maps().length} map panes, same group ${second?.parent === ours.parent}`,
+    );
+
+    // Asked again for the same note: the map tied to its tab, not another
+    // pane. This is what keeps a workspace from filling up with maps.
+    const was = maps().length;
+
+    app.commands.executeCommandById('mindmap-editor:open-mindmap-linked');
+    await settle();
+    check(
+      'asking again for that note opens no second pane',
+      maps().length === was,
+      `${was} map panes became ${maps().length}`,
     );
 
     check(
@@ -145,9 +157,10 @@ try {
     const opened = await until(() => mapsFor('Tabs.md')[0]);
 
     await settle();
+    // Waited for: the group is assigned a beat after the map is drawn.
     check(
       "the note menu opens that note's map, linked to its tab",
-      !!opened?.group,
+      !!(await until(() => opened?.group)),
       `${items.length} items offered, group ${opened?.group ?? null}`,
     );
 

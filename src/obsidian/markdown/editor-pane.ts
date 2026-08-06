@@ -14,10 +14,7 @@ export interface EditorPaneDeps {
   leaf: WorkspaceLeaf;
   /** The file the map is showing, read on demand: it changes underneath. */
   file: () => TFile | null;
-  /**
-   * A new pane in the user's configured direction, split off `near` so it
-   * lands in that pane's window, when there is none to use.
-   */
+  /** A new pane in the configured direction, split off `near`'s window. */
   openSplit: (near?: WorkspaceLeaf) => WorkspaceLeaf;
   /** Whether the keyboard is on the map right now. */
   hasFocus: () => boolean;
@@ -68,9 +65,8 @@ export class EditorPane {
   }
 
   /**
-   * The pane every lookup is measured from: the linked tab, else the map
-   * itself. A note open in two windows has a pane in each, and the one this
-   * map drives is its own - the other window's belongs to the map over there.
+   * The pane every lookup is measured from. A note open in two windows has one
+   * in each, and the one this map drives is its own, not the map's over there.
    */
   private near(): WorkspaceLeaf {
     return this.linkedLeaf() ?? this.deps.leaf;

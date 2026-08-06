@@ -1,5 +1,5 @@
 import { App, Keymap, TFile, WorkspaceLeaf } from 'obsidian';
-import { findEditingView, findMarkdownView } from './file-io';
+import { findEditingView, findMarkdownView, sameWindow } from './file-io';
 import {
   clearPreviewLine,
   markPreviewLine,
@@ -14,8 +14,11 @@ export interface EditorPaneDeps {
   leaf: WorkspaceLeaf;
   /** The file the map is showing, read on demand: it changes underneath. */
   file: () => TFile | null;
-  /** A new pane in the user's configured direction, when there is none. */
-  openSplit: () => WorkspaceLeaf;
+  /**
+   * A new pane in the user's configured direction, split off `near` so it
+   * lands in that pane's window, when there is none to use.
+   */
+  openSplit: (near?: WorkspaceLeaf) => WorkspaceLeaf;
   /** Whether the keyboard is on the map right now. */
   hasFocus: () => boolean;
   /** Hands the keyboard back to the map after a jump. */
@@ -65,6 +68,15 @@ export class EditorPane {
   }
 
   /**
+   * The pane every lookup is measured from: the linked tab, else the map
+   * itself. A note open in two windows has a pane in each, and the one this
+   * map drives is its own - the other window's belongs to the map over there.
+   */
+  private near(): WorkspaceLeaf {
+    return this.linkedLeaf() ?? this.deps.leaf;
+  }
+
+  /**
    * The linked tab's file, read from its view state so a tab that is still
    * deferred (never opened in this session) counts too.
    */
@@ -83,6 +95,8 @@ export class EditorPane {
    * one; otherwise a new tab beside the Markdown pane the user was last
    * looking at (getLeavesOfType's order is unrelated to focus), since the
    * note that pane is showing is not ours to replace. No pane, so a split.
+   * Only this window's panes count while it has any: a tab opened two windows
+   * away is one the user cannot see from here.
    */
   resolveLeaf(): WorkspaceLeaf {
     const linked = this.linkedLeaf();
@@ -90,7 +104,9 @@ export class EditorPane {
     if (linked) {
       return linked;
     }
-    const markdownLeaves = this.deps.app.workspace.getLeavesOfType('markdown');
+    const all = this.deps.app.workspace.getLeavesOfType('markdown');
+    const here = all.filter((leaf) => sameWindow(leaf, this.deps.leaf));
+    const markdownLeaves = here.length ? here : all;
     const near =
       (this.lastActive &&
         markdownLeaves.includes(this.lastActive) &&
@@ -99,7 +115,7 @@ export class EditorPane {
 
     return near
       ? this.deps.app.workspace.createLeafInParent(near.parent, -1)
-      : this.deps.openSplit();
+      : this.deps.openSplit(this.deps.leaf);
   }
 
   /**
@@ -109,7 +125,7 @@ export class EditorPane {
    * use it: while a map is linked, only the linked tab may be written to.
    */
   async tabFor(file: TFile): Promise<WorkspaceLeaf> {
-    const open = findMarkdownView(this.deps.app, file);
+    const open = findMarkdownView(this.deps.app, file, this.near());
 
     if (open) {
       return open.leaf;
@@ -138,7 +154,7 @@ export class EditorPane {
         ? this.reveal(linked)
         : this.openThere(file);
     }
-    const open = findMarkdownView(this.deps.app, file);
+    const open = findMarkdownView(this.deps.app, file, this.deps.leaf);
 
     return open ? this.reveal(open.leaf) : this.openThere(file);
   }
@@ -175,7 +191,7 @@ export class EditorPane {
     if (!file) {
       return;
     }
-    const existing = findMarkdownView(this.deps.app, file);
+    const existing = findMarkdownView(this.deps.app, file, this.near());
     const leaf = existing?.leaf ?? this.resolveLeaf();
 
     if (!existing) {
@@ -200,7 +216,7 @@ export class EditorPane {
     // it the active leaf, and Obsidian then has no active file at all - the
     // note the user opens next goes nowhere.
     const had = this.deps.hasFocus();
-    const mdView = findMarkdownView(this.deps.app, file);
+    const mdView = findMarkdownView(this.deps.app, file, this.near());
 
     if (!mdView) {
       // resolveLeaf, not a fresh split: splitting past a Markdown tab that is
@@ -247,7 +263,7 @@ export class EditorPane {
    */
   stepHistory(back: boolean): boolean {
     const file = this.deps.file();
-    const view = file && findEditingView(this.deps.app, file);
+    const view = file && findEditingView(this.deps.app, file, this.near());
 
     if (!view) {
       return false;

@@ -15,6 +15,17 @@ const FLASH_MS = 5000;
 
 let fade: number | null = null;
 let watch: MutationObserver | null = null;
+/** Which window the mark went up in: the registry below belongs to one. */
+let marked: Window | null = null;
+
+/**
+ * A window's own highlight registry. Every window has one, and a mark set in
+ * the main window's paints nothing in a popout - the same for its timers.
+ */
+function registry(win: Window): HighlightRegistry {
+  return (win as unknown as { CSS: { highlights: HighlightRegistry } }).CSS
+    .highlights;
+}
 
 /**
  * The block a line is rendered in: the lines around it that are consecutive
@@ -80,8 +91,11 @@ export function markPreviewLine(
 
 /** Puts the mark up, and takes it down when the flash it stands in for goes. */
 function mark(view: MarkdownView, flashed: Element, range: Range): void {
+  const win = view.containerEl.win;
+
   clearPreviewLine();
-  CSS.highlights.set(HIGHLIGHT, new Highlight(range));
+  marked = win;
+  registry(win).set(HIGHLIGHT, new Highlight(range));
   view.containerEl.addClass(QUIET);
   // Both marks go out together: the class is all that quiets the flash, and
   // Obsidian keeps it on for a good second longer than one expects.
@@ -135,14 +149,23 @@ function flashedBlock(view: MarkdownView): Element | null {
 
 /** Takes the mark off, wherever it was left. */
 export function clearPreviewLine(): void {
-  CSS.highlights.delete(HIGHLIGHT);
-  document.querySelectorAll(`.${QUIET}`).forEach((el) => el.removeClass(QUIET));
+  const win = marked;
+
+  // Nothing is up unless a window was marked: it goes in before anything else.
+  if (!win) {
+    return;
+  }
+  registry(win).delete(HIGHLIGHT);
+  win.document
+    .querySelectorAll(`.${QUIET}`)
+    .forEach((el) => el.removeClass(QUIET));
   watch?.disconnect();
   watch = null;
   if (fade !== null) {
-    window.clearTimeout(fade);
+    win.clearTimeout(fade);
     fade = null;
   }
+  marked = null;
 }
 
 /**

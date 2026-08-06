@@ -124,9 +124,21 @@ code already carries belongs there, not here.
   first, and the second needs to be asked for separately: a command and the `🔗` header button, which is where
   Obsidian's own Backlinks puts it ("open backlinks for the current note", link icon and all). A modifier would do the same
   job invisibly, and a shortcut nobody can see is a shortcut nobody uses. Either way the new map is a tab
-  beside the maps already there - splitting again would divide a pane that is half of one. A menu on the note
+  beside the maps already open in the note's own window - splitting again would divide a pane that is half of
+  one, and a map a window away is not the one to sit beside either. A menu on the note
   itself names the note, so what it opens is linked; only the ribbon and the plain command mean "the note I
   am on", which is the one that may roam.
+
+### A popout is a window of its own
+
+- **Nothing global is the map's** - `document`, `CSS.highlights` and `setTimeout` all belong to one window, and
+  a popout has its own of each. Reach them through the element at hand (`el.doc`, `el.win`), and where a
+  listener has to hear every editor there is, put one on every window and on `window-open` too - a caret moves
+  and a fold handle is clicked in the editor's document, not in ours.
+- **The same note can be open in two windows** - so every pane lookup takes the pane it is asked from and
+  prefers the nearest match: `file-io`'s `near`, which is the linked tab if there is one and the map's own leaf
+  otherwise. Without it the first pane the workspace lists wins, and a map in a popout drives the editor in the
+  main window.
 
 ### Drawing
 

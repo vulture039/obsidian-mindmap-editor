@@ -2,6 +2,7 @@ import { Notice, Plugin, TFile, WorkspaceLeaf } from 'obsidian';
 import { MindmapView, VIEW_TYPE_MINDMAP } from './obsidian/map/mindmap-view';
 import { FoldKind } from './core/folds';
 import { DEFAULT_SETTINGS, MindmapSettings } from './core/settings';
+import { findMarkdownView, sameWindow } from './obsidian/markdown/file-io';
 import { MindmapSettingTab } from './obsidian/settings';
 
 export default class MindmapPlugin extends Plugin {
@@ -180,7 +181,7 @@ export default class MindmapPlugin extends Plugin {
 
       return;
     }
-    const leaf = this.newMapLeaf();
+    const leaf = this.newMapLeaf(file);
 
     await leaf.setViewState({
       type: VIEW_TYPE_MINDMAP,
@@ -197,20 +198,35 @@ export default class MindmapPlugin extends Plugin {
   }
 
   /**
-   * Where a new map goes: a tab beside the maps already open. Splitting again
-   * would divide a pane that is already half of one.
+   * Where a new map goes: a tab beside the maps already open in the window the
+   * note is in. Splitting again would divide a pane that is already half of
+   * one - but a map two windows away is not the one to sit beside either, and
+   * the note in a window of its own is the reason there is a second map.
    */
-  private newMapLeaf(): WorkspaceLeaf {
-    const beside = this.mindmapViews()[0]?.leaf.parent;
+  private newMapLeaf(file: TFile): WorkspaceLeaf {
+    // The pane the user is in decides which of them, when the note is open in
+    // two windows at once.
+    const active = this.app.workspace.getMostRecentLeaf();
+    const near =
+      findMarkdownView(this.app, file, active ?? undefined)?.leaf ?? active;
+    const beside = this.mindmapViews().find(
+      (view) => !near || sameWindow(view.leaf, near),
+    )?.leaf.parent;
 
     return beside
       ? this.app.workspace.createLeafInParent(beside, -1)
-      : this.openSplit();
+      : this.openSplit(near);
   }
 
-  /** Opens a new pane split in the user's configured direction. */
-  openSplit(): WorkspaceLeaf {
-    return this.app.workspace.getLeaf('split', this.settings.splitDirection);
+  /**
+   * Opens a new pane split in the user's configured direction, in `near`'s
+   * window: the active leaf that `getLeaf` splits is not always in the window
+   * the map was asked for.
+   */
+  openSplit(near?: WorkspaceLeaf | null): WorkspaceLeaf {
+    return near
+      ? this.app.workspace.createLeafBySplit(near, this.settings.splitDirection)
+      : this.app.workspace.getLeaf('split', this.settings.splitDirection);
   }
 
   async loadSettings(): Promise<void> {

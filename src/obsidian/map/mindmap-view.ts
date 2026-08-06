@@ -81,7 +81,7 @@ const COLLAPSE_HANDLE_GAP = 4;
  * Edge thickness by the level the edge arrives at, matched to that level's
  * border. Siblings share a level, so no edge changes width along its length.
  */
-const EDGE_WIDTHS = [2, 2, 1.5, 1];
+const EDGE_WIDTHS = [2.5, 2, 1.75, 1.5, 1.25, 1];
 
 /** Run left for an edge once the collapse handle has taken its share. */
 const EDGE_MIN_RUN = 12;

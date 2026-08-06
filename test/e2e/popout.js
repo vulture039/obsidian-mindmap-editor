@@ -45,8 +45,12 @@ try {
 
   // The linked command, since a plain open would only reveal the roaming map
   // that followed the active file - a second map is what this is about.
+  // The map that appears, not just any other one: a workspace the user left
+  // maps open in has several, and the one this asks about is the new one.
+  const before = new Set(maps());
+
   app.commands.executeCommandById('mindmap-editor:open-mindmap-linked');
-  second = await until(() => maps().find((l) => l !== ours));
+  second = await until(() => maps().find((l) => !before.has(l)));
   await settle();
 
   check(
@@ -72,13 +76,18 @@ try {
   const node = nodes[nodes.length - 1];
   const line = Number(node?.dataset.line);
 
+  // By the line it marks, not the element: a render in between is the map
+  // doing its job, and it draws the selection again on a node of its own.
+  const marked = () =>
+    map.contentEl.querySelector('.mindmap-node.is-selected')?.dataset.line;
+
   editor.setCursor({ line: 0, ch: 0 });
   clickIn(node?.querySelector('.mindmap-node-text') ?? node);
   check(
     'clicking a node in it moves the caret in the popout, not in the main window',
     !!node &&
       (await until(() => editor.getCursor().line === line)) !== null &&
-      map.contentEl.querySelector('.mindmap-node.is-selected') === node,
+      (await until(() => marked() === String(line))) !== null,
     `asked for line ${line}, the editor is on ${editor.getCursor().line}`,
   );
 
@@ -92,14 +101,8 @@ try {
   editor.setCursor({ line: back, ch: 0 });
   check(
     'and the caret moving in the popout selects the node on the map',
-    !!another &&
-      (await until(
-        () =>
-          map.contentEl.querySelector('.mindmap-node.is-selected') === another,
-      )) !== null,
-    `line ${back} is drawn, and the map marks ${
-      map.contentEl.querySelector('.mindmap-node.is-selected')?.dataset.line
-    }`,
+    !!another && (await until(() => marked() === String(back))) !== null,
+    `line ${back} is drawn, and the map marks ${marked()}`,
   );
 
   // A reading pane takes the highlight the map paints itself, and that registry

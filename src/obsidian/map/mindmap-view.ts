@@ -1157,17 +1157,28 @@ export class MindmapView extends ItemView {
     types: readonly K[],
     run: () => void,
   ): void {
-    const docs = new Set<Document>([this.containerEl.doc]);
+    const listening = new Set<Document>();
     const listen = (doc: Document): void => {
+      if (listening.has(doc)) {
+        return;
+      }
+      listening.add(doc);
       for (const type of types) {
         this.registerDomEvent(doc, type, run);
       }
     };
+    const everywhere = (): void => {
+      listen(this.containerEl.doc);
+      this.app.workspace.iterateAllLeaves((leaf) =>
+        listen(leaf.getContainer().doc),
+      );
+    };
 
-    this.app.workspace.iterateAllLeaves((leaf) =>
-      docs.add(leaf.getContainer().doc),
-    );
-    docs.forEach(listen);
+    everywhere();
+    // Again on every move, not once: a map split into a popout opens before
+    // it is placed there, so at this point its own window is still the main
+    // one - and the note it will follow is in the window it has not reached.
+    this.registerEvent(this.app.workspace.on('layout-change', everywhere));
     this.registerEvent(
       this.app.workspace.on('window-open', (win) => listen(win.doc)),
     );

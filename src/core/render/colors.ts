@@ -16,10 +16,11 @@ export const DEFAULT_PALETTE = [
 ];
 
 /**
- * Last rung of the level ladder: three steps are as many as anyone reads at a
- * glance, and a fourth only makes the third harder to see.
+ * Last rung of the level ladder. Five steps is what the channels hold: the
+ * fill runs from a half tint to none, the text size from four points up to one
+ * down, and a rung below that would have to repeat one of them.
  */
-export const DEPTH_CAP = 3;
+export const DEPTH_CAP = 5;
 
 /**
  * Parses one color per line from the settings textarea. Falls back to

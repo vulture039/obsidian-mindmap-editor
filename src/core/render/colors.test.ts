@@ -19,12 +19,14 @@ const PALETTE = [RED, GREEN, '#0000ff'];
  */
 const TREE = parseMarkdown(
   [
-    '- one', //          line 0: branch 0, list level 0
-    '  - two', //        line 1: branch 0, list level 1
-    '    - three', //    line 2: branch 0, list level 2
-    '      - four', //   line 3: branch 0, list level 3
-    '        - five', // line 4: branch 0, list level 4
-    '- other', //        line 5: branch 1, list level 0
+    '- one', //               line 0: branch 0, list level 0
+    '  - two', //             line 1: branch 0, list level 1
+    '    - three', //         line 2: branch 0, list level 2
+    '      - four', //        line 3: branch 0, list level 3
+    '        - five', //      line 4: branch 0, list level 4
+    '          - six', //     line 5: branch 0, list level 5
+    '            - seven', // line 6: branch 0, list level 6
+    '- other', //             line 7: branch 1, list level 0
   ].join('\n'),
   'Note',
 );
@@ -84,7 +86,7 @@ describe('branchPosition', () => {
     expect(branchPosition(at(0))).toEqual({ index: 0, depth: 0 });
     expect(branchPosition(at(1))).toEqual({ index: 0, depth: 1 });
     expect(branchPosition(at(2))).toEqual({ index: 0, depth: 2 });
-    expect(branchPosition(at(5))).toEqual({ index: 1, depth: 0 });
+    expect(branchPosition(at(7))).toEqual({ index: 1, depth: 0 });
   });
 
   it('gives the root no position: it carries no branch color', () => {
@@ -102,7 +104,7 @@ describe('nodeColorFor', () => {
   it('gives every node its own branch color, whatever its level', () => {
     expect(nodeColorFor(at(0), PALETTE).color).toBe(RED);
     expect(nodeColorFor(at(2), PALETTE).color).toBe(RED);
-    expect(nodeColorFor(at(5), PALETTE).color).toBe(GREEN);
+    expect(nodeColorFor(at(7), PALETTE).color).toBe(GREEN);
   });
 
   it('takes the rung from how deep the node sits', () => {
@@ -115,11 +117,12 @@ describe('nodeColorFor', () => {
     expect(rung(heading(0))).toBe(0);
     expect(rung(heading(1))).toBe(1);
     // A list under three headings carries on from them, it does not restart.
-    expect(rung(heading(4))).toBe(DEPTH_CAP);
+    expect(rung(heading(4))).toBe(4);
+    expect(rung(heading(5))).toBe(DEPTH_CAP);
   });
 
   it('never draws a child above its own parent', () => {
-    for (const line of [1, 2, 3, 4, 5]) {
+    for (const line of [1, 2, 3, 4, 5, 6]) {
       const node = at(line);
 
       expect(rung(node)).toBeGreaterThanOrEqual(rung(node.parent!));
@@ -127,7 +130,7 @@ describe('nodeColorFor', () => {
   });
 
   it('stops at the cap: a deeper node draws like the last rung', () => {
-    expect(rung(at(3))).toBe(DEPTH_CAP);
-    expect(rung(at(4))).toBe(DEPTH_CAP);
+    expect(rung(at(5))).toBe(DEPTH_CAP);
+    expect(rung(at(6))).toBe(DEPTH_CAP);
   });
 });

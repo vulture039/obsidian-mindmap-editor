@@ -49,26 +49,40 @@
 }
 
 .mindmap-node[data-depth='1'] {
-  --level-fill: 33%;
-  --level-line: color-mix(in srgb, var(--branch-color) 85%, transparent);
-  --level-size: 2px;
+  --level-fill: 38%;
+  --level-line: color-mix(in srgb, var(--branch-color) 88%, transparent);
+  --level-size: 3px;
   --level-border: 2px;
 }
 
 .mindmap-node[data-depth='2'] {
-  --level-fill: 17%;
-  --level-line: color-mix(in srgb, var(--branch-color) 68%, transparent);
-  --level-size: 0px;
+  --level-fill: 28%;
+  --level-line: color-mix(in srgb, var(--branch-color) 76%, transparent);
+  --level-size: 2px;
   --level-border: 1.5px;
 }
 
-/* The view caps the level here, so this is every level from the fourth in.
+.mindmap-node[data-depth='3'] {
+  --level-fill: 19%;
+  --level-line: color-mix(in srgb, var(--branch-color) 64%, transparent);
+  --level-size: 1px;
+  --level-border: 1.5px;
+}
+
+.mindmap-node[data-depth='4'] {
+  --level-fill: 10%;
+  --level-line: color-mix(in srgb, var(--branch-color) 52%, transparent);
+  --level-size: 0px;
+  --level-border: 1px;
+}
+
+/* The view caps the level here, so this is every level from the sixth in.
    The last of the fill goes, so the text takes the muted color to carry the
    step the fill can no longer make. Still an ordinary node: these are levels
    people work in, not a tail. */
-.mindmap-node[data-depth='3'] {
+.mindmap-node[data-depth='5'] {
   --level-fill: 0%;
-  --level-line: color-mix(in srgb, var(--branch-color) 45%, transparent);
+  --level-line: color-mix(in srgb, var(--branch-color) 40%, transparent);
   --level-size: -1px;
   --level-border: 1px;
   --level-text: var(--text-muted);
@@ -341,7 +355,7 @@
    the canvas. Square, like the headings: a file is the outline's top, not an
    item in it. It says that with a doubled border and no fill at all - it is
    one node and it is off the ladder, so it takes none of the fill range the
-   four rungs have to share, and the accent it is drawn in is not a level of
+   rungs have to share, and the accent it is drawn in is not a level of
    anything. */
 .mindmap-node.mindmap-node-root {
   border: 4px double var(--interactive-accent);

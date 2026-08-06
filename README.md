@@ -44,9 +44,9 @@ active file` opens a second one already linked. The link is Obsidian's own - its
 - **Branch colors** - Each top-level branch gets a palette color by position and its subtree keeps it.
   Customize the palette in settings, one hex color per line.
 - **Levels tell apart** - Every node of a level starts on the same left edge, so the depth is read off the
-  column. Each level in is a step quieter than the one it hangs off: less of the branch color in the fill and
-  the outline, and a size smaller. Headings keep square corners at every level, and the note itself carries a
-  doubled border as the largest node on the canvas.
+  column. Each level in is a step quieter than the one it hangs off - less of the branch color in the fill and
+  the outline, and a size smaller - for six levels, after which the fill is spent. Headings keep square
+  corners at every level, and the note itself carries a doubled border as the largest node on the canvas.
 
 ## Keyboard shortcuts
 

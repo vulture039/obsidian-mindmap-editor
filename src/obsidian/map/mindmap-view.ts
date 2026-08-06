@@ -1135,16 +1135,14 @@ export class MindmapView extends ItemView {
     );
     // The caret moving in an editor fires no workspace event, but it does
     // move the document selection, which does.
-    this.everyDocument('selectionchange', () => this.followEditorCursor());
+    this.everyDocument(['selectionchange'], () => this.followEditorCursor());
     // Nothing fires on a fold, so check once clicks and keys settle.
     const checkFolds = debounce(
       () => this.syncCollapseFromEditor(),
       FOLD_CHECK_DELAY,
     );
 
-    for (const type of ['click', 'keyup'] as const) {
-      this.everyDocument(type, () => checkFolds());
-    }
+    this.everyDocument(['click', 'keyup'], () => checkFolds());
     this.registerEvent(
       this.app.workspace.on('active-leaf-change', () => checkFolds()),
     );
@@ -1156,21 +1154,22 @@ export class MindmapView extends ItemView {
    * happens in the editor's document, and a popout has one of its own.
    */
   private everyDocument<K extends keyof DocumentEventMap>(
-    type: K,
+    types: readonly K[],
     run: () => void,
   ): void {
     const docs = new Set<Document>([this.containerEl.doc]);
+    const listen = (doc: Document): void => {
+      for (const type of types) {
+        this.registerDomEvent(doc, type, run);
+      }
+    };
 
     this.app.workspace.iterateAllLeaves((leaf) =>
       docs.add(leaf.getContainer().doc),
     );
-    for (const doc of docs) {
-      this.registerDomEvent(doc, type, run);
-    }
+    docs.forEach(listen);
     this.registerEvent(
-      this.app.workspace.on('window-open', (win) =>
-        this.registerDomEvent(win.doc, type, run),
-      ),
+      this.app.workspace.on('window-open', (win) => listen(win.doc)),
     );
   }
 

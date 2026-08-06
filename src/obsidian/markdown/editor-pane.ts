@@ -105,17 +105,17 @@ export class EditorPane {
       return linked;
     }
     const all = this.deps.app.workspace.getLeavesOfType('markdown');
-    const here = all.filter((leaf) => sameWindow(leaf, this.deps.leaf));
+    const here = all.filter((leaf) => sameWindow(leaf, this.near()));
     const markdownLeaves = here.length ? here : all;
-    const near =
+    const beside =
       (this.lastActive &&
         markdownLeaves.includes(this.lastActive) &&
         this.lastActive) ||
       markdownLeaves[0];
 
-    return near
-      ? this.deps.app.workspace.createLeafInParent(near.parent, -1)
-      : this.deps.openSplit(this.deps.leaf);
+    return beside
+      ? this.deps.app.workspace.createLeafInParent(beside.parent, -1)
+      : this.deps.openSplit(this.near());
   }
 
   /**
@@ -154,7 +154,7 @@ export class EditorPane {
         ? this.reveal(linked)
         : this.openThere(file);
     }
-    const open = findMarkdownView(this.deps.app, file, this.deps.leaf);
+    const open = findMarkdownView(this.deps.app, file, this.near());
 
     return open ? this.reveal(open.leaf) : this.openThere(file);
   }

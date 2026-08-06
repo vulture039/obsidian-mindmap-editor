@@ -51,7 +51,7 @@ export function renderNodeText(
       const { url, label } = segment;
 
       makeLink('external-link mindmap-link', label, { href: url }, () =>
-        window.open(url),
+        containerEl.win.open(url),
       );
     }
   }

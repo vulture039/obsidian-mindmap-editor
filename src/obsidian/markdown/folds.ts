@@ -90,16 +90,18 @@ export async function foldPreviewHeadings(
   // Each pass reaches what the last one brought back, and a pass that clicks
   // nothing is the end of it.
   for (let pass = 0; pass < PASSES; pass++) {
-    if (!foldPass(app, file, folded)) {
+    const win = foldPass(app, file, folded);
+
+    if (!win) {
       return;
     }
-    await sleep(RENDER_DELAY);
+    await sleep(win, RENDER_DELAY);
   }
 }
 
-/** One pass over the rendered headings; true when it changed any of them. */
-function foldPass(app: App, file: TFile, folded: Set<number>): boolean {
-  let clicked = false;
+/** One pass over the rendered headings; the window it clicked in, if any. */
+function foldPass(app: App, file: TFile, folded: Set<number>): Window | null {
+  let clicked: Window | null = null;
 
   for (const leaf of app.workspace.getLeavesOfType('markdown')) {
     const md = leaf.view;
@@ -127,7 +129,7 @@ function foldPass(app: App, file: TFile, folded: Set<number>): boolean {
         folded.has(at) !== handle.hasClass('is-collapsed')
       ) {
         handle.click();
-        clicked = true;
+        clicked = md.containerEl.win;
       }
     }
   }
@@ -140,8 +142,9 @@ const RENDER_DELAY = 80;
 /** Deeper than any note nests, with room for what scrolling brings in. */
 const PASSES = 8;
 
-const sleep = (ms: number): Promise<void> =>
-  new Promise((resolve) => window.setTimeout(resolve, ms));
+/** Waits in the pane's own window: a popout has its own timers. */
+const sleep = (win: Window, ms: number): Promise<void> =>
+  new Promise((resolve) => win.setTimeout(resolve, ms));
 
 /** How a write went. Only `Failed` means the API itself let us down. */
 export enum FoldWrite {

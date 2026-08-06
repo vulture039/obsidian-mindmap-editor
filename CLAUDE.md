@@ -47,35 +47,12 @@ part on each side, the two share a basename (`core/folds.ts` maps the ranges,
 
 - **main.ts** - Plugin entry: view registration, commands, the note's own menu, settings, which leaf a new
   map lands on
-- **core/** - No `obsidian` import, so it is unit-testable in plain Node:
-  - **parse/** - Markdown in:
-    - **parser.ts** - Markdown → MindNode tree; `body` is a node's own lines (its range minus every child's)
-    - **patterns.ts** - The shared heading/list/checkbox regexes, so parse and write agree on each construct
-    - **node-text.ts** - A node's own text → link/plain segments, for drawing
-  - **write/** - Markdown out:
-    - **ops.ts** - Every write the map can make, as a pure edit over `string[]`
-    - **relocate.ts** - Finds a node again in a fresh parse, by what it says and what it sits under
-    - **edit-value.ts** - What a typed name becomes before it goes back into the document
-  - **render/** - Where it all goes on the canvas:
-    - **colors.ts** - Per-branch colors, cycled by position from the palette setting, plus how many levels
-      down a node sits - the stylesheet turns that into its fill, text size and border
-    - **layout.ts** - Left-to-right tree layout (measures real offsetWidth/Height, so not unit-tested)
-    - **drag.ts** - Pure drop-target resolution
-  - **folds.ts** - Obsidian's fold ranges ⇄ the map's two fold sets, and what each of them can fold
-  - **settings.ts** - MindmapSettings shape and DEFAULT_SETTINGS
-- **obsidian/** - Everything that touches the Obsidian API:
-  - **map/** - This plugin's own pane:
-    - **mindmap-view.ts** - ItemView: rendering, selection, keyboard, folds, context menu, file ops
-    - **drag.ts** - The pointer handling, cues and ghost around core/render/drag's answers
-    - **inline-edit.ts** - Renaming a node in place: keys, focus net, caret, and the write behind them
-    - **node-text.ts** - Renders the parsed segments to DOM links
-  - **markdown/** - Obsidian's own pane, seen from here:
-    - **editor-pane.ts** - Which pane to use, what to show in it, where to put its cursor, its undo
-    - **file-io.ts** - findMarkdownView, updateFileLines (editor open → replaceRange, else vault.process)
-    - **folds.ts** - Reads/writes its fold state, all non-public API and feature-detected; a reading pane
-      takes none, so its headings are folded by their own handles
-    - **preview-line.ts** - A reading pane can only be pointed at a block; this narrows that to one line
-  - **settings.ts** - Settings tab (MindmapSettingTab)
+- **core/** - No `obsidian` import, so it is unit-testable in plain Node: `parse/` Markdown in, `write/`
+  Markdown out, `render/` where it goes on the canvas, and beside them `folds.ts` and `settings.ts`. One file
+  is outside "unit-testable": `render/layout.ts` measures real offsetWidth/Height.
+- **obsidian/** - Everything that touches the Obsidian API: `map/` is this plugin's own pane, `markdown/` is
+  Obsidian's own seen from here - which pane to use, how a write reaches the file, and its fold state, which
+  is non-public API throughout and feature-detected.
 - **styles.css** - All styles
 - **\*.test.ts** - Vitest. A test for one module sits beside it; one that crosses modules lives in **test/**:
   `write-ops`, `stale-edit`, and `inline-edit`, which runs the real editor under jsdom with
@@ -172,11 +149,6 @@ code already carries belongs there, not here.
 - **A rung has to differ from its neighbour in every channel at once** - fill, outline, size. Whichever one
   two rungs share says nothing where it is needed, and one channel alone (a tint 8% lighter, a border half a
   pixel thinner) is invisible at a glance.
-- **The rungs are spaced by what the eye reads, not by the number line** - the fill is mixed in Oklab and the
-  text size steps by ratio. The palette color goes into the fill pulled to one lightness first: taken as
-  configured, a pale hue's whole way to the background is half a strong one's, so a yellow branch's levels
-  stepped half as far as a blue one's. The outline and the edges keep the color as configured - that is what
-  says which branch this is.
 - **The ladder may never go back up** - a child drawn louder than its parent reads as a new start, so the rung
   is plain depth. Counting a heading by its heading level and a list by its indent was tried: a list item
   under an H3 restarted at the loudest rung, inside the node that held it.

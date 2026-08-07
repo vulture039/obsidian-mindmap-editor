@@ -117,6 +117,8 @@ code already carries belongs there, not here.
   editing pane the write goes to the file and nothing remembers it, so the map keeps that one step itself.
 - **Wikilinks navigate via `leaf.setViewState` + `result.history`** - it joins the leaf history, so Obsidian's
   own back/forward works; a custom mouse handler can be swallowed before the DOM ever sees it.
+- **A map's tab is no place to open a note** - a search result clicked with the map in front took it. The leaf
+  declines (`declineOpens`), not the view: `navigation` is also what the back/forward commands read.
 - **What moves a map onto a file** - a linked tab if there is one, else the active file. Both are Obsidian's
   own, and there is nothing else: a follow setting and a private per-pane flag were each tried and each only
   added a second vocabulary for what "Link with tab" already says from the tab menu.
@@ -167,7 +169,8 @@ code already carries belongs there, not here.
   pixel thinner) is invisible at a glance.
 - **The ladder may never go back up** - a child drawn louder than its parent reads as a new start, so the rung
   is plain depth. Counting a heading by its heading level and a list by its indent was tried: a list item
-  under an H3 restarted at the loudest rung, inside the node that held it.
+  under an H3 restarted at the loudest rung, inside the node that held it. Past the last rung the two quietest
+  take turns instead - equally quiet, the color carried by the fill or by the outline, so nothing goes up.
 - **Opening an edit must not move the map** - the editor is styled like what it replaces, down to blank-line
   height and wrapping, and its buttons float over the node rather than taking a row.
 - **hideCompleted removes checked nodes entirely** - they are absent from `laidByLine`, so selection and

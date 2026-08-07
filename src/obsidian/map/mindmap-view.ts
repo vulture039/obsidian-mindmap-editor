@@ -39,17 +39,17 @@ import {
 } from '../markdown/folds';
 import { LaidNode, layoutTree, makeLaid } from '../../core/render/layout';
 import {
-  DEPTH_CAP,
   NodeColor,
   nodeColorFor,
   parsePalette,
+  rungBelow,
 } from '../../core/render/colors';
 import { renderNodeText } from './node-text';
 import { canDrop } from '../../core/render/drag';
 import { singleLineValue } from '../../core/write/edit-value';
 import { DRAGGING_SELECTOR, setupNodeDrag } from './drag';
 import { EditorPane } from '../markdown/editor-pane';
-import { blockOf } from '../markdown/preview-line';
+import { blockOf, clearPreviewLine } from '../markdown/preview-line';
 import { caretAtEnd, EditSession, runEditor } from './inline-edit';
 import {
   addChildOp,
@@ -268,7 +268,30 @@ export class MindmapView extends ItemView {
     // part in Obsidian's per-leaf navigation history: back/forward via
     // the tab-header arrows, mouse buttons, and the built-in hotkeys.
     this.navigation = true;
+    this.declineOpens();
     this.registerShortcuts();
+  }
+
+  /**
+   * Says no to "open the file here", which a search result took the map's tab
+   * for. Not through `navigation`: the back/forward commands read that too.
+   */
+  private declineOpens(): void {
+    const leaf = this.leaf as WorkspaceLeaf & { canNavigate?: () => boolean };
+
+    if (typeof leaf.canNavigate !== 'function') {
+      return;
+    }
+    const own = Object.getOwnPropertyDescriptor(leaf, 'canNavigate');
+
+    leaf.canNavigate = (): boolean => false;
+    this.register(() => {
+      if (own) {
+        Object.defineProperty(leaf, 'canNavigate', own);
+      } else {
+        delete leaf.canNavigate;
+      }
+    });
   }
 
   /**
@@ -1079,6 +1102,11 @@ export class MindmapView extends ItemView {
     await this.render();
   }
 
+  /** Left up by a map that is gone, the mark quiets the pane's next flash. */
+  async onClose(): Promise<void> {
+    clearPreviewLine();
+  }
+
   /**
    * Wires the vault/workspace events that keep the map in sync: re-render on
    * edits, track the last-focused Markdown pane, follow the active file, pan
@@ -1708,7 +1736,7 @@ export class MindmapView extends ItemView {
     if (own.color) {
       el.setCssProps({ '--branch-color': own.color });
       // A level in from the parent it stands under, like the tasks it hides.
-      el.dataset.depth = String(Math.min(own.depth + 1, DEPTH_CAP));
+      el.dataset.depth = String(rungBelow(own.depth));
     }
     el.createSpan({
       cls: 'mindmap-node-text',

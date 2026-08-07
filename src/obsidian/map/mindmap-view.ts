@@ -39,10 +39,10 @@ import {
 } from '../markdown/folds';
 import { LaidNode, layoutTree, makeLaid } from '../../core/render/layout';
 import {
-  DEPTH_CAP,
   NodeColor,
   nodeColorFor,
   parsePalette,
+  rungBelow,
 } from '../../core/render/colors';
 import { renderNodeText } from './node-text';
 import { canDrop } from '../../core/render/drag';
@@ -1736,7 +1736,7 @@ export class MindmapView extends ItemView {
     if (own.color) {
       el.setCssProps({ '--branch-color': own.color });
       // A level in from the parent it stands under, like the tasks it hides.
-      el.dataset.depth = String(Math.min(own.depth + 1, DEPTH_CAP));
+      el.dataset.depth = String(rungBelow(own.depth));
     }
     el.createSpan({
       cls: 'mindmap-node-text',

@@ -80,13 +80,21 @@
   --level-border: 1.25px;
 }
 
-/* The view caps the level here, so this is every level from the sixth in.
-   The last of the fill goes, so the text takes the muted color to carry the
-   step the fill can no longer make. Still an ordinary node: these are levels
-   people work in, not a tail. */
+/* The last rung the ladder steps down to. The fill goes, so the text takes the
+   muted color to carry the step the fill can no longer make. */
 .mindmap-node[data-depth='5'] {
   --level-fill: 0%;
   --level-line: color-mix(in oklab, var(--branch-color) 30%, transparent);
+  --level-size: -1px;
+  --level-border: 1px;
+  --level-text: var(--text-muted);
+}
+
+/* The tail, alternating with the rung above it: the same quiet, carried by the
+   fill instead of the outline, so a node never draws as its own parent. */
+.mindmap-node[data-depth='6'] {
+  --level-fill: 10%;
+  --level-line: transparent;
   --level-size: -1px;
   --level-border: 1px;
   --level-text: var(--text-muted);

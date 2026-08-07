@@ -16,11 +16,24 @@ export const DEFAULT_PALETTE = [
 ];
 
 /**
- * Last rung of the level ladder. Five steps is what the channels hold: the
+ * Last rung the ladder steps down to. Five steps is what the channels hold: the
  * fill runs from a half tint to none, the text size from four points up to one
- * down, and a rung below that would have to repeat one of them.
+ * down, and a step below that would have to repeat one of them.
  */
 export const DEPTH_CAP = 5;
+
+/**
+ * The rung under `rung`. Past the last one the tail alternates between it and
+ * one more: the pair is equally quiet and differs in which channel carries the
+ * color, so a node is never drawn as its own parent - and none is ever louder.
+ */
+export function rungBelow(rung: number): number {
+  if (rung < DEPTH_CAP) {
+    return rung + 1;
+  }
+
+  return rung === DEPTH_CAP ? DEPTH_CAP + 1 : DEPTH_CAP;
+}
 
 /**
  * Parses one color per line from the settings textarea. Falls back to
@@ -83,7 +96,10 @@ export function nodeColorFor(node: MindNode, palette: string[]): NodeColor {
   return pos
     ? {
         color: branchColorFor(pos.index, palette),
-        depth: Math.min(pos.depth, DEPTH_CAP),
+        depth:
+          pos.depth <= DEPTH_CAP
+            ? pos.depth
+            : DEPTH_CAP + ((pos.depth - DEPTH_CAP) % 2),
       }
     : { color: '', depth: 0 };
 }

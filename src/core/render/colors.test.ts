@@ -7,6 +7,7 @@ import {
   DEPTH_CAP,
   nodeColorFor,
   parsePalette,
+  rungBelow,
 } from './colors';
 
 const RED = '#ff0000';
@@ -54,8 +55,18 @@ function nodeAt(tree: MindNode, line: number): MindNode {
   return node;
 }
 
+/** One list item per level, deep enough for the tail to come round twice. */
+const DEEP = parseMarkdown(
+  Array.from(
+    { length: DEPTH_CAP + 4 },
+    (_, i) => `${'  '.repeat(i)}- ${i}`,
+  ).join('\n'),
+  'Note',
+);
+
 const at = (line: number): MindNode => nodeAt(TREE, line);
 const heading = (line: number): MindNode => nodeAt(HEADINGS, line);
+const deep = (line: number): MindNode => nodeAt(DEEP, line);
 
 describe('parsePalette', () => {
   it('reads one trimmed color per non-empty line', () => {
@@ -129,8 +140,19 @@ describe('nodeColorFor', () => {
     }
   });
 
-  it('stops at the cap: a deeper node draws like the last rung', () => {
-    expect(rung(at(5))).toBe(DEPTH_CAP);
-    expect(rung(at(6))).toBe(DEPTH_CAP);
+  it('alternates past the cap, so nothing draws as its own parent', () => {
+    expect(rung(deep(DEPTH_CAP))).toBe(DEPTH_CAP);
+    expect(rung(deep(DEPTH_CAP + 1))).toBe(DEPTH_CAP + 1);
+    expect(rung(deep(DEPTH_CAP + 2))).toBe(DEPTH_CAP);
+    expect(rung(deep(DEPTH_CAP + 3))).toBe(DEPTH_CAP + 1);
+  });
+});
+
+describe('rungBelow', () => {
+  it('steps down the ladder, then takes the tail in turn', () => {
+    expect(rungBelow(0)).toBe(1);
+    expect(rungBelow(DEPTH_CAP - 1)).toBe(DEPTH_CAP);
+    expect(rungBelow(DEPTH_CAP)).toBe(DEPTH_CAP + 1);
+    expect(rungBelow(DEPTH_CAP + 1)).toBe(DEPTH_CAP);
   });
 });

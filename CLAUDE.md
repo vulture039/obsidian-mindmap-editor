@@ -169,7 +169,8 @@ code already carries belongs there, not here.
   pixel thinner) is invisible at a glance.
 - **The ladder may never go back up** - a child drawn louder than its parent reads as a new start, so the rung
   is plain depth. Counting a heading by its heading level and a list by its indent was tried: a list item
-  under an H3 restarted at the loudest rung, inside the node that held it.
+  under an H3 restarted at the loudest rung, inside the node that held it. Past the last rung the two quietest
+  take turns instead - equally quiet, the color carried by the fill or by the outline, so nothing goes up.
 - **Opening an edit must not move the map** - the editor is styled like what it replaces, down to blank-line
   height and wrapping, and its buttons float over the node rather than taking a row.
 - **hideCompleted removes checked nodes entirely** - they are absent from `laidByLine`, so selection and

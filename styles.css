@@ -378,21 +378,41 @@
 
 /* The node itself shows a grab cursor; the checkbox is a click target, so
    it advertises that on hover with a pointer, a slight grow, and an accent
-   ring. */
-.mindmap-checkbox {
-  margin: 0;
+   ring.
+
+   A fill in the accent's own hue swallows both states of the box, so it stands
+   on a plate of the page's background - and is outlined in the text color, for
+   the rungs whose fill is gone and the plate with it. */
+.mindmap-node input.mindmap-checkbox {
+  --plate: 2px;
+  /* The plate stands outside the box, so Obsidian's own 6px starts past it. */
+  margin-inline: var(--plate) calc(6px + var(--plate));
   flex-shrink: 0;
+  border-color: var(--text-normal);
+  background-color: var(--background-primary);
+  box-shadow: 0 0 0 var(--plate) var(--background-primary);
   cursor: pointer;
   transition:
     transform 80ms ease,
     box-shadow 80ms ease;
 }
 
-.mindmap-checkbox:hover {
+/* As specific as Obsidian's `:checked`, and later, so the accent is written
+   again or a ticked box comes out empty. */
+.mindmap-node input.mindmap-checkbox:checked {
+  border-color: var(--checkbox-color, var(--interactive-accent));
+  background-color: var(--checkbox-color, var(--interactive-accent));
+}
+
+/* The accent ring goes outside the plate, so hover adds to what says "task"
+   rather than painting over it. */
+.mindmap-node input.mindmap-checkbox:hover {
   transform: scale(1.15);
   border-color: var(--interactive-accent);
-  box-shadow: 0 0 0 2px
-    color-mix(in srgb, var(--interactive-accent) 30%, transparent);
+  box-shadow:
+    0 0 0 var(--plate) var(--background-primary),
+    0 0 0 calc(var(--plate) + 2px)
+      color-mix(in srgb, var(--interactive-accent) 30%, transparent);
 }
 
 /* Inline editor for a node's label: a contenteditable span sharing
@@ -410,15 +430,10 @@
   user-select: text;
 }
 
-/* Obsidian flashes a line by tinting it, and a code span inside that line
-   paints its own background over the tint: all that showed of a flashed code
-   line was its indent. While the flash is up, the code lets it through - and
-   its own rule is as specific as anything that can be written from here. */
-.is-flashing .cm-hmd-indented-code,
-.is-flashing .cm-inline-code,
-.is-flashing .HyperMD-codeblock,
-.is-flashing code {
-  background: transparent !important;
+/* Obsidian flashes a line by tinting it, and a code span paints over the tint:
+   all that showed was the indent. Every rule that paints one reads this. */
+.is-flashing {
+  --code-background: transparent;
 }
 
 /* A reading pane's mark, narrowed to the line the map has selected. The block
@@ -430,9 +445,9 @@
   background-color: rgb(255 208 0 / 40%);
 }
 
-/* Obsidian's own rule for the flash is as specific as anything we can write
-   from here, so this is the one place the plugin has to insist. */
+/* Obsidian's flash is forced, so no rule outweighs it - but the color it
+   paints with is a variable, and that we can empty. */
 .mindmap-quiet-flash .is-flashing {
-  animation: none !important;
-  background-color: transparent !important;
+  --text-highlight-bg: transparent;
+  animation: none;
 }

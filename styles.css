@@ -359,9 +359,18 @@
   box-shadow: var(--shadow-s);
 }
 
+/* Page-coloured shadows keep a theme-coloured link legible on every fill. */
 .mindmap-node .mindmap-link {
   color: var(--link-color, var(--interactive-accent));
+  font-weight: 600;
+  text-shadow:
+    -1px 0 0 var(--background-primary),
+    1px 0 0 var(--background-primary),
+    0 -1px 0 var(--background-primary),
+    0 1px 0 var(--background-primary);
   text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 1px;
   cursor: pointer;
 }
 

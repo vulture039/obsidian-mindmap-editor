@@ -33,8 +33,9 @@ to the .md file.
 - **Prefix the subject with a type** - `feat:`/`fix:`/`docs:`/`chore:`/`refactor:`/`test:` (Conventional
   Commits). Formatting-only changes count as `chore:`, not a separate `style:`.
 - **Body only when it adds something** - a _why_ or a non-obvious note, in a couple of lines.
-- **Always end with** `Co-Authored-By: Claude <model> <noreply@anthropic.com>`, naming the model that made the
-  commit (e.g. `Claude Opus 4.8`) — don't hardcode one model.
+- **Always end with** `Co-Authored-By: <assistant> <model> <noreply@provider>`, naming the assistant and model
+  that made the commit (e.g. `Codex GPT-5 <noreply@openai.com>` or `Claude Opus 4.8 <noreply@anthropic.com>`) —
+  don't hardcode one assistant, model or provider.
 
 ## Layout
 

@@ -8,6 +8,12 @@
   overflow: auto;
   outline: none;
   cursor: grab;
+  touch-action: none;
+}
+
+.mindmap-view .view-action.is-disabled {
+  opacity: 0.35;
+  pointer-events: none;
 }
 
 /* Only while the background is actually being dragged, so the cursor answers
@@ -17,10 +23,16 @@
   cursor: grabbing;
 }
 
-.mindmap-canvas {
+.mindmap-surface {
   position: relative;
   min-width: 100%;
   min-height: 100%;
+}
+
+.mindmap-canvas {
+  position: absolute;
+  transform-origin: top left;
+  will-change: transform;
 }
 
 .mindmap-edges {

@@ -33,6 +33,9 @@ No new file format, no markup to add.
   button is that map's own, so a second map can leave its text alone.
 - **Hide completed tasks** - The `✓✓` header button hides checked tasks behind one `✓ n done` node per parent.
   Click it to reveal just that parent (`− hide done` puts them back). Per map, and remembered across sessions.
+- **Zoom and pan large maps** - Use the mouse wheel or the header zoom controls to zoom around the cursor. The
+  `Center mind map` button returns a lost map to the middle without changing its zoom. On a touchscreen, drag
+  the background with one finger or pinch with two; each map remembers its zoom level.
 - **Map and editor follow each other** - Selecting a node brings its note to the front of the Markdown side
   and moves the cursor to its line; moving the cursor selects the node it belongs to - down to the line, where
   a node's text is drawn. Neither side steals the focus.

@@ -38,6 +38,7 @@ import {
   readEditorFolds,
 } from '../markdown/folds';
 import { LaidNode, layoutTree, makeLaid } from '../../core/render/layout';
+import { MAX_ZOOM } from '../../core/render/zoom';
 import {
   NodeColor,
   nodeColorFor,
@@ -51,6 +52,7 @@ import { DRAGGING_SELECTOR, setupNodeDrag } from './drag';
 import { EditorPane } from '../markdown/editor-pane';
 import { blockOf, clearPreviewLine } from '../markdown/preview-line';
 import { caretAtEnd, EditSession, runEditor } from './inline-edit';
+import { MapViewport } from './viewport';
 import {
   addChildOp,
   addSiblingOp,
@@ -177,6 +179,9 @@ export class MindmapView extends ItemView {
   private hideCompletedActionEl: HTMLElement | null = null;
   private bodyTextActionEl: HTMLElement | null = null;
   private linkActionEl: HTMLElement | null = null;
+  private viewport!: MapViewport;
+  /** Restored before the viewport DOM exists during workspace startup. */
+  private savedZoom = 1;
   /** How many `pointEditorAtFile` calls this map has in flight. */
   private pointing = 0;
   /** The two bulk-fold buttons in the header, by what each one folds. */
@@ -1084,11 +1089,28 @@ export class MindmapView extends ItemView {
     this.addAction('refresh-cw', 'Refresh from the Markdown', () => {
       void this.forceRefresh();
     });
+    this.addAction('focus', 'Center mind map', () => this.viewport.center());
+    const zoomOutAction = this.addAction('zoom-out', 'Zoom out (100%)', () =>
+      this.viewport.zoomOut(),
+    );
+    const zoomInAction = this.addAction('zoom-in', 'Zoom in (100%)', () =>
+      this.viewport.zoomIn(),
+    );
+
     this.scrollerEl = this.contentEl.createDiv({
       cls: 'mindmap-scroller',
       attr: { tabindex: '0' },
     });
-    this.canvasEl = this.scrollerEl.createDiv({ cls: 'mindmap-canvas' });
+    const surfaceEl = this.scrollerEl.createDiv({ cls: 'mindmap-surface' });
+
+    this.canvasEl = surfaceEl.createDiv({ cls: 'mindmap-canvas' });
+    this.viewport = new MapViewport(
+      this.scrollerEl,
+      surfaceEl,
+      this.canvasEl,
+      this.savedZoom,
+    );
+    this.viewport.bindActions(zoomOutAction, zoomInAction);
     // The map asking for the keyboard back is the end of any edit still open:
     // an edit left behind when the focus went elsewhere must not keep the keys
     // it is no longer typing into.
@@ -1104,6 +1126,7 @@ export class MindmapView extends ItemView {
 
   /** Left up by a map that is gone, the mark quiets the pane's next flash. */
   async onClose(): Promise<void> {
+    this.viewport?.destroy();
     clearPreviewLine();
   }
 
@@ -1215,6 +1238,7 @@ export class MindmapView extends ItemView {
       file: this.file?.path ?? null,
       hideCompleted: this.hideCompleted,
       showBodyText: this.showBodyText,
+      zoom: this.viewport?.value ?? this.savedZoom,
     };
   }
 
@@ -1227,6 +1251,10 @@ export class MindmapView extends ItemView {
     }
     if (typeof shown.showBodyText === 'boolean') {
       this.showBodyText = shown.showBodyText;
+    }
+    if (typeof shown.zoom === 'number' && Number.isFinite(shown.zoom)) {
+      this.savedZoom = shown.zoom;
+      this.viewport?.restore(shown.zoom);
     }
     this.syncToggleActions();
     if (
@@ -1350,6 +1378,10 @@ export class MindmapView extends ItemView {
         cls: 'mindmap-empty',
         text: 'Open a Markdown file, then run "Open mind map for the active file".',
       });
+      this.viewport.sizeSurface(
+        this.scrollerEl.clientWidth,
+        this.scrollerEl.clientHeight,
+      );
 
       return;
     }
@@ -1368,6 +1400,7 @@ export class MindmapView extends ItemView {
       return;
     }
 
+    const restoreViewport = this.viewport.isInitialized;
     const scrollLeft = this.scrollerEl.scrollLeft;
     const scrollTop = this.scrollerEl.scrollTop;
 
@@ -1389,8 +1422,10 @@ export class MindmapView extends ItemView {
 
     this.laidRoot = this.buildNode(this.root, palette);
     this.applyLayout();
-    this.scrollerEl.scrollLeft = scrollLeft;
-    this.scrollerEl.scrollTop = scrollTop;
+    if (restoreViewport) {
+      this.scrollerEl.scrollLeft = scrollLeft;
+      this.scrollerEl.scrollTop = scrollTop;
+    }
 
     if (this.cursorLine !== null) {
       // The rebuild dropped the mark, and no caret move is coming to redo
@@ -1774,6 +1809,7 @@ export class MindmapView extends ItemView {
     this.applyPositions(this.laidRoot);
     this.drawEdges(svg, this.laidRoot, this.addCollapseToggles(this.laidRoot));
     this.canvasEl.setCssStyles({ width: `${width}px`, height: `${height}px` });
+    this.viewport.sizeSurface(width * MAX_ZOOM, height * MAX_ZOOM);
     svg.setAttribute('width', String(width));
     svg.setAttribute('height', String(height));
   }
@@ -2331,7 +2367,7 @@ export class MindmapView extends ItemView {
   private onBackgroundPointerDown(e: PointerEvent): void {
     // Pan with the main button only; side buttons (3/4) belong to the
     // history handler and must not grab pointer capture here.
-    if (e.button !== 0) {
+    if (e.button !== 0 || e.pointerType === 'touch') {
       return;
     }
     if (e.target instanceof HTMLElement && e.target.closest('.mindmap-node')) {

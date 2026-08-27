@@ -6,7 +6,10 @@
  * Waiting is by condition, never by clock: the map renders when it renders, and
  * a check that slept long enough on one machine reports nonsense on another.
  */
-const view = app.workspace.getLeavesOfType('mindmap-editor')[0]?.view;
+const mapLeaves = app.workspace.getLeavesOfType('mindmap-editor');
+const view =
+  mapLeaves.find((leaf) => leaf.view.containerEl.isShown())?.view ??
+  mapLeaves[0]?.view;
 const md = app.workspace
   .getLeavesOfType('markdown')
   .find((l) => l.view.file?.path === 'Fixtures.md');

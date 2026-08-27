@@ -380,15 +380,11 @@
     1px 0 0 var(--background-primary),
     0 -1px 0 var(--background-primary),
     0 1px 0 var(--background-primary);
-  text-decoration: underline;
-  text-decoration-thickness: 1px;
-  text-underline-offset: 1px;
   cursor: pointer;
 }
 
 .mindmap-node.is-done .mindmap-node-text {
   color: var(--text-muted);
-  text-decoration: line-through;
 }
 
 /* The note itself: what every branch hangs off, so it is the largest thing on

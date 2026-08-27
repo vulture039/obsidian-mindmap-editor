@@ -1484,7 +1484,8 @@ export class MindmapView extends ItemView {
       cb.addEventListener('change', () => this.writeCheckbox(node, el, cb));
       el.toggleClass('is-done', node.checked);
     }
-    const textEl = head.createSpan({ cls: 'mindmap-node-text' });
+    const textTag = node.checked ? 's' : 'span';
+    const textEl = head.createEl(textTag, { cls: 'mindmap-node-text' });
 
     if (node.text.length) {
       this.renderText(textEl, node.text);

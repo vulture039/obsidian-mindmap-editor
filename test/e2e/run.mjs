@@ -10,6 +10,7 @@
  * printed on its own line - and any case that did not pass fails the run.
  */
 import { readFileSync } from 'node:fs';
+import { basename } from 'node:path';
 
 /** What Chromium wants for the keys these checks press. */
 const KEY_CODES = {
@@ -27,6 +28,12 @@ const KEY_CODES = {
 
 const file =
   process.argv[2] ?? new URL('fidelity.js', import.meta.url).pathname;
+// Mobile has only one visible leaf, so it cannot use the desktop harness's
+// prerequisite of an open Markdown/map pair.
+const harness =
+  basename(file) === 'mobile.js'
+    ? ''
+    : readFileSync(new URL('harness.js', import.meta.url), 'utf8');
 const targets = await fetch('http://localhost:9222/json')
   .then((r) => r.json())
   .catch(() => null);
@@ -110,7 +117,7 @@ ws.addEventListener('message', async (e) => {
 // ways of acting on them, so a check file is nothing but cases.
 const res = await send('Runtime.evaluate', {
   expression: `(async () => {
-    ${readFileSync(new URL('harness.js', import.meta.url), 'utf8')}
+    ${harness}
     ${readFileSync(file, 'utf8')}
   })()`,
   awaitPromise: true,

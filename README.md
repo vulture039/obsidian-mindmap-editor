@@ -36,9 +36,9 @@ No new file format, no markup to add.
 - **Zoom and pan large maps** - Use the mouse wheel or the header zoom controls to zoom around the cursor. The
   `Center mind map` button returns a lost map to the middle without changing its zoom. On a touchscreen, drag
   the background with one finger or pinch with two; each map remembers its zoom level.
-- **Map and editor follow each other** - Selecting a node brings its note to the front of the Markdown side
-  and moves the cursor to its line; moving the cursor selects the node it belongs to - down to the line, where
-  a node's text is drawn. Neither side steals the focus.
+- **Map and editor follow each other in the desktop app** - Selecting a node brings its note to the front of the
+  Markdown side and moves the cursor to its line; moving the cursor selects the node it belongs to - down to
+  the line, where a node's text is drawn. Neither side steals the focus.
 - **Follow wikilinks** - Clicking a `[[wikilink]]` switches map and editor to the linked note together.
 - **Maps side by side, one note each** - A map follows whichever note you open, like Obsidian's own outline.
   The `🔗` button and `Open mind map linked to the active file` tie one to its note's tab instead, beside that

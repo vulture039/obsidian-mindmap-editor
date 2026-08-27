@@ -273,7 +273,9 @@ export class MindmapView extends ItemView {
     // part in Obsidian's per-leaf navigation history: back/forward via
     // the tab-header arrows, mouse buttons, and the built-in hotkeys.
     this.navigation = true;
-    this.declineOpens();
+    if (!this.plugin.isMobile) {
+      this.declineOpens();
+    }
     this.registerShortcuts();
   }
 
@@ -1165,7 +1167,7 @@ export class MindmapView extends ItemView {
         // Clicking a map points the Markdown side at its note: with maps side
         // by side, the one just picked is the note being worked on. The
         // keyboard goes back where the click put it.
-        if (leaf === this.leaf) {
+        if (leaf === this.leaf && !this.plugin.isMobile) {
           void this.pointEditorAtFile();
         }
       }),
@@ -1870,6 +1872,11 @@ export class MindmapView extends ItemView {
     // Here rather than from the editor's own event: with the map holding
     // focus that event may never come, leaving the last mark standing.
     this.markCursorLine(line ?? node.line);
+    // Mobile has one visible leaf: showing Markdown here would replace the
+    // map merely because a node was selected, with no map pane to return to.
+    if (this.plugin.isMobile) {
+      return;
+    }
     // Picking a node is asking to read that note, so it goes to the front
     // first - and the cursor only once it is there. Both open the note when
     // no pane has it, and side by side that is two tabs of the same file.

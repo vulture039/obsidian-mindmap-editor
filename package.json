@@ -8,12 +8,15 @@
     "dev": "node esbuild.config.mjs",
     "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
     "version": "node version-bump.mjs && git add manifest.json versions.json",
-    "lint": "eslint .",
+    "lint": "npm run lint:js && npm run lint:css",
+    "lint:js": "eslint . --max-warnings=0",
+    "lint:css": "stylelint styles.css --max-warnings=0",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "e2e": "node test/e2e/run.mjs"
+    "e2e": "node test/e2e/run.mjs",
+    "check": "npm run build && npm run lint && npm run format:check && npm test"
   },
   "keywords": [],
   "license": "MIT",
@@ -31,6 +34,8 @@
     "jsdom": "^27.0.1",
     "obsidian": "^1.13.1",
     "prettier": "3.9.6",
+    "stylelint": "^17.14.1",
+    "stylelint-config-obsidianmd": "^0.1.0",
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.59.1",
     "vitest": "3.2.7"

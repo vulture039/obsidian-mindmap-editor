@@ -16,13 +16,6 @@
   pointer-events: none;
 }
 
-/* Only while the background is actually being dragged, so the cursor answers
-   the press instead of staying on "you could grab this". */
-.mindmap-scroller.is-panning,
-.mindmap-scroller.is-panning .mindmap-node {
-  cursor: grabbing;
-}
-
 .mindmap-surface {
   position: relative;
   min-width: 100%;
@@ -114,14 +107,17 @@
 
 .mindmap-node {
   --branch-color: var(--text-faint);
+
   /* One lightness for every branch, so a level is the same step down whichever
      color it is in: taken as configured, a yellow branch's whole way to the
      background is half a blue one's, and its levels would step half as far.
      Only the fill is levelled - the outline and the edges keep the palette's
      own color, which is what says which branch this is. 0.55 is as dark as the
      loudest rung can go with the note's text still reading on it. */
-  --branch-fill: oklch(from var(--branch-color) 0.55 c h);
+  --branch-fill: oklch(from var(--branch-color) 55% c h);
+
   position: absolute;
+
   /* A column, so a node's own text is a block under its label rather than
      another item beside it: a percentage flex-basis cannot make that row
      break, since the node's width is what it is trying to be a share of. */
@@ -131,9 +127,11 @@
   max-width: 300px;
   padding: 4px 10px;
   border: var(--level-border) solid var(--level-line);
+
   /* A fixed radius, not a stadium: with the ends rounded to half the height, a
      label that wraps to a third line turns the node into a lozenge. */
   border-radius: 10px;
+
   /* A tint, not just the outline: the border alone is too little color to read
      a level off. One ladder for every kind of node - the heading's doubled
      border is what says "heading", so the fill is free to say only "level". */
@@ -146,6 +144,22 @@
   font-size: calc(var(--font-ui-small) + var(--level-size));
   cursor: pointer;
   user-select: none;
+}
+
+/* Only while the background is actually being dragged, so the cursor answers
+   the press instead of staying on "you could grab this". */
+.mindmap-scroller.is-panning,
+.mindmap-scroller.is-panning .mindmap-node {
+  cursor: grabbing;
+}
+
+.mindmap-canvas.is-drag-active,
+.mindmap-canvas.is-drag-active .mindmap-node {
+  cursor: grabbing;
+}
+
+.mindmap-canvas.is-drag-active .mindmap-node {
+  transition: transform 80ms ease;
 }
 
 /* The label's own row: checkbox beside text, both centred on it. */
@@ -182,6 +196,7 @@
 
 .mindmap-node-body {
   margin-top: 4px;
+
   /* The node's own color at half strength: enough to find the divider on a
      tinted heading fill, still quieter than the border it echoes. */
   border-top: 1px solid color-mix(in srgb, var(--branch-color) 50%, transparent);
@@ -190,6 +205,7 @@
   font-size: var(--font-ui-smaller);
   line-height: 1.4;
   text-align: left;
+
   /* Not the node's grab: this text answers to a double-click of its own. A
      text caret would promise typing right here, which is the editor's job. */
   cursor: pointer;
@@ -257,6 +273,7 @@
    two same-size chips on one corner read as clutter. */
 .mindmap-collapse.is-body {
   transform: translate(-50%, -50%);
+
   /* Under the branch handle, so a contested pixel goes to the branch: this
      one can be reached from anywhere along the node's top. */
   z-index: 0;
@@ -264,6 +281,7 @@
   padding: 0;
   line-height: 16px;
   opacity: 0;
+
   /* Invisible means gone: left clickable it would swallow presses aimed at
      the node's corner. */
   pointer-events: none;
@@ -330,11 +348,6 @@
   cursor: grab;
 }
 
-.mindmap-canvas.is-drag-active,
-.mindmap-canvas.is-drag-active .mindmap-node {
-  cursor: grabbing;
-}
-
 /* While dragging, nodes that cannot accept the drop are dimmed. */
 .mindmap-canvas.is-drag-active .mindmap-node.is-invalid-target {
   opacity: 0.35;
@@ -350,10 +363,6 @@
   background: var(--interactive-accent);
   pointer-events: none;
   z-index: 9;
-}
-
-.mindmap-canvas.is-drag-active .mindmap-node {
-  transition: transform 80ms ease;
 }
 
 .mindmap-node.is-shift-down {
@@ -410,6 +419,7 @@
    the rungs whose fill is gone and the plate with it. */
 .mindmap-node input.mindmap-checkbox {
   --plate: 2px;
+
   /* The plate stands outside the box, so Obsidian's own 6px starts past it. */
   margin-inline: var(--plate) calc(6px + var(--plate));
   flex-shrink: 0;
@@ -446,8 +456,10 @@
 .mindmap-edit-input {
   outline: none;
   white-space: pre-wrap;
+
   /* As the lines it replaces wrap, so a long word leaves the height alone. */
   overflow-wrap: anywhere;
+
   /* Exactly the line box the drawn text has: anything else moves the node as
      the edit opens. Empty still keeps its line, so the node does not jump. */
   min-height: 1lh;
@@ -474,5 +486,6 @@
    paints with is a variable, and that we can empty. */
 .mindmap-quiet-flash .is-flashing {
   --text-highlight-bg: transparent;
+
   animation: none;
 }

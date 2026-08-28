@@ -6,7 +6,8 @@
 npm install
 npm run dev    # watch build
 npm run build  # type check + production build
-npm run lint
+npm run lint   # Obsidian's plugin and CSS review checks; warnings fail
+npm run check  # everything required before a release
 npm test       # the Vitest unit tests (npm run test:watch to watch)
 npm run e2e    # the checks that need Obsidian itself; see below
 ```

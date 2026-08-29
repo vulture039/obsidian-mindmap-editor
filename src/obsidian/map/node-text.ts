@@ -20,7 +20,9 @@ export function renderNodeText(
     attr: Record<string, string> | undefined,
     onClick: (e: MouseEvent) => void,
   ): void => {
-    const anchor = containerEl.createEl('a', { cls, text: label, attr });
+    const anchor = containerEl.createEl('a', { cls, attr });
+
+    anchor.createEl('u', { text: label });
 
     anchor.draggable = false;
     anchor.addEventListener('click', (e) => {

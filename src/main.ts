@@ -1,4 +1,4 @@
-import { Notice, Plugin, TFile, WorkspaceLeaf } from 'obsidian';
+import { Notice, Platform, Plugin, TFile, WorkspaceLeaf } from 'obsidian';
 import { MindmapView, VIEW_TYPE_MINDMAP } from './obsidian/map/mindmap-view';
 import { FoldKind } from './core/folds';
 import { DEFAULT_SETTINGS, MindmapSettings } from './core/settings';
@@ -18,6 +18,14 @@ export default class MindmapPlugin extends Plugin {
    * rather than a flag: a note the user opens meanwhile is still theirs.
    */
   mapDrivenOpen: string | null = null;
+
+  /** True on a device and while Obsidian's desktop mobile emulator is on. */
+  get isMobile(): boolean {
+    return (
+      Platform.isMobile ||
+      (this.app as typeof this.app & { isMobile?: boolean }).isMobile === true
+    );
+  }
 
   async onload(): Promise<void> {
     await this.loadSettings();
@@ -209,13 +217,18 @@ export default class MindmapPlugin extends Plugin {
 
       return;
     }
-    const near = this.paneFor(file, from);
+    const near = this.isMobile
+      ? this.app.workspace.getLeaf(false)
+      : this.paneFor(file, from);
     // The map this ask already has: the one tied to the note's tab when the
     // ask names the note, else any map on that file - in this window only.
-    const already = this.mapLeaves().find((leaf) =>
-      linked
-        ? !!near && this.tiedTo(leaf, near)
-        : this.mapFile(leaf) === file.path && (!near || sameWindow(leaf, near)),
+    const already = this.mapLeaves().find(
+      (leaf) =>
+        (!this.isMobile || leaf.view.containerEl.isShown()) &&
+        (linked
+          ? !!near && this.tiedTo(leaf, near)
+          : this.mapFile(leaf) === file.path &&
+            (!near || sameWindow(leaf, near))),
     );
 
     if (already) {
@@ -233,10 +246,14 @@ export default class MindmapPlugin extends Plugin {
     // Asked for by note, so it is tied to that note's tab rather than left to
     // the active file. Obsidian's own link, undone from the tab menu - the
     // map keeps no follow flag of its own.
-    if (linked && leaf.view instanceof MindmapView) {
+    if (linked && !this.isMobile && leaf.view instanceof MindmapView) {
       await leaf.view.linkToEditor();
     }
-    await this.app.workspace.revealLeaf(leaf);
+    if (this.isMobile) {
+      this.app.workspace.setActiveLeaf(leaf, { focus: true });
+    } else {
+      await this.app.workspace.revealLeaf(leaf);
+    }
   }
 
   /**
@@ -258,6 +275,9 @@ export default class MindmapPlugin extends Plugin {
     near: WorkspaceLeaf | null,
     linked: boolean,
   ): WorkspaceLeaf {
+    if (this.isMobile) {
+      return near ?? this.app.workspace.getLeaf(false);
+    }
     if (linked && near) {
       // Switching a note's tab and asking again would add a column each
       // time, so the pane already split off it takes this one.
@@ -283,6 +303,10 @@ export default class MindmapPlugin extends Plugin {
    * `getLeaf` would split is not always in the window that asked.
    */
   openSplit(near?: WorkspaceLeaf | null): WorkspaceLeaf {
+    if (this.isMobile) {
+      return near ?? this.app.workspace.getLeaf(false);
+    }
+
     return near
       ? this.app.workspace.createLeafBySplit(near, this.settings.splitDirection)
       : this.app.workspace.getLeaf('split', this.settings.splitDirection);

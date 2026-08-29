@@ -4,7 +4,9 @@ import {
   addChildOp,
   addSiblingOp,
   deleteNodeOp,
+  deleteNodesOp,
   moveNodeOp,
+  moveNodesOp,
   reorderSiblingOp,
   setCheckboxOp,
   setTextOp,
@@ -117,6 +119,15 @@ describe('deleteNodeOp', () => {
   });
 });
 
+describe('deleteNodesOp', () => {
+  it('removes multiple sibling subtrees in one operation', () => {
+    const { root, lines } = setup('- a\n  - a1\n- b\n- c');
+    const [a, , c] = root.children;
+
+    expect(deleteNodesOp(lines, [c!, a!])).toEqual(['- b']);
+  });
+});
+
 describe('reorderSiblingOp', () => {
   it('swaps two adjacent siblings, carrying subtrees', () => {
     const { root, lines } = setup('- a\n  - a1\n- b');
@@ -152,5 +163,32 @@ describe('moveNodeOp', () => {
     const { root } = setup('- a');
 
     expect(() => deleteNodeOp(['# changed'], root.children[0]!)).toThrow();
+  });
+});
+
+describe('moveNodesOp', () => {
+  it('moves non-adjacent siblings together while preserving their order', () => {
+    const { root, lines } = setup('- a\n  - a1\n- b\n- c\n- target');
+    const [a, , c, target] = root.children;
+
+    expect(moveNodesOp(lines, [c!, a!], target!)).toEqual([
+      '- b',
+      '- target',
+      '  - a',
+      '    - a1',
+      '  - c',
+    ]);
+  });
+
+  it('inserts a group before an earlier sibling', () => {
+    const { root, lines } = setup('- a\n- b\n- c\n- d');
+    const [, b, c, d] = root.children;
+
+    expect(moveNodesOp(lines, [c!, d!], root, b)).toEqual([
+      '- a',
+      '- c',
+      '- d',
+      '- b',
+    ]);
   });
 });

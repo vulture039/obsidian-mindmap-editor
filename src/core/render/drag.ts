@@ -51,16 +51,19 @@ export function canDropAsSibling(source: MindNode, target: MindNode): boolean {
  */
 export function findDrop(
   laidByLine: Map<number, LaidNode>,
-  source: MindNode,
+  sources: MindNode[],
   clientX: number,
   clientY: number,
 ): DropTarget | null {
+  if (!sources.length) {
+    return null;
+  }
   let best: LaidNode | null = null;
   let bestRect: DOMRect | null = null;
   let bestDist = Infinity;
 
   for (const laid of laidByLine.values()) {
-    if (isDescendantOrSelf(laid.node, source)) {
+    if (sources.some((item) => isDescendantOrSelf(laid.node, item))) {
       continue;
     }
     const rect = laid.el.getBoundingClientRect();
@@ -80,19 +83,23 @@ export function findDrop(
   const target = best.node;
   const parent = target.parent;
 
-  if (parent && canDropAsSibling(source, target)) {
+  if (parent && sources.every((item) => canDropAsSibling(item, target))) {
     const sibs = parent.children;
     const isNoop = (before: MindNode | null): boolean => {
-      if (source.parent !== parent) {
+      if (sources.some((item) => item.parent !== parent)) {
         return false;
       }
-      const sourceIndex = sibs.indexOf(source);
-
-      return (
-        before === source ||
-        sibs[sourceIndex + 1] === before ||
-        (before === null && sourceIndex === sibs.length - 1)
+      const selected = new Set(sources);
+      const remaining = sibs.filter((item) => !selected.has(item));
+      const at = before ? remaining.indexOf(before) : remaining.length;
+      const moved = [...sources].sort(
+        (a, b) => sibs.indexOf(a) - sibs.indexOf(b),
       );
+      const result = [...remaining];
+
+      result.splice(at < 0 ? result.length : at, 0, ...moved);
+
+      return result.every((item, index) => item === sibs[index]);
     };
 
     if (clientY < bestRect.top + bestRect.height / 3) {
@@ -104,7 +111,7 @@ export function findDrop(
       return isNoop(before) ? null : { laid: best, parent, before };
     }
   }
-  if (canDrop(source, target)) {
+  if (sources.every((item) => canDrop(item, target))) {
     return { laid: best, parent: null, before: null };
   }
 

@@ -6,10 +6,19 @@
 npm install
 npm run dev    # watch build
 npm run build  # type check + production build
-npm run lint
+npm run lint   # Obsidian's plugin and CSS review checks; warnings fail
+npm run check  # everything required before a release
 npm test       # the Vitest unit tests (npm run test:watch to watch)
 npm run e2e    # the checks that need Obsidian itself; see below
 ```
+
+### Code style
+
+- Prefer array methods when the operation produces an array or searches one.
+  Do not use `map` only for side effects; keep a loop when mutation or control
+  flow is clearer.
+- Do not nest conditional (`?:`) expressions. Use a named value or `if`/`else`
+  when a choice contains another choice.
 
 ## The dev vault
 
@@ -85,6 +94,10 @@ case:
   top of it.
 - **`root.js`** (`npm run e2e test/e2e/root.js`) - the note itself as a node:
   its own prose, and its folds.
+- **`zoom.js`** (`npm run e2e test/e2e/zoom.js`) - header, cursor-anchored wheel
+  and pinch zoom, centering, limits, and restoring one pane's zoom level.
+- **`mobile.js`** (`npm run e2e test/e2e/mobile.js`) - opening and rendering a
+  map in Obsidian's emulated mobile workspace.
 - **`panes.js`** (`npm run e2e test/e2e/panes.js`) - a map follows the active
   file, and the linked-open command opens one tied to a note's tab instead. Only a real
   workspace has a second leaf to get this wrong with. It opens and closes panes
@@ -94,9 +107,21 @@ case:
   rather than the one in the main window. It pops a window out and closes it
   again.
 
-None of them are in CI. Each one asserts it starts with Fixtures.md in the map,
-so `run.mjs` puts it back there afterwards - a check that moved the map would
-otherwise fail the next one for a reason it cannot name.
+None of them are in CI. Checks start with Fixtures.md open in both views; the
+mobile check instead starts after mobile emulation is enabled.
+
+### Mobile layout and touch
+
+In Developer Tools (`Cmd+Option+I` on macOS), run:
+
+```js
+this.app.emulateMobile(true);
+```
+
+Set a phone size in the device toolbar; restore with
+`this.app.emulateMobile(false)`. This checks layout, not real multi-touch: test
+pinch on a device. See Obsidian's
+[mobile guide](https://docs.obsidian.md/Plugins/Getting%20started/Mobile%20development).
 
 A one-off goes the same way (`npm run e2e my-check.js`): a snippet evaluated in
 the renderer, returning whatever you want printed. It reaches the map's DOM and
@@ -116,6 +141,10 @@ judgement about how it looks. In `Fixtures.md`:
   text comes out as composed
 - Drag a node onto another - it becomes its child; drag to a sibling's edge - it
   lands there
+- In mobile emulation, select a node - it stays selected on the visible map
+  instead of replacing the map with its Markdown file
+- Ctrl/Cmd-click same-type siblings, then drag one - all selected subtrees move
+  in their original order; Delete/Backspace removes all of them in one undo step
 - Click `[[Linked]]` - map and editor both move to that note, and Obsidian's
   back button returns
 - Turn `¶` on with the map beside a reading pane - selecting a line marks that

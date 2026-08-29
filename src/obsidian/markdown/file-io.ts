@@ -13,12 +13,18 @@ export function sameSplit(a: WorkspaceLeaf, b: WorkspaceLeaf): boolean {
 }
 
 /** Itself, its window, or neither: how close a pane is to the one asking. */
-function nearness(leaf: WorkspaceLeaf, near?: WorkspaceLeaf): number {
+export function leafNearness(
+  leaf: WorkspaceLeaf,
+  near?: WorkspaceLeaf,
+): number {
   if (!near) {
     return 0;
   }
+  if (leaf === near) {
+    return 2;
+  }
 
-  return leaf === near ? 2 : sameWindow(leaf, near) ? 1 : 0;
+  return sameWindow(leaf, near) ? 1 : 0;
 }
 
 function findView(
@@ -40,7 +46,7 @@ function findView(
     ) {
       continue;
     }
-    const how = nearness(leaf, near);
+    const how = leafNearness(leaf, near);
 
     if (how > closest) {
       best = view;

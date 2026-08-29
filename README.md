@@ -21,7 +21,8 @@ No new file format, no markup to add.
   Headings stand out by weight and a color-tinted fill; list items are plain.
 - **Edit on the map** - Rename, add, delete, drag & drop. Dropping on a node's middle makes it a child;
   dropping near a sibling's top/bottom edge inserts it there. A rename is written as it is typed, and
-  `Ctrl/Cmd + Z` takes it back.
+  `Ctrl/Cmd + Z` takes it back. `Ctrl`-click (`Cmd`-click on macOS) selects multiple same-type siblings;
+  drag any selected node to move the group in order, or press Delete/Backspace to delete them together.
 - **Working checkboxes** - Clicking toggles `[ ]` ⇄ `[x]` in the file.
 - **Collapse branches, in sync with the Markdown pane** - A handle on each node folds its branch (`−` / `+3`),
   and the pane folds with it - both ways, and after a restart. A reading pane takes no fold state, so there
@@ -64,7 +65,7 @@ Active while the mind map pane is focused.
 | `Tab`                   | Add a child                                                                                                            |
 | `F2`                    | Rename the node                                                                                                        |
 | `Space`                 | Toggle the selected task's checkbox                                                                                    |
-| `Delete` / `Backspace`  | Delete the node and its subtree                                                                                        |
+| `Delete` / `Backspace`  | Delete the selected node(s) and their subtrees                                                                         |
 | `Ctrl/Cmd + Z` / `+ ⇧Z` | Undo / redo, through the Markdown pane's history - or one step of the map's own when the note is only open for reading |
 | `Esc`                   | End an edit, else clear the selection                                                                                  |
 

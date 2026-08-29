@@ -57,8 +57,9 @@ import {
   addChildOp,
   addSiblingOp,
   deleteNodeOp,
+  deleteNodesOp,
   InsertResult,
-  moveNodeOp,
+  moveNodesOp,
   reorderSiblingOp,
   setCheckboxOp,
   setTextOp,
@@ -161,6 +162,7 @@ export class MindmapView extends ItemView {
   private scrollerEl!: HTMLElement;
   private canvasEl!: HTMLElement;
   private selectedLine: number | null = null;
+  private readonly selectedLines = new Set<number>();
   /** File line the editor's caret was last seen on; re-marked after a render. */
   private cursorLine: number | null = null;
   /** A just-added node, to select and open for naming after the render. */
@@ -350,14 +352,14 @@ export class MindmapView extends ItemView {
     });
     for (const key of ['Delete', 'Backspace']) {
       this.onKey([], key, () => {
-        const node = this.selectedNode();
+        const nodes = this.selectedNodes();
 
-        if (!node || node.type === 'root') {
+        if (!nodes.length || nodes.some((node) => node.type === 'root')) {
           return true;
         }
-        this.selectedLine = null;
-        void this.applyToNodes([node], (lines, [target]) =>
-          deleteNodeOp(lines, target!),
+        this.selectOnly(null);
+        void this.applyToNodes(nodes, (lines, found) =>
+          deleteNodesOp(lines, found),
         );
 
         return false;
@@ -503,7 +505,7 @@ export class MindmapView extends ItemView {
       if (this.selectedLine === null) {
         return true;
       }
-      this.selectedLine = null;
+      this.selectOnly(null);
       this.clearSelectionClass();
 
       return false;
@@ -558,7 +560,7 @@ export class MindmapView extends ItemView {
     }
     this.clearSelectionClass();
     laid.el.addClass('is-selected');
-    this.selectedLine = laid.node.line;
+    this.selectOnly(laid.node.line);
     laid.el.scrollIntoView(KEEP_IN_VIEW);
   }
 
@@ -597,7 +599,7 @@ export class MindmapView extends ItemView {
     );
 
     this.clearSelectionClass();
-    this.selectedLine = null;
+    this.selectOnly(null);
     pill?.addClass('is-selected');
     pill?.scrollIntoView(KEEP_IN_VIEW);
   }
@@ -623,8 +625,9 @@ export class MindmapView extends ItemView {
     if (!other) {
       return;
     }
-    this.selectedLine =
-      delta < 0 ? other.line : node.line + (other.endLine - node.endLine);
+    this.selectOnly(
+      delta < 0 ? other.line : node.line + (other.endLine - node.endLine),
+    );
     await this.applyToNodes([node, other], (lines, [a, b]) =>
       reorderSiblingOp(lines, a!, b!),
     );
@@ -664,12 +667,37 @@ export class MindmapView extends ItemView {
     return false;
   }
 
+  /** Replaces a multi-selection with one node, or clears it. */
+  private selectOnly(line: number | null): void {
+    this.selectedLine = line;
+    this.selectedLines.clear();
+    if (line !== null) {
+      this.selectedLines.add(line);
+    }
+  }
+
   private selectedNode(): MindNode | null {
-    if (this.isInlineEditing || !this.root || this.selectedLine === null) {
+    if (
+      this.isInlineEditing ||
+      !this.root ||
+      this.selectedLine === null ||
+      this.selectedLines.size !== 1
+    ) {
       return null;
     }
 
     return findByLine(this.root, this.selectedLine);
+  }
+
+  private selectedNodes(): MindNode[] {
+    if (this.isInlineEditing || !this.root) {
+      return [];
+    }
+
+    return [...this.selectedLines]
+      .sort((a, b) => a - b)
+      .map((line) => findByLine(this.root!, line))
+      .filter((node): node is MindNode => !!node);
   }
 
   getViewType(): string {
@@ -797,7 +825,7 @@ export class MindmapView extends ItemView {
     const standIn = selected && this.collapsedAncestor(selected);
 
     if (standIn) {
-      this.selectedLine = standIn.line;
+      this.selectOnly(standIn.line);
     }
   }
 
@@ -1284,7 +1312,7 @@ export class MindmapView extends ItemView {
 
   async setFile(file: TFile): Promise<void> {
     this.file = file;
-    this.selectedLine = null;
+    this.selectOnly(null);
     this.cursorLine = null;
     this.expandedDone.clear();
     this.collapsedBranches.clear();
@@ -1445,12 +1473,19 @@ export class MindmapView extends ItemView {
         this.startInlineEdit(laid.node, laid.el);
       }
     } else if (this.selectedLine !== null) {
-      const laid = this.laidByLine.get(this.selectedLine);
+      for (const line of [...this.selectedLines]) {
+        const laid = this.laidByLine.get(line);
 
-      if (laid) {
-        laid.el.addClass('is-selected');
-      } else {
-        this.selectedLine = null;
+        if (laid) {
+          laid.el.addClass('is-selected');
+        } else {
+          this.selectedLines.delete(line);
+        }
+      }
+      if (!this.selectedLines.size) {
+        this.selectOnly(null);
+      } else if (!this.selectedLines.has(this.selectedLine)) {
+        this.selectedLine = this.selectedLines.values().next().value ?? null;
       }
     }
   }
@@ -1498,7 +1533,7 @@ export class MindmapView extends ItemView {
 
     el.addEventListener('click', (e) => {
       e.stopPropagation();
-      this.selectNode(node, el);
+      this.selectNode(node, el, undefined, e.ctrlKey || e.metaKey);
     });
     el.addEventListener('dblclick', (e) => {
       e.stopPropagation();
@@ -1574,7 +1609,7 @@ export class MindmapView extends ItemView {
     // goes to the line under the pointer rather than the node's own.
     bodyEl.addEventListener('click', (e) => {
       e.stopPropagation();
-      this.selectNode(node, el, lineAt(e.target));
+      this.selectNode(node, el, lineAt(e.target), e.ctrlKey || e.metaKey);
     });
     // The map draws this text; the editor is where it is written. A
     // double-click opens the line there, with the caret on it.
@@ -1864,10 +1899,35 @@ export class MindmapView extends ItemView {
   }
 
   /** `line` overrides which line the editor follows to (a body line). */
-  private selectNode(node: MindNode, el: HTMLElement, line?: number): void {
+  private selectNode(
+    node: MindNode,
+    el: HTMLElement,
+    line?: number,
+    extend = false,
+  ): void {
+    if (extend && node.type !== 'root') {
+      const selected = this.selectedNodes();
+      const compatible = selected.every(
+        (item) => item.parent === node.parent && item.type === node.type,
+      );
+
+      if (compatible && selected.length) {
+        if (this.selectedLines.delete(node.line)) {
+          el.removeClass('is-selected');
+          this.selectedLine = this.selectedLines.values().next().value ?? null;
+        } else {
+          this.selectedLines.add(node.line);
+          this.selectedLine = node.line;
+          el.addClass('is-selected');
+        }
+        this.scrollerEl.focus({ preventScroll: true });
+
+        return;
+      }
+    }
     this.clearSelectionClass();
     el.addClass('is-selected');
-    this.selectedLine = node.line;
+    this.selectOnly(node.line);
     this.scrollerEl.focus({ preventScroll: true });
     // Here rather than from the editor's own event: with the map holding
     // focus that event may never come, leaving the last mark standing.
@@ -1889,8 +1949,8 @@ export class MindmapView extends ItemView {
 
   private clearSelectionClass(): void {
     this.canvasEl
-      .querySelector('.mindmap-node.is-selected')
-      ?.removeClass('is-selected');
+      .querySelectorAll('.mindmap-node.is-selected')
+      .forEach((el) => el.removeClass('is-selected'));
   }
 
   /**
@@ -2070,7 +2130,7 @@ export class MindmapView extends ItemView {
       }
       menu.addSeparator();
       add('Delete', 'trash', () => {
-        this.selectedLine = null;
+        this.selectOnly(null);
         void this.applyToNodes([node], (lines, [target]) =>
           deleteNodeOp(lines, target!),
         );
@@ -2333,19 +2393,24 @@ export class MindmapView extends ItemView {
     };
   }
 
-  private async moveNode(
-    source: MindNode,
+  private async moveNodes(
+    sources: MindNode[],
     target: MindNode,
     before: MindNode | null = null,
   ): Promise<void> {
-    if (!canDrop(source, target)) {
+    if (sources.some((source) => !canDrop(source, target))) {
       new Notice('This node cannot be dropped there.');
 
       return;
     }
-    this.selectedLine = null;
-    await this.applyToNodes([source, target, before], (lines, found) =>
-      moveNodeOp(lines, found[0]!, found[1]!, found[2] ?? null),
+    this.selectOnly(null);
+    await this.applyToNodes([...sources, target, before], (lines, found) =>
+      moveNodesOp(
+        lines,
+        found.slice(0, sources.length),
+        found[sources.length]!,
+        found[sources.length + 1] ?? null,
+      ),
     );
   }
 
@@ -2359,8 +2424,15 @@ export class MindmapView extends ItemView {
         setDragging: (dragging) => {
           this.isDragging = dragging;
         },
-        drop: (source, target, before) =>
-          void this.moveNode(source, target, before),
+        sources: (source) => {
+          const selected = this.selectedNodes();
+
+          return this.selectedLines.has(source.line) && selected.length
+            ? selected
+            : [source];
+        },
+        drop: (sources, target, before) =>
+          void this.moveNodes(sources, target, before),
         settle: () => {
           if (this.renderQueued) {
             void this.render();
@@ -2381,7 +2453,7 @@ export class MindmapView extends ItemView {
     if (e.target instanceof HTMLElement && e.target.closest('.mindmap-node')) {
       return;
     }
-    this.selectedLine = null;
+    this.selectOnly(null);
     this.clearSelectionClass();
     const startX = e.clientX;
     const startY = e.clientY;

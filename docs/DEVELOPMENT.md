@@ -135,6 +135,8 @@ judgement about how it looks. In `Fixtures.md`:
   lands there
 - In mobile emulation, select a node - it stays selected on the visible map
   instead of replacing the map with its Markdown file
+- Ctrl/Cmd-click same-type siblings, then drag one - all selected subtrees move
+  in their original order; Delete/Backspace removes all of them in one undo step
 - Click `[[Linked]]` - map and editor both move to that note, and Obsidian's
   back button returns
 - Turn `¶` on with the map beside a reading pane - selecting a line marks that

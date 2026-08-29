@@ -258,8 +258,15 @@ export function reorderSiblingOp(
 }
 
 export function deleteNodeOp(lines: string[], node: MindNode): string[] {
-  requireNodeLine(lines, node);
-  lines.splice(node.line, node.endLine - node.line + 1);
+  return deleteNodesOp(lines, [node]);
+}
+
+/** Deletes sibling subtrees in one write, regardless of their input order. */
+export function deleteNodesOp(lines: string[], nodes: MindNode[]): string[] {
+  nodes.forEach((node) => requireNodeLine(lines, node));
+  [...nodes]
+    .sort((a, b) => b.line - a.line)
+    .forEach((node) => lines.splice(node.line, node.endLine - node.line + 1));
 
   return lines;
 }
@@ -329,35 +336,64 @@ export function moveNodeOp(
   target: MindNode,
   before: MindNode | null = null,
 ): string[] {
-  requireNodeLine(lines, source);
+  return moveNodesOp(lines, [source], target, before);
+}
+
+/**
+ * Moves same-parent, same-type sibling subtrees as one ordered group. The
+ * target and insertion slot use the same meaning as moveNodeOp.
+ */
+export function moveNodesOp(
+  lines: string[],
+  sources: MindNode[],
+  target: MindNode,
+  before: MindNode | null = null,
+): string[] {
+  const ordered = [...sources].sort((a, b) => a.line - b.line);
+
+  if (!ordered.length) {
+    return lines;
+  }
+  const parent = ordered[0]!.parent;
+  const type = ordered[0]!.type;
+
+  if (ordered.some((node) => node.parent !== parent || node.type !== type)) {
+    throw new Error('Mindmap: grouped nodes must be same-type siblings');
+  }
+  ordered.forEach((source) => requireNodeLine(lines, source));
   if (target.type !== 'root') {
     requireNodeLine(lines, target);
   }
   if (before) {
     requireNodeLine(lines, before);
   }
-  const segment = nodeBlock(lines, source);
-  const newSegment =
-    source.type === 'list'
+
+  const segments = ordered.map((source) => {
+    const segment = nodeBlock(lines, source);
+
+    return source.type === 'list'
       ? reindentListSegment(segment, source, target, lines)
       : shiftHeadingSegment(segment, source, target);
-
+  });
   let at: number;
 
   if (before) {
     at = before.line;
-  } else if (target.type === 'list' || source.type === 'heading') {
+  } else if (target.type === 'list' || type === 'heading') {
     at = target.endLine + 1;
   } else {
-    // List dropped onto a heading/root.
     at = listInsertPoint(target);
   }
 
-  lines.splice(source.line, segment.length);
-  if (at > source.line) {
-    at -= segment.length;
+  for (const source of [...ordered].reverse()) {
+    const length = source.endLine - source.line + 1;
+
+    lines.splice(source.line, length);
+    if (source.line < at) {
+      at -= length;
+    }
   }
-  lines.splice(at, 0, ...newSegment);
+  lines.splice(at, 0, ...segments.flat());
 
   return lines;
 }

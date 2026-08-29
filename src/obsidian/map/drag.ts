@@ -27,7 +27,8 @@ export interface DragHost {
   /** True while an inline edit owns the pointer; no drag may start. */
   isEditing(): boolean;
   setDragging(dragging: boolean): void;
-  drop(source: MindNode, target: MindNode, before: MindNode | null): void;
+  sources(source: MindNode): MindNode[];
+  drop(sources: MindNode[], target: MindNode, before: MindNode | null): void;
   /** Runs the render a drag held off, if one is waiting. */
   settle(): void;
 }
@@ -63,6 +64,7 @@ function runDrag(
   el: HTMLElement,
   down: PointerEvent,
 ): void {
+  const sources = host.sources(node);
   const doc = el.doc;
   const pointerId = down.pointerId;
   let started = false;
@@ -119,8 +121,8 @@ function runDrag(
 
       if (
         laid.el !== el &&
-        !canDrop(node, target) &&
-        !canDropAsSibling(node, target)
+        !sources.every((source) => canDrop(source, target)) &&
+        !sources.every((source) => canDropAsSibling(source, target))
       ) {
         laid.el.addClass('is-invalid-target');
       }
@@ -146,7 +148,7 @@ function runDrag(
       left: `${ev.clientX - rect.left + GHOST_OFFSET}px`,
       top: `${ev.clientY - rect.top + GHOST_OFFSET}px`,
     });
-    const next = findDrop(host.nodes, node, ev.clientX, ev.clientY);
+    const next = findDrop(host.nodes, sources, ev.clientX, ev.clientY);
 
     if (!sameDrop(drop, next)) {
       clearCues();
@@ -189,7 +191,7 @@ function runDrag(
     suppressNextClick(el, doc);
     if (apply && finalDrop) {
       host.drop(
-        node,
+        sources,
         finalDrop.parent ?? finalDrop.laid.node,
         finalDrop.parent ? finalDrop.before : null,
       );

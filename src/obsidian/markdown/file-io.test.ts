@@ -1,5 +1,23 @@
 import { describe, it, expect } from 'vitest';
-import { joinLike } from './file-io';
+import type { WorkspaceLeaf } from 'obsidian';
+import { joinLike, leafNearness } from './file-io';
+
+function leaf(container: object): WorkspaceLeaf {
+  return { getContainer: () => container } as WorkspaceLeaf;
+}
+
+describe('leafNearness', () => {
+  it('ranks the requested leaf above its window and other windows', () => {
+    const here = {};
+    const there = {};
+    const near = leaf(here);
+
+    expect(leafNearness(near, near)).toBe(2);
+    expect(leafNearness(leaf(here), near)).toBe(1);
+    expect(leafNearness(leaf(there), near)).toBe(0);
+    expect(leafNearness(near)).toBe(0);
+  });
+});
 
 describe('joinLike', () => {
   it('keeps the endings a note came with', () => {

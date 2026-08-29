@@ -64,6 +64,7 @@ export default defineConfig(
     plugins: { '@stylistic': stylistic },
     rules: {
       curly: ['error', 'all'],
+      'no-nested-ternary': 'error',
       // Light breathing room: a blank line before returns and after a group
       // of variable declarations. Blocks (if/for/…) aren't padded, so guard
       // clauses stay compact.

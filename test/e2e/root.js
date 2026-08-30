@@ -61,11 +61,11 @@ check(
   const before = drawn();
 
   click(rootHandles().find((h) => h.hasClass('is-body')));
-  await until(() => drawn() !== before);
+  await until(() => !view.renderSnapshot && drawn() !== before);
   const folded = drawn();
 
   click(rootHandles().find((h) => h.hasClass('is-body')));
-  await until(() => drawn() === before);
+  await until(() => !view.renderSnapshot && drawn() === before);
   check(
     "the note's own text folds and comes back",
     folded === 0 && drawn() === before,

@@ -131,10 +131,12 @@ try {
   {
     const items = [];
     const menu = {
+      setSectionSubmenu: () => menu,
       addItem(build) {
         const item = {
           setTitle: (t) => ((item.title = t), item),
           setIcon: (i) => ((item.icon = i), item),
+          setSection: () => item,
           onClick: (fn) => ((item.click = fn), item),
         };
 

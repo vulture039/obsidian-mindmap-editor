@@ -2072,6 +2072,12 @@ export class MindmapView extends ItemView {
    * tab instead, which is how a map is kept on one note.
    */
   private followFile(file: TFile | null): void {
+    // Mobile maps live in their own tabs. Letting hidden map tabs follow every
+    // opened note changes all of them behind the user's back and leaves no tab
+    // to restore for a remembered note.
+    if (this.plugin.isMobile) {
+      return;
+    }
     if (this.editor.linkedLeaf()) {
       this.followLinkedLeaf();
 

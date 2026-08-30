@@ -276,7 +276,7 @@ export default class MindmapPlugin extends Plugin {
     linked: boolean,
   ): WorkspaceLeaf {
     if (this.isMobile) {
-      return near ?? this.app.workspace.getLeaf(false);
+      return this.app.workspace.getLeaf('tab');
     }
     if (linked && near) {
       // Switching a note's tab and asking again would add a column each
@@ -304,7 +304,7 @@ export default class MindmapPlugin extends Plugin {
    */
   openSplit(near?: WorkspaceLeaf | null): WorkspaceLeaf {
     if (this.isMobile) {
-      return near ?? this.app.workspace.getLeaf(false);
+      return this.app.workspace.getLeaf('tab');
     }
 
     return near

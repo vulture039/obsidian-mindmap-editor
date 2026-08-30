@@ -152,6 +152,40 @@ describe('moveNodeOp', () => {
     expect(moveNodeOp(lines, b, root)).toEqual(['# A', '# B']);
   });
 
+  it('reparents a rendered-text heading with its complete body', () => {
+    const text = [
+      '# Structure',
+      '## Rendered node text',
+      '',
+      '**bold** and ![[Assets/Preview.svg]]',
+      '',
+      '![Remote](https://example.com/image.png)',
+      '## Body text',
+      '# Second section',
+    ].join('\n');
+    const { root, lines } = setup(text);
+    const structure = root.children[0]!;
+    const rendered = structure.children[0]!;
+    const body = structure.children[1]!;
+    const out = moveNodeOp(lines, rendered, body);
+
+    expect(out).toEqual([
+      '# Structure',
+      '## Body text',
+      '### Rendered node text',
+      '',
+      '**bold** and ![[Assets/Preview.svg]]',
+      '',
+      '![Remote](https://example.com/image.png)',
+      '# Second section',
+    ]);
+    const moved = parseMarkdown(out.join('\n'), 'Note').children[0]!
+      .children[0]!.children[0]!;
+
+    expect(moved.text).toBe('Rendered node text');
+    expect(moved.level).toBe(3);
+  });
+
   it('inserts before a given sibling', () => {
     const { root, lines } = setup('- a\n- b\n- c');
     const [a, , c] = root.children;

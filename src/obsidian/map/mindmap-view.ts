@@ -18,6 +18,7 @@ import {
   MindNode,
   parseMarkdown,
 } from '../../core/parse/parser';
+import { FENCE_RE } from '../../core/parse/patterns';
 import { relocateNode } from '../../core/write/relocate';
 import {
   branchTargets,
@@ -135,6 +136,9 @@ const FOLD_CHECK_DELAY = 120;
 /** How long an inline edit may grow before the map is laid out again. */
 const REFLOW_DELAY = 60;
 
+/** Do not hold a map blank indefinitely for a slow or unreachable image. */
+const IMAGE_LAYOUT_WAIT = 1000;
+
 /** A completed task node ('- [x]'), the unit hidden by hideCompleted. */
 function isCompletedTask(node: MindNode): boolean {
   return node.type === 'list' && node.checked === true;
@@ -175,6 +179,11 @@ export class MindmapView extends ItemView {
   private isDragging = false;
   private renderQueued = false;
   private renderSeq = 0;
+  /** Render generation collecting async Markdown before its first layout. */
+  private layoutBuildSeq: number | null = null;
+  private pendingTextRenders: Promise<void>[] | null = null;
+  /** Last complete frame kept visible while its replacement is measured. */
+  private renderSnapshot: HTMLElement | null = null;
   private laidByLine = new Map<number, LaidNode>();
   /** Last built tree, so an edit can re-lay it out without rebuilding it. */
   private laidRoot: LaidNode | null = null;
@@ -1156,6 +1165,7 @@ export class MindmapView extends ItemView {
 
   /** Left up by a map that is gone, the mark quiets the pane's next flash. */
   async onClose(): Promise<void> {
+    this.finishRenderStaging();
     this.viewport?.destroy();
     clearPreviewLine();
   }
@@ -1402,6 +1412,7 @@ export class MindmapView extends ItemView {
     const seq = ++this.renderSeq;
 
     if (!this.file) {
+      this.finishRenderStaging();
       this.canvasEl.empty();
       this.laidByLine.clear();
       this.canvasEl.createDiv({
@@ -1434,6 +1445,18 @@ export class MindmapView extends ItemView {
     const scrollLeft = this.scrollerEl.scrollLeft;
     const scrollTop = this.scrollerEl.scrollTop;
 
+    const canvasParent = this.canvasEl.parentElement;
+
+    if (restoreViewport && !this.renderSnapshot && canvasParent) {
+      const snapshot = this.canvasEl.cloneNode(true) as HTMLElement;
+
+      snapshot.addClass('mindmap-render-snapshot');
+      canvasParent.appendChild(snapshot);
+      this.renderSnapshot = snapshot;
+    }
+    if (this.renderSnapshot) {
+      this.canvasEl.addClass('is-render-staging');
+    }
     this.canvasEl.empty();
     this.laidByLine.clear();
     this.root = parseMarkdown(text, this.file.basename);
@@ -1450,8 +1473,23 @@ export class MindmapView extends ItemView {
     this.canvasEl.createSvg('svg', { cls: 'mindmap-edges' });
     const palette = parsePalette(this.plugin.settings.palette);
 
+    this.layoutBuildSeq = seq;
+    const textRenders: Promise<void>[] = [];
+
+    this.pendingTextRenders = textRenders;
     this.laidRoot = this.buildNode(this.root, palette);
+    this.pendingTextRenders = null;
+    await Promise.all(textRenders);
+    if (seq !== this.renderSeq) {
+      return;
+    }
+    await this.waitForRenderedImages();
+    if (seq !== this.renderSeq) {
+      return;
+    }
     this.applyLayout();
+    this.layoutBuildSeq = null;
+    this.finishRenderStaging();
     if (restoreViewport) {
       this.scrollerEl.scrollLeft = scrollLeft;
       this.scrollerEl.scrollTop = scrollTop;
@@ -1556,14 +1594,84 @@ export class MindmapView extends ItemView {
   }
 
   /** Node text with its links clickable, following them on the map. */
-  private renderText(el: HTMLElement, text: string): void {
-    renderNodeText(
+  private renderText(
+    el: HTMLElement,
+    text: string,
+    renderMarkdown = true,
+  ): void {
+    if (!renderMarkdown) {
+      el.appendText(text);
+
+      return;
+    }
+    const seq = this.renderSeq;
+    const rendered = renderNodeText(
       el,
       text,
       this.app,
       this.file?.path ?? '',
+      this,
       (target, evt) => void this.openInternalLink(target, evt),
-    );
+      () => {
+        if (this.layoutBuildSeq !== seq) {
+          this.reflow();
+        }
+      },
+    ).catch((error: unknown) => {
+      console.error('Mindmap: failed to render node text', error);
+      el.setText(text);
+      if (this.layoutBuildSeq !== seq) {
+        this.reflow();
+      }
+    });
+
+    this.pendingTextRenders?.push(rendered);
+  }
+
+  /** Waits briefly for image dimensions so the first layout is the final one. */
+  private async waitForRenderedImages(): Promise<void> {
+    const cleanups: (() => void)[] = [];
+    const pending = [...this.canvasEl.querySelectorAll('img')]
+      .filter((image) => !image.complete)
+      .map(
+        (image) =>
+          new Promise<void>((resolve) => {
+            const cleanup = (): void => {
+              image.removeEventListener('load', settled);
+              image.removeEventListener('error', settled);
+            };
+            const settled = (): void => {
+              cleanup();
+              resolve();
+            };
+
+            cleanups.push(cleanup);
+            image.addEventListener('load', settled, { once: true });
+            image.addEventListener('error', settled, { once: true });
+            // It may have completed between the filter and listener setup.
+            if (image.complete) {
+              settled();
+            }
+          }),
+      );
+
+    if (!pending.length) {
+      return;
+    }
+    await Promise.race([
+      Promise.all(pending),
+      new Promise<void>((resolve) =>
+        this.canvasEl.win.setTimeout(resolve, IMAGE_LAYOUT_WAIT),
+      ),
+    ]);
+    cleanups.forEach((cleanup) => cleanup());
+  }
+
+  /** Reveals the completed tree and discards the frozen frame it replaced. */
+  private finishRenderStaging(): void {
+    this.canvasEl?.removeClass('is-render-staging');
+    this.renderSnapshot?.remove();
+    this.renderSnapshot = null;
   }
 
   /**
@@ -1582,16 +1690,21 @@ export class MindmapView extends ItemView {
     el.addClass('has-body');
 
     let previous = -1;
+    let inFence = false;
 
     for (const { line, text } of node.body) {
       const lineEl = bodyEl.createDiv({ cls: BODY_LINE });
+      const fence = FENCE_RE.test(text);
 
       lineEl.dataset.line = String(line);
       // A gap in the line numbers is a child node standing between two runs
       // of text. They are written back separately, so they read separately.
       lineEl.toggleClass('is-run-start', previous >= 0 && line > previous + 1);
       previous = line;
-      this.renderText(lineEl, text);
+      this.renderText(lineEl, text, !inFence && !fence);
+      if (fence) {
+        inFence = !inFence;
+      }
     }
     // Which line the pointer hit; the gaps around them answer with the first,
     // so a click near a line never turns into a click on nothing.

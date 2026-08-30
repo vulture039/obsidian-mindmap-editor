@@ -30,8 +30,10 @@ No new file format, no markup to add.
   fold commands do the whole map at once.
 - **Show a node's own text** - Off by default; the `¶` header button draws the lines under a node that are no
   node of their own inside it, and `≡` on its corner folds them away. The map only draws this text - it is
-  written in the Markdown pane: click a line to put the cursor on it, double-click to open it there. The `¶`
-  button is that map's own, so a second map can leave its text alone.
+  written in the Markdown pane: click a line to put the cursor on it, double-click to open it there. Inline
+  Markdown is rendered, links stay clickable, and local or remote image embeds become size-limited previews;
+  unresolved embeds keep their original Markdown. The `¶` button is that map's own, so a second map can leave
+  its text alone.
 - **Hide completed tasks** - The `✓✓` header button hides checked tasks behind one `✓ n done` node per parent.
   Click it to reveal just that parent (`− hide done` puts them back). Per map, and remembered across sessions.
 - **Zoom and pan large maps** - Use the mouse wheel or the header zoom controls to zoom around the cursor. The

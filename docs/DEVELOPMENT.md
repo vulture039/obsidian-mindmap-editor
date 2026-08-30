@@ -94,6 +94,10 @@ case:
   top of it.
 - **`root.js`** (`npm run e2e test/e2e/root.js`) - the note itself as a node:
   its own prose, and its folds.
+- **`node-text.js`** (`npm run e2e test/e2e/node-text.js`) - real inline Markdown rendering, image path
+  resolution and sizing, missing-image fallback, code fences and text folding.
+- **`drag-rendered-node.js`** (`npm run e2e test/e2e/drag-rendered-node.js`) - moving an image-heavy
+  heading after its asynchronous content has settled.
 - **`zoom.js`** (`npm run e2e test/e2e/zoom.js`) - header, cursor-anchored wheel
   and pinch zoom, centering, limits, and restoring one pane's zoom level.
 - **`mobile.js`** (`npm run e2e test/e2e/mobile.js`) - opening and rendering a

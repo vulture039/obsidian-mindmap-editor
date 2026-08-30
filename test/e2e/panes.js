@@ -69,12 +69,35 @@ try {
       `it stayed on ${ours.view.currentFile?.path}`,
     );
 
+    const roamingScroller =
+      ours.view.contentEl.querySelector('.mindmap-scroller');
+
+    roamingScroller.scrollLeft += 300;
+    roamingScroller.scrollTop += 300;
     openMap();
     await settle();
     check(
       'a plain open reveals the map it already has, not a second one',
       maps().length === 1,
       `${maps().length} map panes open`,
+    );
+    const roamingCanvas = ours.view.contentEl.querySelector('.mindmap-canvas');
+    const roamingLeft =
+      roamingCanvas.offsetLeft +
+      (roamingCanvas.offsetWidth * ours.view.getState().zoom -
+        roamingScroller.clientWidth) /
+        2;
+    const roamingTop =
+      roamingCanvas.offsetTop +
+      (roamingCanvas.offsetHeight * ours.view.getState().zoom -
+        roamingScroller.clientHeight) /
+        2;
+
+    check(
+      'revealing an existing map centers it too',
+      Math.abs(roamingScroller.scrollLeft - roamingLeft) < 1 &&
+        Math.abs(roamingScroller.scrollTop - roamingTop) < 1,
+      `scroll ${roamingScroller.scrollLeft}, ${roamingScroller.scrollTop}; center ${roamingLeft}, ${roamingTop}`,
     );
   }
 
@@ -90,6 +113,39 @@ try {
       !!second && second.parent !== otherMarkdown?.parent,
       `${maps().length} map panes, separate ${second?.parent !== otherMarkdown?.parent}`,
     );
+    const scroller = second?.view.contentEl.querySelector('.mindmap-scroller');
+    const canvas = second?.view.contentEl.querySelector('.mindmap-canvas');
+    const centeredLeft =
+      canvas?.offsetLeft +
+      (canvas?.offsetWidth * second?.view.getState().zoom -
+        scroller?.clientWidth) /
+        2;
+    const centeredTop =
+      canvas?.offsetTop +
+      (canvas?.offsetHeight * second?.view.getState().zoom -
+        scroller?.clientHeight) /
+        2;
+
+    check(
+      'a newly opened map starts in the center of its viewport',
+      !!scroller &&
+        Math.abs(scroller.scrollLeft - centeredLeft) < 1 &&
+        Math.abs(scroller.scrollTop - centeredTop) < 1,
+      `scroll ${scroller?.scrollLeft}, ${scroller?.scrollTop}; center ${centeredLeft}, ${centeredTop}`,
+    );
+    const beforeCenter = [scroller?.scrollLeft, scroller?.scrollTop];
+    const center = [
+      ...(second?.view.containerEl.querySelectorAll('.view-action') ?? []),
+    ].find((button) => button.getAttribute('aria-label') === 'Center mind map');
+
+    click(center);
+    check(
+      'pressing center immediately after opening does not move the map',
+      scroller?.scrollLeft === beforeCenter[0] &&
+        scroller?.scrollTop === beforeCenter[1],
+      `${beforeCenter.join(', ')} became ${scroller?.scrollLeft}, ${scroller?.scrollTop}`,
+    );
+
     // Asked again for the same note: the map tied to its tab, not another
     // pane. This is what keeps a workspace from filling up with maps.
     const was = maps().length;

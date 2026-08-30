@@ -194,6 +194,9 @@ export class MindmapView extends ItemView {
   private viewport!: MapViewport;
   /** Restored before the viewport DOM exists during workspace startup. */
   private savedZoom = 1;
+  /** A new pane waits for its first visible, stable layout before centering. */
+  private centerPending = false;
+  private centerTimer: number | null = null;
   /** How many `pointEditorAtFile` calls this map has in flight. */
   private pointing = 0;
   /** The two bulk-fold buttons in the header, by what each one folds. */
@@ -1184,6 +1187,9 @@ export class MindmapView extends ItemView {
 
   /** Left up by a map that is gone, the mark quiets the pane's next flash. */
   async onClose(): Promise<void> {
+    if (this.centerTimer !== null) {
+      this.containerEl.win.clearTimeout(this.centerTimer);
+    }
     this.finishRenderStaging();
     this.viewport?.destroy();
     clearPreviewLine();
@@ -1349,7 +1355,7 @@ export class MindmapView extends ItemView {
     this.foldedText.clear();
     this.lastEditorFoldsKey = null;
     await this.render(true);
-    void this.loadStoredCollapse();
+    await this.loadStoredCollapse();
     const leaf = this.leaf as WorkspaceLeaf & {
       updateHeader?: () => void;
     };
@@ -1376,6 +1382,50 @@ export class MindmapView extends ItemView {
     new Notice('Mind map refreshed.');
   }
 
+  /** Centers a newly revealed map after its first visible render settles. */
+  centerAfterReveal(): void {
+    this.centerPending = true;
+    if (this.renderQueued && this.contentEl.offsetHeight > 0) {
+      void this.render();
+
+      return;
+    }
+    this.schedulePendingCenter();
+  }
+
+  private schedulePendingCenter(): void {
+    if (
+      !this.centerPending ||
+      this.renderQueued ||
+      !this.laidRoot ||
+      this.contentEl.offsetHeight === 0
+    ) {
+      return;
+    }
+    const seq = this.renderSeq;
+    const win = this.containerEl.win;
+
+    if (this.centerTimer !== null) {
+      win.clearTimeout(this.centerTimer);
+    }
+    // Keep the map centered throughout the opening resize sequence, not only
+    // after it. The user can press the same action while a split is animating,
+    // and it should already be a no-op then.
+    this.viewport.center();
+    this.centerTimer = win.setTimeout(() => {
+      this.centerTimer = null;
+      if (
+        this.centerPending &&
+        seq === this.renderSeq &&
+        !this.renderQueued &&
+        this.contentEl.offsetHeight > 0
+      ) {
+        this.viewport.center();
+        this.centerPending = false;
+      }
+    }, 350);
+  }
+
   /**
    * Picks up the render skipped while the pane was hidden, straight to
    * render() — the debounce would leave the stale map up for its delay.
@@ -1384,6 +1434,7 @@ export class MindmapView extends ItemView {
     if (this.renderQueued && this.contentEl.offsetHeight > 0) {
       void this.render();
     }
+    this.schedulePendingCenter();
   }
 
   /**
@@ -1514,6 +1565,7 @@ export class MindmapView extends ItemView {
       this.scrollerEl.scrollLeft = scrollLeft;
       this.scrollerEl.scrollTop = scrollTop;
     }
+    this.schedulePendingCenter();
 
     if (this.cursorLine !== null) {
       // The rebuild dropped the mark, and no caret move is coming to redo

@@ -255,6 +255,9 @@ export default class MindmapPlugin extends Plugin {
       ) {
         await already.view.linkToEditor();
       }
+      if (already.view instanceof MindmapView) {
+        already.view.centerAfterReveal();
+      }
 
       return;
     }
@@ -275,6 +278,9 @@ export default class MindmapPlugin extends Plugin {
       this.app.workspace.setActiveLeaf(leaf, { focus: true });
     } else {
       await this.app.workspace.revealLeaf(leaf);
+    }
+    if (leaf.view instanceof MindmapView) {
+      leaf.view.centerAfterReveal();
     }
   }
 

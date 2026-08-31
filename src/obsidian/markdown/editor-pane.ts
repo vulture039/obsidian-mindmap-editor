@@ -46,6 +46,16 @@ export class EditorPane {
     }
   }
 
+  /** Whether the most recently used Markdown tab still exists. */
+  hasOpenLastActive(): boolean {
+    return (
+      this.lastActive !== null &&
+      this.deps.app.workspace
+        .getLeavesOfType('markdown')
+        .includes(this.lastActive)
+    );
+  }
+
   /** The Markdown tab this map is linked to ("Link with tab"), if any. */
   linkedLeaf(): WorkspaceLeaf | null {
     // Read on demand: a cached copy would depend on when Obsidian assigns

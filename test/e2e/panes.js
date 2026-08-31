@@ -228,7 +228,10 @@ try {
       `group ${linkedGroup} became ${second?.group}`,
     );
     for (const leaf of app.workspace.getLeavesOfType('markdown')) {
-      if (leaf.getViewState().state?.file === 'Tabs.md') leaf.detach();
+      if (leaf.getViewState().state?.file === 'Tabs.md') {
+        app.workspace.setActiveLeaf(leaf, { focus: true });
+        leaf.detach();
+      }
     }
     app.workspace.trigger('layout-change');
     await settle();

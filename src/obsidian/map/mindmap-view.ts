@@ -1226,11 +1226,13 @@ export class MindmapView extends ItemView {
     );
     this.registerEvent(
       this.app.workspace.on('active-leaf-change', (leaf) => {
+        const editorStillOpen = this.editor.hasOpenLastActive();
+
         this.editor.noteActiveLeaf(leaf);
-        // Clicking a map points the Markdown side at its note: with maps side
-        // by side, the one just picked is the note being worked on. The
-        // keyboard goes back where the click put it.
-        if (leaf === this.leaf && !this.plugin.isMobile) {
+        // Selecting a map tab points the Markdown side at its note. Closing
+        // the last-active Markdown tab can also activate this map, but that
+        // must not recreate the pane the user just closed.
+        if (leaf === this.leaf && editorStillOpen && !this.plugin.isMobile) {
           void this.pointEditorAtFile();
         }
       }),
@@ -1249,6 +1251,15 @@ export class MindmapView extends ItemView {
     this.registerDomEvent(this.scrollerEl, 'pointerdown', (e) =>
       this.onBackgroundPointerDown(e),
     );
+    // A real interaction with a map points the Markdown side at its note.
+    // Merely becoming the active leaf is not enough: closing the Markdown
+    // pane can activate its neighboring map, and reopening the note there
+    // would make that pane impossible to close.
+    this.registerDomEvent(this.contentEl, 'pointerdown', () => {
+      if (!this.plugin.isMobile) {
+        void this.pointEditorAtFile();
+      }
+    });
     // The caret moving in an editor fires no workspace event, but it does
     // move the document selection, which does.
     this.everyDocument(['selectionchange'], () => this.followEditorCursor());

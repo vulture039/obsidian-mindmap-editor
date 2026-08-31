@@ -8,9 +8,11 @@ import {
   sameWindow,
 } from './obsidian/markdown/file-io';
 import { MindmapSettingTab } from './obsidian/settings';
+import { AutoOpenMaps } from './obsidian/map/auto-open';
 
 export default class MindmapPlugin extends Plugin {
   settings!: MindmapSettings;
+  private autoOpen!: AutoOpenMaps;
   /**
    * The note a map is pointing the Markdown side at right now. Showing it
    * makes it the active file, and the roaming map would follow it there -
@@ -29,6 +31,9 @@ export default class MindmapPlugin extends Plugin {
 
   async onload(): Promise<void> {
     await this.loadSettings();
+    this.autoOpen = new AutoOpenMaps(this, (file) => {
+      void this.openMindmap(file);
+    });
     this.registerView(
       VIEW_TYPE_MINDMAP,
       (leaf: WorkspaceLeaf) => new MindmapView(leaf, this),
@@ -73,7 +78,17 @@ export default class MindmapPlugin extends Plugin {
     });
     this.addFoldCommands();
     this.addFileMenuItem();
+    this.autoOpen.register();
     this.addSettingTab(new MindmapSettingTab(this.app, this));
+  }
+
+  /** Whether this note explicitly asks for its map when it next opens. */
+  isAutoOpenFile(file: TFile | null): boolean {
+    return this.autoOpen.isRemembered(file);
+  }
+
+  async toggleAutoOpen(file: TFile | null): Promise<void> {
+    await this.autoOpen.toggle(file);
   }
 
   /**
@@ -220,19 +235,29 @@ export default class MindmapPlugin extends Plugin {
     const near = this.isMobile
       ? this.app.workspace.getLeaf(false)
       : this.paneFor(file, from);
-    // The map this ask already has: the one tied to the note's tab when the
-    // ask names the note, else any map on that file - in this window only.
     const already = this.mapLeaves().find(
       (leaf) =>
-        (!this.isMobile || leaf.view.containerEl.isShown()) &&
-        (linked
-          ? !!near && this.tiedTo(leaf, near)
-          : this.mapFile(leaf) === file.path &&
-            (!near || sameWindow(leaf, near))),
+        (this.isMobile && this.mapFile(leaf) === file.path) ||
+        (!this.isMobile &&
+          (linked
+            ? !!near && this.tiedTo(leaf, near)
+            : this.mapFile(leaf) === file.path &&
+              (!near || sameWindow(leaf, near)))),
     );
 
     if (already) {
       await this.app.workspace.revealLeaf(already);
+      if (
+        linked &&
+        !this.isMobile &&
+        already.view instanceof MindmapView &&
+        (!near || !this.tiedTo(already, near))
+      ) {
+        await already.view.linkToEditor();
+      }
+      if (already.view instanceof MindmapView) {
+        already.view.centerAfterReveal();
+      }
 
       return;
     }
@@ -253,6 +278,9 @@ export default class MindmapPlugin extends Plugin {
       this.app.workspace.setActiveLeaf(leaf, { focus: true });
     } else {
       await this.app.workspace.revealLeaf(leaf);
+    }
+    if (leaf.view instanceof MindmapView) {
+      leaf.view.centerAfterReveal();
     }
   }
 
@@ -276,7 +304,7 @@ export default class MindmapPlugin extends Plugin {
     linked: boolean,
   ): WorkspaceLeaf {
     if (this.isMobile) {
-      return near ?? this.app.workspace.getLeaf(false);
+      return this.app.workspace.getLeaf('tab');
     }
     if (linked && near) {
       // Switching a note's tab and asking again would add a column each
@@ -304,7 +332,7 @@ export default class MindmapPlugin extends Plugin {
    */
   openSplit(near?: WorkspaceLeaf | null): WorkspaceLeaf {
     if (this.isMobile) {
-      return near ?? this.app.workspace.getLeaf(false);
+      return this.app.workspace.getLeaf('tab');
     }
 
     return near
@@ -313,11 +341,18 @@ export default class MindmapPlugin extends Plugin {
   }
 
   async loadSettings(): Promise<void> {
-    this.settings = Object.assign(
-      {},
-      DEFAULT_SETTINGS,
-      (await this.loadData()) as Partial<MindmapSettings>,
-    );
+    const stored = (await this.loadData()) as Partial<MindmapSettings>;
+
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, stored);
+    this.settings.autoOpenFiles = Array.isArray(this.settings.autoOpenFiles)
+      ? [
+          ...new Set(
+            this.settings.autoOpenFiles.filter(
+              (path): path is string => typeof path === 'string',
+            ),
+          ),
+        ]
+      : [];
   }
 
   async saveSettings(): Promise<void> {

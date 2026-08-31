@@ -190,9 +190,13 @@ export class MindmapView extends ItemView {
   private hideCompletedActionEl: HTMLElement | null = null;
   private bodyTextActionEl: HTMLElement | null = null;
   private linkActionEl: HTMLElement | null = null;
+  private autoOpenActionEl: HTMLElement | null = null;
   private viewport!: MapViewport;
   /** Restored before the viewport DOM exists during workspace startup. */
   private savedZoom = 1;
+  /** A new pane waits for its first visible, stable layout before centering. */
+  private centerPending = false;
+  private centerTimer: number | null = null;
   /** How many `pointEditorAtFile` calls this map has in flight. */
   private pointing = 0;
   /** The two bulk-fold buttons in the header, by what each one folds. */
@@ -1078,15 +1082,28 @@ export class MindmapView extends ItemView {
     void this.linkToEditor();
   }
 
+  private async toggleAutoOpen(): Promise<void> {
+    await this.plugin.toggleAutoOpen(this.file);
+    this.syncToggleActions();
+  }
+
   /** Lights up the header buttons that stand for what this map is showing. */
   private syncToggleActions(): void {
     const text = this.showBodyText;
     const linked = !!this.editor.linkedLeaf();
+    const autoOpen = this.plugin.isAutoOpenFile(this.file);
 
     this.linkActionEl?.toggleClass('is-active', linked);
     this.linkActionEl?.setAttribute(
       'aria-label',
       linked ? 'Unlink this map, so it follows the active file' : LINK_LABEL,
+    );
+    this.autoOpenActionEl?.toggleClass('is-active', autoOpen);
+    this.autoOpenActionEl?.setAttribute(
+      'aria-label',
+      autoOpen
+        ? 'Stop opening this map automatically with the note'
+        : 'Open this map automatically with the note',
     );
     this.hideCompletedActionEl?.toggleClass('is-active', this.hideCompleted);
     this.bodyTextActionEl?.toggleClass('is-active', text);
@@ -1109,6 +1126,11 @@ export class MindmapView extends ItemView {
     );
     this.linkActionEl = this.addAction('link', LINK_LABEL, () =>
       this.toggleLink(),
+    );
+    this.autoOpenActionEl = this.addAction(
+      'bookmark',
+      'Open this map automatically with the note',
+      () => void this.toggleAutoOpen(),
     );
     this.syncToggleActions();
     this.foldAllActionEls.set(
@@ -1165,6 +1187,9 @@ export class MindmapView extends ItemView {
 
   /** Left up by a map that is gone, the mark quiets the pane's next flash. */
   async onClose(): Promise<void> {
+    if (this.centerTimer !== null) {
+      this.containerEl.win.clearTimeout(this.centerTimer);
+    }
     this.finishRenderStaging();
     this.viewport?.destroy();
     clearPreviewLine();
@@ -1201,11 +1226,13 @@ export class MindmapView extends ItemView {
     );
     this.registerEvent(
       this.app.workspace.on('active-leaf-change', (leaf) => {
+        const editorStillOpen = this.editor.hasOpenLastActive();
+
         this.editor.noteActiveLeaf(leaf);
-        // Clicking a map points the Markdown side at its note: with maps side
-        // by side, the one just picked is the note being worked on. The
-        // keyboard goes back where the click put it.
-        if (leaf === this.leaf && !this.plugin.isMobile) {
+        // Selecting a map tab points the Markdown side at its note. Closing
+        // the last-active Markdown tab can also activate this map, but that
+        // must not recreate the pane the user just closed.
+        if (leaf === this.leaf && editorStillOpen && !this.plugin.isMobile) {
           void this.pointEditorAtFile();
         }
       }),
@@ -1224,6 +1251,15 @@ export class MindmapView extends ItemView {
     this.registerDomEvent(this.scrollerEl, 'pointerdown', (e) =>
       this.onBackgroundPointerDown(e),
     );
+    // A real interaction with a map points the Markdown side at its note.
+    // Merely becoming the active leaf is not enough: closing the Markdown
+    // pane can activate its neighboring map, and reopening the note there
+    // would make that pane impossible to close.
+    this.registerDomEvent(this.contentEl, 'pointerdown', () => {
+      if (!this.plugin.isMobile) {
+        void this.pointEditorAtFile();
+      }
+    });
     // The caret moving in an editor fires no workspace event, but it does
     // move the document selection, which does.
     this.everyDocument(['selectionchange'], () => this.followEditorCursor());
@@ -1322,6 +1358,7 @@ export class MindmapView extends ItemView {
 
   async setFile(file: TFile): Promise<void> {
     this.file = file;
+    this.syncToggleActions();
     this.selectOnly(null);
     this.cursorLine = null;
     this.expandedDone.clear();
@@ -1329,7 +1366,7 @@ export class MindmapView extends ItemView {
     this.foldedText.clear();
     this.lastEditorFoldsKey = null;
     await this.render(true);
-    void this.loadStoredCollapse();
+    await this.loadStoredCollapse();
     const leaf = this.leaf as WorkspaceLeaf & {
       updateHeader?: () => void;
     };
@@ -1356,6 +1393,50 @@ export class MindmapView extends ItemView {
     new Notice('Mind map refreshed.');
   }
 
+  /** Centers a newly revealed map after its first visible render settles. */
+  centerAfterReveal(): void {
+    this.centerPending = true;
+    if (this.renderQueued && this.contentEl.offsetHeight > 0) {
+      void this.render();
+
+      return;
+    }
+    this.schedulePendingCenter();
+  }
+
+  private schedulePendingCenter(): void {
+    if (
+      !this.centerPending ||
+      this.renderQueued ||
+      !this.laidRoot ||
+      this.contentEl.offsetHeight === 0
+    ) {
+      return;
+    }
+    const seq = this.renderSeq;
+    const win = this.containerEl.win;
+
+    if (this.centerTimer !== null) {
+      win.clearTimeout(this.centerTimer);
+    }
+    // Keep the map centered throughout the opening resize sequence, not only
+    // after it. The user can press the same action while a split is animating,
+    // and it should already be a no-op then.
+    this.viewport.center();
+    this.centerTimer = win.setTimeout(() => {
+      this.centerTimer = null;
+      if (
+        this.centerPending &&
+        seq === this.renderSeq &&
+        !this.renderQueued &&
+        this.contentEl.offsetHeight > 0
+      ) {
+        this.viewport.center();
+        this.centerPending = false;
+      }
+    }, 350);
+  }
+
   /**
    * Picks up the render skipped while the pane was hidden, straight to
    * render() — the debounce would leave the stale map up for its delay.
@@ -1364,6 +1445,7 @@ export class MindmapView extends ItemView {
     if (this.renderQueued && this.contentEl.offsetHeight > 0) {
       void this.render();
     }
+    this.schedulePendingCenter();
   }
 
   /**
@@ -1494,6 +1576,7 @@ export class MindmapView extends ItemView {
       this.scrollerEl.scrollLeft = scrollLeft;
       this.scrollerEl.scrollTop = scrollTop;
     }
+    this.schedulePendingCenter();
 
     if (this.cursorLine !== null) {
       // The rebuild dropped the mark, and no caret move is coming to redo
@@ -2072,6 +2155,12 @@ export class MindmapView extends ItemView {
    * tab instead, which is how a map is kept on one note.
    */
   private followFile(file: TFile | null): void {
+    // Mobile maps live in their own tabs. Letting hidden map tabs follow every
+    // opened note changes all of them behind the user's back and leaves no tab
+    // to restore for a remembered note.
+    if (this.plugin.isMobile) {
+      return;
+    }
     if (this.editor.linkedLeaf()) {
       this.followLinkedLeaf();
 

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { WorkspaceLeaf } from 'obsidian';
-import { joinLike, leafNearness } from './file-io';
+import { joinLike, leafNearness, sameSplit } from './file-io';
 
 function leaf(container: object): WorkspaceLeaf {
   return { getContainer: () => container } as WorkspaceLeaf;
@@ -16,6 +16,18 @@ describe('leafNearness', () => {
     expect(leafNearness(leaf(here), near)).toBe(1);
     expect(leafNearness(leaf(there), near)).toBe(0);
     expect(leafNearness(near)).toBe(0);
+  });
+});
+
+describe('sameSplit', () => {
+  it('distinguishes side-by-side panes from tabs in the same pane', () => {
+    const split = {};
+    const left = { parent: split };
+    const right = { parent: split };
+    const leftTab = { parent: left } as WorkspaceLeaf;
+
+    expect(sameSplit(leftTab, { parent: left } as WorkspaceLeaf)).toBe(false);
+    expect(sameSplit(leftTab, { parent: right } as WorkspaceLeaf)).toBe(true);
   });
 });
 

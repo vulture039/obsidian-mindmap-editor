@@ -11,6 +11,9 @@ export interface MindmapSettings {
   showBodyText: boolean;
   // Direction used whenever the plugin opens a split (map ⇄ editor).
   splitDirection: 'vertical' | 'horizontal';
+  // Notes whose map should be restored when the note is opened. Kept in
+  // plugin data rather than in the note's frontmatter.
+  autoOpenFiles: string[];
 }
 
 export const DEFAULT_SETTINGS: MindmapSettings = {
@@ -19,4 +22,5 @@ export const DEFAULT_SETTINGS: MindmapSettings = {
   syncFolds: true,
   showBodyText: false,
   splitDirection: 'vertical',
+  autoOpenFiles: [],
 };

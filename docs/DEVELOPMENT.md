@@ -20,6 +20,22 @@ npm run e2e    # the checks that need Obsidian itself; see below
 - Do not nest conditional (`?:`) expressions. Use a named value or `if`/`else`
   when a choice contains another choice.
 
+### Map pane vocabulary
+
+Keep these four behaviors separate:
+
+| Term | Bound to | Behavior |
+| --- | --- | --- |
+| **Active** | The workspace | An unlinked map follows the active Markdown file. This is the normal map behavior. |
+| **Link** | A desktop Markdown tab | The map follows that tab when it changes files. This is Obsidian's `Link with tab`; mobile falls back to a separate map tab. |
+| **Bookmark** | A Markdown file | Opening it after its last Markdown tab closed ensures a map is visible; the active note is also checked at startup. It never changes Link state. |
+| **Pin** | A Markdown file | The map would stay on that file when tabs change. This is not currently implemented. |
+
+Closing or unlinking a map does not remove its bookmark. The bookmark header
+button is the only UI that changes this persistent choice. Closing the
+Markdown tab does not reopen it; the bookmark applies when a new Markdown tab
+for that file opens later.
+
 ## The dev vault
 
 `dev-vault/` is an Obsidian vault kept in the repo. `npm run dev` builds
@@ -102,10 +118,9 @@ case:
   and pinch zoom, centering, limits, and restoring one pane's zoom level.
 - **`mobile.js`** (`npm run e2e test/e2e/mobile.js`) - opening and rendering a
   map in Obsidian's emulated mobile workspace.
-- **`panes.js`** (`npm run e2e test/e2e/panes.js`) - a map follows the active
-  file, and the linked-open command opens one tied to a note's tab instead. Only a real
-  workspace has a second leaf to get this wrong with. It opens and closes panes
-  of its own, and puts them back afterwards.
+- **`panes.js`** (`npm run e2e test/e2e/panes.js`) - active following, Link,
+  Bookmark restore, closing Markdown, pane reuse and initial centering. It
+  opens and closes panes of its own, then puts them back.
 - **`popout.js`** (`npm run e2e test/e2e/popout.js`) - a note in a window of its
   own: which window the map lands in, and whether it drives the editor there
   rather than the one in the main window. It pops a window out and closes it

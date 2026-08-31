@@ -123,6 +123,10 @@ code already carries belongs there, not here.
 - **What moves a map onto a file** - a linked tab if there is one, else the active file. Both are Obsidian's
   own, and there is nothing else: a follow setting and a private per-pane flag were each tried and each only
   added a second vocabulary for what "Link with tab" already says from the tab menu.
+- **A bookmark opens; it never links or pins** - it is a per-file choice in plugin data. The file's first
+  Markdown tab after none were open reveals a map without changing its Link state; the active note is also
+  checked at startup. Closing Markdown does not reopen it, and changing or unlinking panes does not alter the
+  bookmark.
 - **Opening a map is two requests through one gesture** - "show me this note's map" and "give me another
   pane". A map follows the active file, so asking for the map of the note in front of you can only mean the
   first, and the second needs to be asked for separately: a command and the `🔗` header button, which is where
@@ -134,7 +138,8 @@ code already carries belongs there, not here.
   splits off its note's pane, and a map already split off that pane takes the next one as a tab: without that,
   switching a note's tab adds a column each time. A roaming map has no note to sit by, so it joins the maps
   already open. Only in that window, and only the map tied to the tab that asked - a map a window away is
-  neither the one to sit beside nor the one you already have.
+  neither the one to sit beside nor the one you already have. Mobile has one visible leaf, so either command
+  opens a map tab and creates no Link group.
 
 ### A popout is a window of its own
 

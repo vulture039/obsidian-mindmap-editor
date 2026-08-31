@@ -9,7 +9,7 @@ export function sameWindow(a: WorkspaceLeaf, b: WorkspaceLeaf): boolean {
 export function sameSplit(a: WorkspaceLeaf, b: WorkspaceLeaf): boolean {
   const split = a.parent?.parent;
 
-  return !!split && split === b.parent?.parent;
+  return a.parent !== b.parent && !!split && split === b.parent?.parent;
 }
 
 /** Itself, its window, or neither: how close a pane is to the one asking. */

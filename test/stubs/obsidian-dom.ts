@@ -34,6 +34,13 @@ export function installObsidianDom(): void {
   });
 
   Object.assign(Element.prototype as unknown as Record<string, unknown>, {
+    createEl(this: Element, tag: keyof HTMLElementTagNameMap) {
+      const el = document.createElement(tag);
+
+      this.appendChild(el);
+
+      return el;
+    },
     createDiv(this: Element, o?: DivOptions | string) {
       const el = make(o);
 

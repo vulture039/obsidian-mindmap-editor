@@ -7,7 +7,8 @@ npm install
 npm run dev    # watch build
 npm run build  # type check + production build
 npm run lint   # Obsidian's plugin and CSS review checks; warnings fail
-npm run check  # everything required before a release
+npm run check  # all local build, lint, format, and unit checks
+npm run release:check # same, after verifying Obsidian's ESLint is current
 npm test       # the Vitest unit tests (npm run test:watch to watch)
 npm run e2e    # the checks that need Obsidian itself; see below
 ```
@@ -189,9 +190,16 @@ frame, which is what keeps the nodes readable at 800px.
 
 ## Release
 
+1. Merge the release changes into `master` and push them.
+2. Run the
+   [Obsidian Review branch scan](https://community.obsidian.md/account/plugins/mindmap-editor/review-branch)
+   against `master` and resolve every warning.
+3. Create and push the version commit and tag. `npm version` automatically runs
+   `release:check` before it changes files or creates the tag.
+
 ```bash
 npm version 1.0.1          # updates package/manifest/versions.json + commits + tags "1.0.1"
-git push origin master     # push the commit
+git push origin master     # push the version commit
 git push origin 1.0.1      # push the tag → CI builds and drafts a release
 ```
 

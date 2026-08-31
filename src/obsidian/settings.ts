@@ -22,22 +22,22 @@ export class MindmapSettingTab extends PluginSettingTab {
     return [
       {
         name: 'Hide completed tasks by default',
-        desc: 'What a map being opened starts with: checked tasks hidden behind one "✓ n done" node per parent. Each map is then switched on its own, with the check-check button in its header.',
+        desc: 'Start new maps with checked tasks grouped under a "✓ n done" node. Toggle each map from its header.',
         control: { type: 'toggle', key: 'hideCompleted' },
       },
       {
         name: 'Sync collapse state with Markdown folding',
-        desc: 'Collapsing a branch on the map folds the same heading or list item in the Markdown pane, and folding it there collapses the branch here. A pane in reading view follows along by its headings only.',
+        desc: 'Keep map branches and Markdown folds in sync. Reading view syncs headings only.',
         control: { type: 'toggle', key: 'syncFolds' },
       },
       {
         name: 'Show node text by default',
-        desc: 'What a map being opened starts with: the text under a node - the lines that are no node of their own - drawn inside it. Each map is then switched on its own, with the pilcrow button in its header.',
+        desc: "Start new maps with each node's non-node lines shown inside it. Toggle each map with ¶ in its header.",
         control: { type: 'toggle', key: 'showBodyText' },
       },
       {
         name: 'Split direction',
-        desc: 'How the workspace splits when the plugin opens a new pane (mind map or editor). A map opened beside one already on screen is a tab in its group, so this is the split the first one makes.',
+        desc: 'Direction for new mind map or editor splits. Additional maps in an existing map pane open as tabs.',
         control: {
           type: 'dropdown',
           key: 'splitDirection',
@@ -50,7 +50,7 @@ export class MindmapSettingTab extends PluginSettingTab {
       },
       {
         name: 'Branch colors',
-        desc: 'Colors assigned to top-level branches by position, one hex color per line. Branches beyond the last line cycle back to the first. One line paints the whole map in that one color; leave empty for the default palette.',
+        desc: 'Top-level branch colors, one hex per line. Colors repeat; leave blank for defaults.',
         control: {
           type: 'textarea',
           key: 'palette',

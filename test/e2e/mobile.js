@@ -67,4 +67,46 @@ for (const command of ['open-mindmap', 'open-mindmap-linked']) {
   );
 }
 
+// A remembered note opens its map in another tab, then presents that tab.
+{
+  const remembered = app.vault.getAbstractFileByPath('Linked.md');
+  const originalFiles = [...plugin.settings.autoOpenFiles];
+
+  for (const leaf of app.workspace.getLeavesOfType('markdown')) {
+    if (leaf.getViewState().state?.file === remembered?.path) leaf.detach();
+  }
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  plugin.settings.autoOpenFiles = [remembered.path];
+  const maps = () => app.workspace.getLeavesOfType('mindmap-editor');
+  const before = maps().length;
+  const alreadyOpen = maps().filter(
+    (leaf) => leaf.getViewState().state?.file === remembered.path,
+  ).length;
+  const markdown = app.workspace.getLeaf('tab');
+
+  await markdown.openFile(remembered, { active: true });
+  app.workspace.setActiveLeaf(markdown, { focus: true });
+  const restored = await until(() =>
+    app.workspace
+      .getLeavesOfType('mindmap-editor')
+      .find(
+        (leaf) =>
+          leaf.getViewState().state?.file === remembered.path &&
+          leaf.containerEl.isShown(),
+      ),
+  );
+
+  check(
+    'opening a remembered note presents its map in another tab',
+    !!restored &&
+      maps().length === before + (alreadyOpen ? 0 : 1) &&
+      maps().filter(
+        (leaf) => leaf.getViewState().state?.file === remembered.path,
+      ).length === 1 &&
+      !markdown.containerEl.isShown(),
+    `restored ${!!restored}, maps ${before} -> ${maps().length}`,
+  );
+  plugin.settings.autoOpenFiles = originalFiles;
+}
+
 return { results };

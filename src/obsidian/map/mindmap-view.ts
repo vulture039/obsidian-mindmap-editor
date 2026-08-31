@@ -190,6 +190,7 @@ export class MindmapView extends ItemView {
   private hideCompletedActionEl: HTMLElement | null = null;
   private bodyTextActionEl: HTMLElement | null = null;
   private linkActionEl: HTMLElement | null = null;
+  private autoOpenActionEl: HTMLElement | null = null;
   private viewport!: MapViewport;
   /** Restored before the viewport DOM exists during workspace startup. */
   private savedZoom = 1;
@@ -1078,15 +1079,28 @@ export class MindmapView extends ItemView {
     void this.linkToEditor();
   }
 
+  private async toggleAutoOpen(): Promise<void> {
+    await this.plugin.toggleAutoOpen(this.file);
+    this.syncToggleActions();
+  }
+
   /** Lights up the header buttons that stand for what this map is showing. */
   private syncToggleActions(): void {
     const text = this.showBodyText;
     const linked = !!this.editor.linkedLeaf();
+    const autoOpen = this.plugin.isAutoOpenFile(this.file);
 
     this.linkActionEl?.toggleClass('is-active', linked);
     this.linkActionEl?.setAttribute(
       'aria-label',
       linked ? 'Unlink this map, so it follows the active file' : LINK_LABEL,
+    );
+    this.autoOpenActionEl?.toggleClass('is-active', autoOpen);
+    this.autoOpenActionEl?.setAttribute(
+      'aria-label',
+      autoOpen
+        ? 'Stop opening this map automatically with the note'
+        : 'Open this map automatically with the note',
     );
     this.hideCompletedActionEl?.toggleClass('is-active', this.hideCompleted);
     this.bodyTextActionEl?.toggleClass('is-active', text);
@@ -1109,6 +1123,11 @@ export class MindmapView extends ItemView {
     );
     this.linkActionEl = this.addAction('link', LINK_LABEL, () =>
       this.toggleLink(),
+    );
+    this.autoOpenActionEl = this.addAction(
+      'bookmark',
+      'Open this map automatically with the note',
+      () => void this.toggleAutoOpen(),
     );
     this.syncToggleActions();
     this.foldAllActionEls.set(
@@ -1322,6 +1341,7 @@ export class MindmapView extends ItemView {
 
   async setFile(file: TFile): Promise<void> {
     this.file = file;
+    this.syncToggleActions();
     this.selectOnly(null);
     this.cursorLine = null;
     this.expandedDone.clear();

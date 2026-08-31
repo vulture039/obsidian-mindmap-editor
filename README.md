@@ -11,47 +11,18 @@ No new file format, no markup to add.
 2. Press Ctrl+P (Cmd+P on macOS) and run `Open mind map for the active file` (or click the ribbon icon).
    Any note's map also opens from `Open mind map linked to this note` on its right-click menu, in the file
    explorer or on its tab.
-3. The map opens in a split and stays in sync while you type.
+3. The map opens beside the note on desktop, or in another tab on mobile.
 
 ## Features
 
-- **Automatic mind map** - Headings and bullet lists become nodes, with the note title as the root;
-  heading depth and list indentation define the hierarchy. The root is the file's own name, so it is the one
-  node the map does not edit - rename the note itself.
-  Headings stand out by weight and a color-tinted fill; list items are plain.
-- **Edit on the map** - Rename, add, delete, drag & drop. Dropping on a node's middle makes it a child;
-  dropping near a sibling's top/bottom edge inserts it there. A rename is written as it is typed, and
-  `Ctrl/Cmd + Z` takes it back. `Ctrl`-click (`Cmd`-click on macOS) selects multiple same-type siblings;
-  drag any selected node to move the group in order, or press Delete/Backspace to delete them together.
-- **Working checkboxes** - Clicking toggles `[ ]` ⇄ `[x]` in the file.
-- **Collapse branches, in sync with the Markdown pane** - A handle on each node folds its branch (`−` / `+3`),
-  and the pane folds with it - both ways, and after a restart. A reading pane takes no fold state, so there
-  the map folds its headings by their own handles; its lists stay the reader's. The header buttons and the
-  fold commands do the whole map at once.
-- **Show a node's own text** - Off by default; the `¶` header button draws the lines under a node that are no
-  node of their own inside it, and `≡` on its corner folds them away. The map only draws this text - it is
-  written in the Markdown pane: click a line to put the cursor on it, double-click to open it there. Inline
-  Markdown is rendered, links stay clickable, and local or remote image embeds become size-limited previews;
-  unresolved embeds keep their original Markdown. The `¶` button is that map's own, so a second map can leave
-  its text alone.
-- **Hide completed tasks** - The `✓✓` header button hides checked tasks behind one `✓ n done` node per parent.
-  Click it to reveal just that parent (`− hide done` puts them back). Per map, and remembered across sessions.
-- **Zoom and pan large maps** - Use the mouse wheel or the header zoom controls to zoom around the cursor. The
-  `Center mind map` button returns a lost map to the middle without changing its zoom. On a touchscreen, drag
-  the background with one finger or pinch with two; each map remembers its zoom level.
-- **Map and editor follow each other in the desktop app** - Selecting a node brings its note to the front of the
-  Markdown side and moves the cursor to its line; moving the cursor selects the node it belongs to - down to
-  the line, where a node's text is drawn. Neither side steals the focus.
-- **Follow wikilinks** - Clicking a `[[wikilink]]` switches map and editor to the linked note together.
-- **Maps side by side, one note each** - A map follows whichever note you open, like Obsidian's own outline.
-  The `🔗` button and `Open mind map linked to the active file` tie one to its note's tab instead, beside that
-  note; asking again fills that map pane rather than another. Obsidian's own link, undone from its tab menu.
-- **Branch colors** - Each top-level branch gets a palette color by position and its subtree keeps it.
-  Customize the palette in settings, one hex color per line.
-- **Levels tell apart** - Every node of a level starts on the same left edge, so the depth is read off the
-  column. Each level in is a step quieter than the one it hangs off - less of the branch color in the fill and
-  the outline, and a size smaller - for six levels, after which the fill is spent. Headings keep square
-  corners at every level, and the note itself carries a doubled border as the largest node on the canvas.
+- **Markdown-native maps** - Headings and lists form the map; edits write back to the same note.
+- **Direct editing** - Add, rename, delete, multi-select, and drag nodes with undo/redo support.
+- **Tasks and folds** - Toggle checkboxes, collapse branches, and optionally hide completed tasks.
+- **Rich node text** - Show body text with inline Markdown, links, and image previews.
+- **Map/editor sync** - Selection, cursor position, folds, and wikilinks stay in sync.
+- **Flexible views** - Zoom, pan, center, and open multiple maps as splits or tabs.
+- **Link and bookmark** - Link a map to a Markdown tab on desktop, or bookmark a note for automatic opening.
+- **Visual hierarchy** - Depth, headings, and customizable branch colors remain easy to distinguish.
 
 ## Keyboard shortcuts
 
@@ -81,7 +52,7 @@ None of these come with a hotkey; bind the ones you want in Settings → Hotkeys
 | Command                                             | What it does                                          |
 | --------------------------------------------------- | ----------------------------------------------------- |
 | `Open mind map for the active file`                 | Same as the ribbon icon                               |
-| `Open mind map linked to the active file`           | A second map, tied to that note while the first roams |
+| `Open mind map linked to the active file`           | Desktop: opens a map tied to the active Markdown tab  |
 | `Toggle focus between mind map and Markdown editor` | Jumps between the two panes                           |
 | `Collapse all branches` / `Expand all branches`     | The `⌄⌃` header button, one direction at a time       |
 | `Fold all node text` / `Unfold all node text`       | The `≡` header button, likewise                       |

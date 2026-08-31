@@ -46,7 +46,7 @@ function imageNode(embed: NodeImageEmbed, context: RenderContext): Node {
   if (!src) {
     return containerEl.doc.createTextNode(embed.syntax);
   }
-  const image = containerEl.doc.createElement('img');
+  const image = containerEl.createEl('img');
 
   image.className = 'mindmap-node-image';
   image.alt = embed.alt;
@@ -105,12 +105,12 @@ function restoreEmbeds(
     if (!matches.length) {
       continue;
     }
-    const replacement = context.containerEl.doc.createDocumentFragment();
+    const replacement: (Node | string)[] = [];
     let last = 0;
 
     for (const { token, embed, index } of matches) {
-      replacement.append(node.data.slice(last, index));
-      replacement.append(
+      replacement.push(node.data.slice(last, index));
+      replacement.push(
         embed.kind === 'image'
           ? imageNode(embed, context)
           : context.containerEl.doc.createTextNode(embed.syntax),
@@ -118,8 +118,8 @@ function restoreEmbeds(
       restored++;
       last = index + token.length;
     }
-    replacement.append(node.data.slice(last));
-    node.replaceWith(replacement);
+    replacement.push(node.data.slice(last));
+    node.replaceWith(...replacement);
   }
 
   return restored;

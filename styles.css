@@ -28,6 +28,16 @@
   will-change: transform;
 }
 
+/* Frozen completed frame shown while the next async layout is measured. */
+.mindmap-render-snapshot {
+  pointer-events: none;
+  z-index: 1;
+}
+
+.mindmap-canvas.is-render-staging {
+  visibility: hidden;
+}
+
 .mindmap-edges {
   position: absolute;
   inset: 0;
@@ -219,6 +229,26 @@
   overflow-wrap: anywhere;
 }
 
+/* MarkdownRenderer emits a paragraph even for one source line. It remains
+   that line here rather than adding Reading View's paragraph spacing. */
+.mindmap-node-text > p,
+.mindmap-node-body-line > p {
+  display: inline;
+  margin: 0;
+}
+
+/* Image embeds in a node's own text use the same resource URL as Reading
+   View, but stay a preview rather than deciding the size of the whole map. */
+.mindmap-node-image {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  max-height: 210px;
+  margin: 3px auto 0;
+  object-fit: contain;
+  cursor: pointer;
+}
+
 /* A line box, the same as the one the editor gives a blank line: opening an
    edit must not change the height of what it replaces. */
 .mindmap-node-body-line:empty {
@@ -371,13 +401,6 @@
 
 .mindmap-node.is-shift-up {
   transform: translateY(-6px);
-}
-
-.mindmap-node.mindmap-ghost {
-  pointer-events: none;
-  opacity: 0.85;
-  z-index: 10;
-  box-shadow: var(--shadow-s);
 }
 
 /* Page-coloured shadows keep a theme-coloured link legible on every fill. */

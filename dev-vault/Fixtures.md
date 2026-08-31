@@ -39,6 +39,46 @@ And the second run of this heading's text, after every item it has.
 - a [[Linked]] wikilink to another note, to follow
 - an [alias](https://obsidian.md) link
 
+## Rendered node text
+
+**bold**, *italic*, ~~gone~~, `inline code`, and $x^2$.
+
+Obsidian embed:
+
+![[Assets/Preview.svg]]
+
+Markdown image:
+
+![Preview](Assets/Preview.svg)
+
+Small image (80 × 60, Obsidian embed):
+
+![[Assets/Small.svg]]
+
+Large image (1600 × 1200, Markdown image):
+
+![Large](Assets/Large.svg)
+
+Portrait image (600 × 1200, Obsidian embed):
+
+![[Assets/Portrait.svg]]
+
+Wide image (1600 × 400, Markdown image):
+
+![Wide](Assets/Wide.svg)
+
+Missing Obsidian embed (falls back to its source):
+
+![[Assets/Missing.png]]
+
+Missing Markdown image (falls back to its source):
+
+![Missing](Assets/Missing.png)
+
+Remote Markdown image:
+
+![Remote demo](https://raw.githubusercontent.com/vulture039/obsidian-mindmap-editor/master/docs/demo.gif)
+
 ## Long text
 
 - an item whose own label runs long enough to wrap onto a second line inside the node pill, which is where the width cap shows

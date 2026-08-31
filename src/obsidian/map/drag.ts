@@ -16,9 +16,6 @@ export const DRAGGING_SELECTOR = '.mindmap-node.is-dragging';
 /** Gap (px) between the dragged node's insertion bar and the anchor node. */
 const INDICATOR_GAP = 4;
 
-/** How far the ghost trails the pointer, so the cursor stays readable. */
-const GHOST_OFFSET = 10;
-
 /** What a drag needs from the view it runs in. */
 export interface DragHost {
   canvasEl: HTMLElement;
@@ -69,7 +66,6 @@ function runDrag(
   const pointerId = down.pointerId;
   let started = false;
   let finished = false;
-  let ghost: HTMLElement | null = null;
   let indicator: HTMLElement | null = null;
   let drop: DropTarget | null = null;
   const clearCues = (): void => {
@@ -127,10 +123,6 @@ function runDrag(
         laid.el.addClass('is-invalid-target');
       }
     }
-    ghost = el.cloneNode(true) as HTMLElement;
-    ghost.removeClass('is-dragging', 'is-selected');
-    ghost.addClass('mindmap-ghost');
-    host.canvasEl.appendChild(ghost);
   };
   const onMove = (ev: PointerEvent): void => {
     const traveled =
@@ -142,12 +134,6 @@ function runDrag(
       }
       begin();
     }
-    const rect = host.canvasEl.getBoundingClientRect();
-
-    ghost?.setCssStyles({
-      left: `${ev.clientX - rect.left + GHOST_OFFSET}px`,
-      top: `${ev.clientY - rect.top + GHOST_OFFSET}px`,
-    });
     const next = findDrop(host.nodes, sources, ev.clientX, ev.clientY);
 
     if (!sameDrop(drop, next)) {
@@ -177,7 +163,6 @@ function runDrag(
     host.canvasEl
       .querySelectorAll('.mindmap-node.is-invalid-target')
       .forEach((marked) => marked.removeClass('is-invalid-target'));
-    ghost?.remove();
     const finalDrop = drop;
 
     clearCues();

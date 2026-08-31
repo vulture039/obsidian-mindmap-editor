@@ -1,44 +1,67 @@
-import { describe, it, expect } from 'vitest';
-import { parseNodeText } from './node-text';
+import { describe, expect, it } from 'vitest';
+import { parseNodeEmbeds } from './node-text';
 
-describe('parseNodeText', () => {
-  it('returns a single text segment when there are no links', () => {
-    expect(parseNodeText('just text')).toEqual([
-      { kind: 'text', text: 'just text' },
+function firstImage(text: string) {
+  const embed = parseNodeEmbeds(text)[0];
+
+  return embed?.kind === 'image' ? embed : null;
+}
+
+describe('parseNodeEmbeds', () => {
+  it('finds Obsidian and Markdown images in source order', () => {
+    expect(
+      parseNodeEmbeds('before ![[image.png|caption]] and ![alt](assets/a.jpg)'),
+    ).toEqual([
+      {
+        kind: 'image',
+        start: 7,
+        end: 29,
+        syntax: '![[image.png|caption]]',
+        target: 'image.png',
+        alt: 'caption',
+      },
+      {
+        kind: 'image',
+        start: 34,
+        end: 54,
+        syntax: '![alt](assets/a.jpg)',
+        target: 'assets/a.jpg',
+        alt: 'alt',
+      },
     ]);
   });
 
-  it('parses a wikilink, defaulting the label to the target', () => {
-    expect(parseNodeText('[[Note]]')).toEqual([
-      { kind: 'wikilink', target: 'Note', label: 'Note' },
+  it('supports spaces, angle destinations, nested parentheses and titles', () => {
+    expect(
+      [
+        '![a](<My Image.png>)',
+        '![b](image(1).png)',
+        '![c](image.png "title")',
+        String.raw`![d](My\ Image.png)`,
+      ].map((text) => firstImage(text)?.target),
+    ).toEqual(['My Image.png', 'image(1).png', 'image.png', 'My Image.png']);
+  });
+
+  it('does not turn embeds inside inline code into previews', () => {
+    expect(parseNodeEmbeds('`![[code.png]]` ![[shown.png]]')).toEqual([
+      expect.objectContaining({ target: 'shown.png', kind: 'image' }),
     ]);
   });
 
-  it('uses the alias as the wikilink label when present', () => {
-    expect(parseNodeText('[[Note|shown]]')).toEqual([
-      { kind: 'wikilink', target: 'Note', label: 'shown' },
+  it('keeps non-image Obsidian embeds literal', () => {
+    expect(parseNodeEmbeds('![[Note.md]] ![[file.pdf]]')).toEqual([
+      expect.objectContaining({ kind: 'literal', syntax: '![[Note.md]]' }),
+      expect.objectContaining({ kind: 'literal', syntax: '![[file.pdf]]' }),
     ]);
   });
 
-  it('parses a markdown link into url and label', () => {
-    expect(parseNodeText('[label](https://x.com)')).toEqual([
-      { kind: 'link', url: 'https://x.com', label: 'label' },
-    ]);
+  it('recognizes image extensions case-insensitively before query or fragment', () => {
+    expect(parseNodeEmbeds('![[Photo.PNG#crop]]')[0]).toEqual(
+      expect.objectContaining({ kind: 'image', target: 'Photo.PNG#crop' }),
+    );
   });
 
-  it('keeps surrounding text as its own segments, in order', () => {
-    expect(parseNodeText('see [[A]] and [b](u) end')).toEqual([
-      { kind: 'text', text: 'see ' },
-      { kind: 'wikilink', target: 'A', label: 'A' },
-      { kind: 'text', text: ' and ' },
-      { kind: 'link', url: 'u', label: 'b' },
-      { kind: 'text', text: ' end' },
-    ]);
-  });
-
-  it('trims whitespace inside wikilink target and alias', () => {
-    expect(parseNodeText('[[ Note | shown ]]')).toEqual([
-      { kind: 'wikilink', target: 'Note', label: 'shown' },
-    ]);
+  it('does not use Obsidian size aliases as alt text', () => {
+    expect(firstImage('![[image.png|300x200]]')?.alt).toBe('');
   });
 });

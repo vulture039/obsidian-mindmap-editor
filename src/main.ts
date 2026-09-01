@@ -1,4 +1,11 @@
-import { Notice, Platform, Plugin, TFile, WorkspaceLeaf } from 'obsidian';
+import {
+  MarkdownView,
+  Notice,
+  Platform,
+  Plugin,
+  TFile,
+  WorkspaceLeaf,
+} from 'obsidian';
 import { MindmapView, VIEW_TYPE_MINDMAP } from './obsidian/map/mindmap-view';
 import { FoldKind } from './core/folds';
 import { DEFAULT_SETTINGS, MindmapSettings } from './core/settings';
@@ -67,6 +74,13 @@ export default class MindmapPlugin extends Plugin {
       name: 'Refresh the mind map from the Markdown',
       callback: () => {
         this.withMindmap((view) => void view.forceRefresh());
+      },
+    });
+    this.addCommand({
+      id: 'fit-mindmap',
+      name: 'Fit mind map to viewport',
+      callback: () => {
+        this.withMindmap((view) => view.fit());
       },
     });
     this.addCommand({
@@ -258,12 +272,13 @@ export default class MindmapPlugin extends Plugin {
       if (linked && !this.isMobile && already.view instanceof MindmapView) {
         await this.rememberLinkedMap(file);
       }
-      if (already.view instanceof MindmapView) {
-        already.view.centerAfterReveal();
-      }
 
       return;
     }
+    const cursorLine = this.cursorLineFor(file, near);
+    const sourceHeight =
+      near?.view instanceof MarkdownView ? near.view.contentEl.clientHeight : 0;
+
     const leaf = this.newMapLeaf(near, linked);
 
     await leaf.setViewState({
@@ -283,8 +298,68 @@ export default class MindmapPlugin extends Plugin {
       await this.app.workspace.revealLeaf(leaf);
     }
     if (leaf.view instanceof MindmapView) {
-      leaf.view.centerAfterReveal();
+      leaf.view.initialViewportAfterReveal(cursorLine);
     }
+    if (!this.isMobile) {
+      this.keepMarkdownCursorVisible(file, near, cursorLine, sourceHeight);
+    }
+  }
+
+  /** Keeps a source caret visible after a new split reduces its pane height. */
+  private keepMarkdownCursorVisible(
+    file: TFile,
+    leaf: WorkspaceLeaf | null,
+    line: number | null,
+    previousHeight: number,
+  ): void {
+    const view = leaf?.view;
+
+    if (
+      line === null ||
+      previousHeight <= 0 ||
+      !(view instanceof MarkdownView) ||
+      view.file?.path !== file.path ||
+      view.getMode() !== 'source'
+    ) {
+      return;
+    }
+    const reveal = (): void => {
+      if (
+        view.file?.path !== file.path ||
+        view.contentEl.clientHeight >= previousHeight ||
+        line > view.editor.lastLine()
+      ) {
+        return;
+      }
+      const ch = view.editor.getLine(line).length;
+
+      view.editor.scrollIntoView(
+        { from: { line, ch: 0 }, to: { line, ch } },
+        true,
+      );
+    };
+    const win = view.containerEl.win;
+
+    reveal();
+    win.setTimeout(reveal, 350);
+  }
+
+  /** A meaningful caret from the Markdown pane that asked for a new map. */
+  private cursorLineFor(
+    file: TFile,
+    leaf: WorkspaceLeaf | null,
+  ): number | null {
+    const view = leaf?.view;
+
+    if (!(view instanceof MarkdownView) || view.file?.path !== file.path) {
+      return null;
+    }
+    const active = view.containerEl.doc.activeElement;
+    const title = active?.closest('.inline-title, .view-header-title');
+
+    return title && view.containerEl.contains(title)
+      ? null
+      : view.editor.getCursor().line;
   }
 
   /**

@@ -20,7 +20,7 @@ No new file format, no markup to add.
 - **Tasks and folds** - Toggle checkboxes, collapse branches, and optionally hide completed tasks.
 - **Rich node text** - Show body text with inline Markdown, links, and image previews.
 - **Map/editor sync** - Selection, cursor position, folds, and wikilinks stay in sync.
-- **Flexible views** - Zoom, pan, center, and open multiple maps as splits or tabs.
+- **Flexible views** - Zoom, pan, fit, and open multiple maps as splits or tabs.
 - **Link and Auto-open** - Link a map to a Markdown tab, or reopen it automatically with a note.
 - **Visual hierarchy** - Depth, headings, and customizable branch colors remain easy to distinguish.
 
@@ -53,6 +53,7 @@ None of these come with a hotkey; bind the ones you want in Settings → Hotkeys
 | --------------------------------------------------- | ----------------------------------------------------- |
 | `Open mind map for the active file`                 | Same as the ribbon icon                               |
 | `Open mind map linked to the active file`           | Desktop: opens a map tied to the active Markdown tab  |
+| `Fit mind map to viewport`                          | Fits the whole map in the viewport and centers it     |
 | `Toggle focus between mind map and Markdown editor` | Jumps between the two panes                           |
 | `Collapse all branches` / `Expand all branches`     | The `⌄⌃` header button, one direction at a time       |
 | `Fold all node text` / `Unfold all node text`       | The `≡` header button, likewise                       |

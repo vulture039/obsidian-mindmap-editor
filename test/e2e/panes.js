@@ -31,6 +31,39 @@ if (!other) {
 const maps = () => app.workspace.getLeavesOfType('mindmap-editor');
 const mapsFor = (path) =>
   maps().filter((leaf) => leaf.view.currentFile?.path === path);
+const markdownFor = (path) =>
+  app.workspace
+    .getLeavesOfType('markdown')
+    .find((leaf) => leaf.getViewState().state?.file === path);
+const centered = (el, scroller) => {
+  const box = el?.getBoundingClientRect();
+  const port = scroller?.getBoundingClientRect();
+
+  return (
+    !!box &&
+    !!port &&
+    Math.abs(box.left + box.width / 2 - (port.left + port.width / 2)) < 1 &&
+    Math.abs(box.top + box.height / 2 - (port.top + port.height / 2)) < 1
+  );
+};
+const fits = (leaf) => {
+  const scroller = leaf?.view.contentEl.querySelector('.mindmap-scroller');
+  const canvas = leaf?.view.contentEl.querySelector('.mindmap-canvas');
+  const zoom = leaf?.view.getState().zoom;
+
+  return (
+    !!scroller &&
+    !!canvas &&
+    typeof zoom === 'number' &&
+    canvas.offsetWidth * zoom <= scroller.clientWidth - 63.9 &&
+    canvas.offsetHeight * zoom <= scroller.clientHeight - 63.9
+  );
+};
+const closeMap = async (leaf) => {
+  leaf?.detach();
+  app.workspace.trigger('layout-change');
+  await until(() => !leaf || !maps().includes(leaf));
+};
 const openMap = () =>
   app.commands.executeCommandById('mindmap-editor:open-mindmap');
 /** The map pane the harness came in on, which is not ours to close. */
@@ -66,6 +99,7 @@ const openLinked = async () => {
 };
 
 try {
+  await settle();
   // A map on its own is the one that roams.
   {
     await activate(OTHER);
@@ -74,12 +108,21 @@ try {
       !!(await until(() => ours.view.currentFile?.path === OTHER)),
       `it stayed on ${ours.view.currentFile?.path}`,
     );
+    await app.workspace.revealLeaf(ours);
+    await until(() => ours.view.laidByLine.get(5)?.node.text === 'one');
 
     const roamingScroller =
       ours.view.contentEl.querySelector('.mindmap-scroller');
 
     roamingScroller.scrollLeft += 300;
     roamingScroller.scrollTop += 300;
+    const roamingPosition = [
+      roamingScroller.scrollLeft,
+      roamingScroller.scrollTop,
+    ];
+    const source = markdownFor(OTHER);
+
+    if (source) app.workspace.setActiveLeaf(source, { focus: true });
     openMap();
     await settle();
     check(
@@ -87,32 +130,91 @@ try {
       maps().length === 1,
       `${maps().length} map panes open`,
     );
-    const roamingCanvas = ours.view.contentEl.querySelector('.mindmap-canvas');
-    const roamingLeft =
-      roamingCanvas.offsetLeft +
-      (roamingCanvas.offsetWidth * ours.view.getState().zoom -
-        roamingScroller.clientWidth) /
-        2;
-    const roamingTop =
-      roamingCanvas.offsetTop +
-      (roamingCanvas.offsetHeight * ours.view.getState().zoom -
-        roamingScroller.clientHeight) /
-        2;
+    check(
+      'revealing an existing map preserves its viewport',
+      roamingScroller.scrollLeft === roamingPosition[0] &&
+        roamingScroller.scrollTop === roamingPosition[1],
+      `${roamingPosition.join(', ')} became ${roamingScroller.scrollLeft}, ${roamingScroller.scrollTop}`,
+    );
+  }
+
+  // Note-level prose belongs to the root node, so it is a real cursor target.
+  {
+    const source = markdownFor(OTHER);
+
+    source?.view.editor?.setCursor({ line: 0, ch: 0 });
+    if (source) app.workspace.setActiveLeaf(source, { focus: true });
+    const fitted = await openLinked();
+    const scroller = fitted?.view.contentEl.querySelector('.mindmap-scroller');
+    const root = fitted?.view.contentEl.querySelector(
+      '.mindmap-node[data-line="-1"]',
+    );
 
     check(
-      'revealing an existing map centers it too',
-      Math.abs(roamingScroller.scrollLeft - roamingLeft) < 1 &&
-        Math.abs(roamingScroller.scrollTop - roamingTop) < 1,
-      `scroll ${roamingScroller.scrollLeft}, ${roamingScroller.scrollTop}; center ${roamingLeft}, ${roamingTop}`,
+      'a root-body cursor selects and centers the root node',
+      root?.classList.contains('is-selected') && centered(root, scroller),
+      `selected ${root?.className}`,
     );
+    await closeMap(fitted);
+  }
+
+  // The title is outside the Markdown body. Its editor still remembers the
+  // old body cursor, but opening from the title must not use that stale line.
+  {
+    const source = markdownFor(OTHER);
+
+    source?.view.editor?.setCursor({ line: 5, ch: 0 });
+    const title = source?.view.containerEl.querySelector('.inline-title');
+
+    if (source) app.workspace.setActiveLeaf(source, { focus: true });
+    title?.focus();
+    const fitted = await openLinked();
+
+    check(
+      'opening from the note title ignores the stale body cursor and fits',
+      fits(fitted),
+      `title ${!!title}; zoom ${fitted?.view.getState().zoom}`,
+    );
+    await closeMap(fitted);
+  }
+
+  // Reading View retains the editor's last meaningful body position.
+  {
+    const source = markdownFor(OTHER);
+
+    source?.view.editor?.setCursor({ line: 5, ch: 0 });
+    await source?.setViewState({
+      type: 'markdown',
+      active: true,
+      state: { file: OTHER, mode: 'preview' },
+    });
+    if (source) app.workspace.setActiveLeaf(source, { focus: true });
+    const readingMap = await openLinked();
+    const cursorNode = readingMap?.view.contentEl.querySelector(
+      '.mindmap-node[data-line="5"]',
+    );
+
+    check(
+      'Reading View opens at its retained non-root cursor position',
+      cursorNode?.classList.contains('is-selected'),
+      `mode ${source?.view.getMode?.()}; selected ${cursorNode?.className}`,
+    );
+    await closeMap(readingMap);
+    await source?.setViewState({
+      type: 'markdown',
+      active: true,
+      state: { file: OTHER, mode: 'source' },
+    });
   }
 
   // A linked map: a second one, in the same tab group, tied to its note's tab.
   {
+    const source = markdownFor(OTHER);
+
+    source?.view.editor?.setCursor({ line: 5, ch: 0 });
+    if (source) app.workspace.setActiveLeaf(source, { focus: true });
     const second = await openLinked();
-    const otherMarkdown = app.workspace
-      .getLeavesOfType('markdown')
-      .find((leaf) => leaf.getViewState().state?.file === OTHER);
+    const otherMarkdown = markdownFor(OTHER);
 
     check(
       "the linked command opens a second map outside its note's pane",
@@ -121,35 +223,28 @@ try {
     );
     const scroller = second?.view.contentEl.querySelector('.mindmap-scroller');
     const canvas = second?.view.contentEl.querySelector('.mindmap-canvas');
-    const centeredLeft =
-      canvas?.offsetLeft +
-      (canvas?.offsetWidth * second?.view.getState().zoom -
-        scroller?.clientWidth) /
-        2;
-    const centeredTop =
-      canvas?.offsetTop +
-      (canvas?.offsetHeight * second?.view.getState().zoom -
-        scroller?.clientHeight) /
-        2;
-
-    check(
-      'a newly opened map starts in the center of its viewport',
-      !!scroller &&
-        Math.abs(scroller.scrollLeft - centeredLeft) < 1 &&
-        Math.abs(scroller.scrollTop - centeredTop) < 1,
-      `scroll ${scroller?.scrollLeft}, ${scroller?.scrollTop}; center ${centeredLeft}, ${centeredTop}`,
+    const cursorNode = second?.view.contentEl.querySelector(
+      '.mindmap-node[data-line="5"]',
     );
-    const beforeCenter = [scroller?.scrollLeft, scroller?.scrollTop];
-    const center = [
-      ...(second?.view.containerEl.querySelectorAll('.view-action') ?? []),
-    ].find((button) => button.getAttribute('aria-label') === 'Center mind map');
 
-    click(center);
     check(
-      'pressing center immediately after opening does not move the map',
-      scroller?.scrollLeft === beforeCenter[0] &&
-        scroller?.scrollTop === beforeCenter[1],
-      `${beforeCenter.join(', ')} became ${scroller?.scrollLeft}, ${scroller?.scrollTop}`,
+      'a new map starts at the non-root node under the Markdown cursor',
+      cursorNode?.classList.contains('is-selected') &&
+        centered(cursorNode, scroller),
+      `selected ${cursorNode?.className}`,
+    );
+    const fit = [
+      ...(second?.view.containerEl.querySelectorAll('.view-action') ?? []),
+    ].find(
+      (button) =>
+        button.getAttribute('aria-label') === 'Fit mind map to viewport',
+    );
+
+    click(fit);
+    check(
+      'the header Fit action fits and centers a newly opened map',
+      !!fit && fits(second) && centered(canvas, scroller),
+      `zoom ${second?.view.getState().zoom}`,
     );
 
     // Asked again for the same note: the map tied to its tab, not another

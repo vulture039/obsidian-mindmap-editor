@@ -124,12 +124,14 @@ case:
 - **`drag-rendered-node.js`** (`npm run e2e test/e2e/drag-rendered-node.js`) - moving an image-heavy
   heading after its asynchronous content has settled.
 - **`zoom.js`** (`npm run e2e test/e2e/zoom.js`) - header, cursor-anchored wheel
-  and pinch zoom, centering, limits, and restoring one pane's zoom level.
+  and pinch zoom, fitting, limits, and restoring one pane's zoom level.
 - **`mobile.js`** (`npm run e2e test/e2e/mobile.js`) - opening and rendering a
   map in Obsidian's emulated mobile workspace.
 - **`panes.js`** (`npm run e2e test/e2e/panes.js`) - active following, Link,
-  Auto-open restore, closing Markdown, pane reuse and initial centering. It
+  Auto-open restore, closing Markdown, pane reuse and initial framing. It
   opens and closes panes of its own, then puts them back.
+- **`initial-viewport.js`** (`npm run e2e test/e2e/initial-viewport.js`) - a
+  newly stacked map keeps the Markdown cursor visible in the resized source.
 - **`popout.js`** (`npm run e2e test/e2e/popout.js`) - a note in a window of its
   own: which window the map lands in, and whether it drives the editor there
   rather than the one in the main window. It pops a window out and closes it

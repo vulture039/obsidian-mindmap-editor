@@ -49,6 +49,16 @@ export class MindmapSettingTab extends PluginSettingTab {
         },
       },
       {
+        name: 'Remember linked maps',
+        desc: 'Enable Auto-open when you explicitly link a map.',
+        control: { type: 'toggle', key: 'rememberLinkedMaps' },
+      },
+      {
+        name: 'Close linked map with source',
+        desc: 'Close the map when its linked Markdown tab closes.',
+        control: { type: 'toggle', key: 'closeLinkedMapWithSource' },
+      },
+      {
         name: 'Branch colors',
         desc: 'Top-level branch colors, one hex per line. Colors repeat; leave blank for defaults.',
         control: {

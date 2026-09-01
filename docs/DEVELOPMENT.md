@@ -29,13 +29,21 @@ Keep these four behaviors separate:
 | --- | --- | --- |
 | **Active** | The workspace | An unlinked map follows the active Markdown file. This is the normal map behavior. |
 | **Link** | A desktop Markdown tab | The map follows that tab when it changes files. This is Obsidian's `Link with tab`; mobile falls back to a separate map tab. |
-| **Bookmark** | A Markdown file | Opening it after its last Markdown tab closed ensures a map is visible; the active note is also checked at startup. It never changes Link state. |
+| **Auto-open** | A Markdown file | Opening it after its last Markdown tab closed ensures a linked map is visible; the active note is also checked at startup. Mobile opens a separate map tab. |
 | **Pin** | A Markdown file | The map would stay on that file when tabs change. This is not currently implemented. |
 
-Closing or unlinking a map does not remove its bookmark. The bookmark header
-button is the only UI that changes this persistent choice. Closing the
-Markdown tab does not reopen it; the bookmark applies when a new Markdown tab
-for that file opens later.
+Closing or unlinking a map does not disable Auto-open. Its header button can
+always change this persistent choice; an explicit Link can also enable it when
+**Remember linked maps** is on. Closing the Markdown tab does not reopen it;
+Auto-open applies when a new Markdown tab for that file opens later.
+
+**Remember linked maps** keeps the states distinct but connects their explicit
+operations. Linking a map enables Auto-open for its current note, and enabling
+Auto-open links the map to the note. Following a linked Markdown tab onto
+another file never enables Auto-open for that file. Link does not couple pane
+lifetimes by default: closing either pane leaves the other open. **Close linked
+map with source** optionally closes the map when its Markdown source closes;
+closing the map never closes Markdown.
 
 ## The dev vault
 
@@ -120,7 +128,7 @@ case:
 - **`mobile.js`** (`npm run e2e test/e2e/mobile.js`) - opening and rendering a
   map in Obsidian's emulated mobile workspace.
 - **`panes.js`** (`npm run e2e test/e2e/panes.js`) - active following, Link,
-  Bookmark restore, closing Markdown, pane reuse and initial centering. It
+  Auto-open restore, closing Markdown, pane reuse and initial centering. It
   opens and closes panes of its own, then puts them back.
 - **`popout.js`** (`npm run e2e test/e2e/popout.js`) - a note in a window of its
   own: which window the map lands in, and whether it drives the editor there

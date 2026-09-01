@@ -123,10 +123,11 @@ code already carries belongs there, not here.
 - **What moves a map onto a file** - a linked tab if there is one, else the active file. Both are Obsidian's
   own, and there is nothing else: a follow setting and a private per-pane flag were each tried and each only
   added a second vocabulary for what "Link with tab" already says from the tab menu.
-- **A bookmark opens; it never links or pins** - it is a per-file choice in plugin data. The file's first
-  Markdown tab after none were open reveals a map without changing its Link state; the active note is also
-  checked at startup. Closing Markdown does not reopen it, and changing or unlinking panes does not alter the
-  bookmark.
+- **Auto-open opens; it never pins** - it is a per-file choice in plugin data. The file's first Markdown tab
+  after none were open reveals a linked map; the active note is also checked at startup. With **Remember
+  linked maps**, explicit Link operations enable Auto-open for their notes. Merely following that tab never
+  enables it for another note. Closing either pane leaves the other open, and unlinking does not alter
+  Auto-open. **Close linked map with source** optionally closes the map from the Markdown side only.
 - **Opening a map is two requests through one gesture** - "show me this note's map" and "give me another
   pane". A map follows the active file, so asking for the map of the note in front of you can only mean the
   first, and the second needs to be asked for separately: a command and the `🔗` header button, which is where

@@ -14,6 +14,10 @@ export interface MindmapSettings {
   // Notes whose map should be restored when the note is opened. Kept in
   // plugin data rather than in the note's frontmatter.
   autoOpenFiles: string[];
+  // Make an explicit Link operation enable Auto-open for its current note.
+  rememberLinkedMaps: boolean;
+  // Optionally close the dependent map when its linked Markdown tab closes.
+  closeLinkedMapWithSource: boolean;
 }
 
 export const DEFAULT_SETTINGS: MindmapSettings = {
@@ -23,4 +27,6 @@ export const DEFAULT_SETTINGS: MindmapSettings = {
   showBodyText: false,
   splitDirection: 'vertical',
   autoOpenFiles: [],
+  rememberLinkedMaps: false,
+  closeLinkedMapWithSource: false,
 };

@@ -196,9 +196,11 @@ export class MindmapView extends ItemView {
   private linkedSourceLeaf: WorkspaceLeaf | null = null;
   /** Restored before the viewport DOM exists during workspace startup. */
   private savedZoom = 1;
-  /** A new pane waits for its first visible, stable layout before centering. */
-  private centerPending = false;
-  private centerTimer: number | null = null;
+  /** A revealed pane waits for its first visible, stable layout to frame it. */
+  private revealPending:
+    { kind: 'center' } | { kind: 'initial'; cursorLine: number | null } | null =
+    null;
+  private revealTimer: number | null = null;
   /** How many `pointEditorAtFile` calls this map has in flight. */
   private pointing = 0;
   /** The two bulk-fold buttons in the header, by what each one folds. */
@@ -1157,7 +1159,7 @@ export class MindmapView extends ItemView {
     this.addAction('refresh-cw', 'Refresh from the Markdown', () => {
       void this.forceRefresh();
     });
-    this.addAction('focus', 'Center mind map', () => this.viewport.center());
+    this.addAction('focus', 'Fit mind map to viewport', () => this.fit());
     const zoomOutAction = this.addAction('zoom-out', 'Zoom out (100%)', () =>
       this.viewport.zoomOut(),
     );
@@ -1194,8 +1196,8 @@ export class MindmapView extends ItemView {
 
   /** Left up by a map that is gone, the mark quiets the pane's next flash. */
   async onClose(): Promise<void> {
-    if (this.centerTimer !== null) {
-      this.containerEl.win.clearTimeout(this.centerTimer);
+    if (this.revealTimer !== null) {
+      this.containerEl.win.clearTimeout(this.revealTimer);
     }
     this.finishRenderStaging();
     this.viewport?.destroy();
@@ -1397,6 +1399,11 @@ export class MindmapView extends ItemView {
   }
 
   async setFile(file: TFile): Promise<void> {
+    this.revealPending = null;
+    if (this.revealTimer !== null) {
+      this.containerEl.win.clearTimeout(this.revealTimer);
+      this.revealTimer = null;
+    }
     this.file = file;
     this.syncToggleActions();
     this.selectOnly(null);
@@ -1433,20 +1440,36 @@ export class MindmapView extends ItemView {
     new Notice('Mind map refreshed.');
   }
 
-  /** Centers a newly revealed map after its first visible render settles. */
-  centerAfterReveal(): void {
-    this.centerPending = true;
+  /** Fits the complete map inside the viewport and centers it. */
+  fit(): void {
+    this.viewport.fit();
+  }
+
+  /** Centers a revealed map after its first visible render settles. */
+  private centerAfterReveal(): void {
+    this.revealPending = { kind: 'center' };
     if (this.renderQueued && this.contentEl.offsetHeight > 0) {
       void this.render();
 
       return;
     }
-    this.schedulePendingCenter();
+    this.schedulePendingReveal();
   }
 
-  private schedulePendingCenter(): void {
+  /** Focuses a concrete Markdown node, or fits the whole newly opened map. */
+  initialViewportAfterReveal(cursorLine: number | null): void {
+    this.revealPending = { kind: 'initial', cursorLine };
+    if (this.renderQueued && this.contentEl.offsetHeight > 0) {
+      void this.render();
+
+      return;
+    }
+    this.schedulePendingReveal();
+  }
+
+  private schedulePendingReveal(): void {
     if (
-      !this.centerPending ||
+      !this.revealPending ||
       this.renderQueued ||
       !this.laidRoot ||
       this.contentEl.offsetHeight === 0
@@ -1456,25 +1479,62 @@ export class MindmapView extends ItemView {
     const seq = this.renderSeq;
     const win = this.containerEl.win;
 
-    if (this.centerTimer !== null) {
-      win.clearTimeout(this.centerTimer);
+    if (this.revealTimer !== null) {
+      win.clearTimeout(this.revealTimer);
     }
-    // Keep the map centered throughout the opening resize sequence, not only
-    // after it. The user can press the same action while a split is animating,
-    // and it should already be a no-op then.
-    this.viewport.center();
-    this.centerTimer = win.setTimeout(() => {
-      this.centerTimer = null;
+    // Keep the target framed throughout the opening resize sequence, not only
+    // after it. It should already look settled while the split is animating.
+    this.applyPendingReveal();
+    this.revealTimer = win.setTimeout(() => {
+      this.revealTimer = null;
       if (
-        this.centerPending &&
+        this.revealPending &&
         seq === this.renderSeq &&
         !this.renderQueued &&
         this.contentEl.offsetHeight > 0
       ) {
-        this.viewport.center();
-        this.centerPending = false;
+        this.applyPendingReveal();
+        this.revealPending = null;
       }
     }, 350);
+  }
+
+  private applyPendingReveal(): void {
+    const pending = this.revealPending;
+
+    if (pending?.kind === 'initial') {
+      if (!this.focusInitialCursor(pending.cursorLine)) {
+        this.fit();
+      }
+
+      return;
+    }
+    this.viewport.center();
+  }
+
+  /** Selects and centers the node under the opening Markdown caret. */
+  private focusInitialCursor(line: number | null): boolean {
+    if (line === null || !this.root) {
+      return false;
+    }
+    const node = findEnclosing(this.root, line);
+
+    if (!node) {
+      return false;
+    }
+    const shown = this.collapsedAncestor(node) ?? node;
+    const laid = this.laidByLine.get(shown.line);
+
+    if (!laid) {
+      return false;
+    }
+    this.markCursorLine(line);
+    this.clearSelectionClass();
+    laid.el.addClass('is-selected');
+    this.selectOnly(laid.node.line);
+    laid.el.scrollIntoView({ block: 'center', inline: 'center' });
+
+    return true;
   }
 
   /**
@@ -1485,7 +1545,7 @@ export class MindmapView extends ItemView {
     if (this.renderQueued && this.contentEl.offsetHeight > 0) {
       void this.render();
     }
-    this.schedulePendingCenter();
+    this.schedulePendingReveal();
   }
 
   /**
@@ -1616,7 +1676,7 @@ export class MindmapView extends ItemView {
       this.scrollerEl.scrollLeft = scrollLeft;
       this.scrollerEl.scrollTop = scrollTop;
     }
-    this.schedulePendingCenter();
+    this.schedulePendingReveal();
 
     if (this.cursorLine !== null) {
       // The rebuild dropped the mark, and no caret move is coming to redo

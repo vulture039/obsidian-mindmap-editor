@@ -15,7 +15,7 @@ const setZoom = async (zoom) => {
 if (
   !scroller ||
   !canvas ||
-  !action('Center mind map') ||
+  !action('Fit mind map to viewport') ||
   !action('Zoom in') ||
   !action('Zoom out')
 ) {
@@ -112,8 +112,8 @@ try {
 
   await setZoom(-1);
   check(
-    'zoom is clamped from 25% to 300%',
-    high === 3 && view.getState().zoom === 0.25,
+    'zoom is clamped from 5% to 300%',
+    high === 3 && view.getState().zoom === 0.05,
     `high ${high}, low ${view.getState().zoom}`,
   );
 
@@ -124,9 +124,18 @@ try {
     `state ${view.getState().zoom}, CSS ${canvas.style.transform}`,
   );
 
+  await setZoom(3);
   scroller.scrollLeft = 0;
   scroller.scrollTop = 0;
-  click(action('Center mind map'));
+  app.commands.executeCommandById('mindmap-editor:fit-mindmap');
+  const fittedZoom = Math.max(
+    0.05,
+    Math.min(
+      3,
+      (scroller.clientWidth - 64) / canvas.offsetWidth,
+      (scroller.clientHeight - 64) / canvas.offsetHeight,
+    ),
+  );
   const centeredLeft =
     canvas.offsetLeft +
     (canvas.offsetWidth * zoom() - scroller.clientWidth) / 2;
@@ -135,10 +144,13 @@ try {
     (canvas.offsetHeight * zoom() - scroller.clientHeight) / 2;
 
   check(
-    'the center button brings a lost map back to the viewport center',
-    Math.abs(scroller.scrollLeft - centeredLeft) < 1 &&
+    'the Fit command shows the whole map in the viewport center',
+    Math.abs(zoom() - fittedZoom) < 0.0001 &&
+      canvas.offsetWidth * zoom() <= scroller.clientWidth - 63.9 &&
+      canvas.offsetHeight * zoom() <= scroller.clientHeight - 63.9 &&
+      Math.abs(scroller.scrollLeft - centeredLeft) < 1 &&
       Math.abs(scroller.scrollTop - centeredTop) < 1,
-    `scroll ${scroller.scrollLeft}, ${scroller.scrollTop}; center ${centeredLeft}, ${centeredTop}`,
+    `zoom ${zoom()}, expected ${fittedZoom}; scroll ${scroller.scrollLeft}, ${scroller.scrollTop}; center ${centeredLeft}, ${centeredTop}`,
   );
 
   const touch = (x, y) => ({ clientX: x, clientY: y });

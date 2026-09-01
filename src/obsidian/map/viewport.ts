@@ -8,6 +8,8 @@ import {
 
 /** Empty space around the canvas, allowing it to pan beyond every edge. */
 export const PAN_INSET = 2048;
+/** Breathing room between a fitted map and the viewport edges. */
+const FIT_INSET = 32;
 
 interface ZoomAnchor {
   viewportX: number;
@@ -105,6 +107,27 @@ export class MapViewport {
       (this.canvasEl.offsetHeight * this.zoom - this.scrollerEl.clientHeight) /
         2;
     this.syncActions();
+  }
+
+  /** Zooms until the whole map fits, then places it in the middle. */
+  fit(): void {
+    const width = this.canvasEl.offsetWidth;
+    const height = this.canvasEl.offsetHeight;
+
+    if (!width || !height) {
+      return;
+    }
+    const availableWidth = Math.max(
+      1,
+      this.scrollerEl.clientWidth - FIT_INSET * 2,
+    );
+    const availableHeight = Math.max(
+      1,
+      this.scrollerEl.clientHeight - FIT_INSET * 2,
+    );
+
+    this.restore(Math.min(availableWidth / width, availableHeight / height));
+    this.center();
   }
 
   destroy(): void {

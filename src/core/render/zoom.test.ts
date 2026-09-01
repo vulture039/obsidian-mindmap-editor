@@ -3,7 +3,7 @@ import { clampZoom, MAX_ZOOM, MIN_ZOOM, wheelZoom } from './zoom';
 
 describe('zoom', () => {
   it('clamps zoom to the supported range', () => {
-    expect(clampZoom(0.1)).toBe(MIN_ZOOM);
+    expect(clampZoom(0.01)).toBe(MIN_ZOOM);
     expect(clampZoom(1.5)).toBe(1.5);
     expect(clampZoom(4)).toBe(MAX_ZOOM);
   });

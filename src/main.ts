@@ -32,7 +32,7 @@ export default class MindmapPlugin extends Plugin {
   async onload(): Promise<void> {
     await this.loadSettings();
     this.autoOpen = new AutoOpenMaps(this, (file) => {
-      void this.openMindmap(file);
+      void this.openMindmap(file, true);
     });
     this.registerView(
       VIEW_TYPE_MINDMAP,
@@ -89,6 +89,13 @@ export default class MindmapPlugin extends Plugin {
 
   async toggleAutoOpen(file: TFile | null): Promise<void> {
     await this.autoOpen.toggle(file);
+  }
+
+  /** Optionally make an explicit Link persistent for this note. */
+  async rememberLinkedMap(file: TFile): Promise<void> {
+    if (this.settings.rememberLinkedMaps) {
+      await this.autoOpen.remember(file);
+    }
   }
 
   /**
@@ -247,13 +254,9 @@ export default class MindmapPlugin extends Plugin {
 
     if (already) {
       await this.app.workspace.revealLeaf(already);
-      if (
-        linked &&
-        !this.isMobile &&
-        already.view instanceof MindmapView &&
-        (!near || !this.tiedTo(already, near))
-      ) {
-        await already.view.linkToEditor();
+      // A repeated Link request can still enable Auto-open.
+      if (linked && !this.isMobile && already.view instanceof MindmapView) {
+        await this.rememberLinkedMap(file);
       }
       if (already.view instanceof MindmapView) {
         already.view.centerAfterReveal();

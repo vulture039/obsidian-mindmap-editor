@@ -192,6 +192,8 @@ export class MindmapView extends ItemView {
   private linkActionEl: HTMLElement | null = null;
   private autoOpenActionEl: HTMLElement | null = null;
   private viewport!: MapViewport;
+  /** Last Markdown source observed for this map's Obsidian Link group. */
+  private linkedSourceLeaf: WorkspaceLeaf | null = null;
   /** Restored before the viewport DOM exists during workspace startup. */
   private savedZoom = 1;
   /** A new pane waits for its first visible, stable layout before centering. */
@@ -1083,7 +1085,12 @@ export class MindmapView extends ItemView {
   }
 
   private async toggleAutoOpen(): Promise<void> {
+    const enable = !this.plugin.isAutoOpenFile(this.file);
+
     await this.plugin.toggleAutoOpen(this.file);
+    if (enable && !this.plugin.isMobile) {
+      await this.linkToEditor();
+    }
     this.syncToggleActions();
   }
 
@@ -1201,6 +1208,7 @@ export class MindmapView extends ItemView {
    * on background drag, and remember the split direction.
    */
   private registerWorkspaceEvents(): void {
+    this.linkedSourceLeaf = this.editor.linkedLeaf();
     this.registerEvent(
       this.app.vault.on('modify', (file) => {
         if (this.isCurrentFile(file)) {
@@ -1244,9 +1252,16 @@ export class MindmapView extends ItemView {
     // follows it: the note the user wants is the one already open.
     this.registerEvent(
       this.leaf.on('group-change', () => {
+        this.linkedSourceLeaf =
+          this.editor.linkedLeaf() ?? this.linkedSourceLeaf;
         this.syncToggleActions();
         this.followFile(this.app.workspace.getActiveFile());
       }),
+    );
+    this.registerEvent(
+      this.app.workspace.on('layout-change', () =>
+        this.handleLinkedSourceClose(),
+      ),
     );
     this.registerDomEvent(this.scrollerEl, 'pointerdown', (e) =>
       this.onBackgroundPointerDown(e),
@@ -1273,6 +1288,31 @@ export class MindmapView extends ItemView {
     this.registerEvent(
       this.app.workspace.on('active-leaf-change', () => checkFolds()),
     );
+  }
+
+  /** Handle the map after its linked Markdown source tab closes. */
+  private handleLinkedSourceClose(): void {
+    const linked = this.editor.linkedLeaf();
+
+    if (linked) {
+      this.linkedSourceLeaf = linked;
+
+      return;
+    }
+    const previous = this.linkedSourceLeaf;
+
+    if (!previous) {
+      return;
+    }
+    this.linkedSourceLeaf = null;
+    if (!this.app.workspace.getLeavesOfType('markdown').includes(previous)) {
+      if (this.plugin.settings.closeLinkedMapWithSource) {
+        this.leaf.detach();
+
+        return;
+      }
+      this.centerAfterReveal();
+    }
   }
 
   /**
@@ -2217,7 +2257,11 @@ export class MindmapView extends ItemView {
    */
   async linkToEditor(): Promise<void> {
     if (this.file) {
-      this.leaf.setGroupMember(await this.editor.tabFor(this.file));
+      const source = await this.editor.tabFor(this.file);
+
+      this.leaf.setGroupMember(source);
+      await this.plugin.rememberLinkedMap(this.file);
+      this.syncToggleActions();
     }
   }
 

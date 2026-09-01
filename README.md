@@ -21,7 +21,7 @@ No new file format, no markup to add.
 - **Rich node text** - Show body text with inline Markdown, links, and image previews.
 - **Map/editor sync** - Selection, cursor position, folds, and wikilinks stay in sync.
 - **Flexible views** - Zoom, pan, center, and open multiple maps as splits or tabs.
-- **Link and bookmark** - Link a map to a Markdown tab on desktop, or bookmark a note for automatic opening.
+- **Link and Auto-open** - Link a map to a Markdown tab, or reopen it automatically with a note.
 - **Visual hierarchy** - Depth, headings, and customizable branch colors remain easy to distinguish.
 
 ## Keyboard shortcuts
@@ -69,6 +69,8 @@ None of these come with a hotkey; bind the ones you want in Settings → Hotkeys
   follows along by its headings. List folding also follows Obsidian's Editor → Fold settings.
 - **Split direction** - Side by side / stacked, for any pane the plugin splits open. A map that can join one
   already there opens as a tab instead, wherever that pane sits.
+- **Remember linked maps** (default off) - Enable Auto-open when explicitly linking a map.
+- **Close linked map with source** (default off) - Close a linked map with its Markdown tab.
 - **Branch colors** - Custom palette, one hex color per line.
 
 ---

@@ -13,8 +13,13 @@ if (!plugin) {
   return fail('the mindmap-editor plugin is not loaded');
 }
 const originalAutoOpenFiles = [...plugin.settings.autoOpenFiles];
+const originalRememberLinkedMaps = plugin.settings.rememberLinkedMaps;
+const originalCloseLinkedMapWithSource =
+  plugin.settings.closeLinkedMapWithSource;
 
 plugin.settings.autoOpenFiles = [];
+plugin.settings.rememberLinkedMaps = false;
+plugin.settings.closeLinkedMapWithSource = false;
 
 const OTHER = 'Linked.md';
 const other = app.vault.getAbstractFileByPath(OTHER);
@@ -40,8 +45,9 @@ const activate = async (path) => {
 
   await leaf.openFile(app.vault.getAbstractFileByPath(path), { active: true });
   app.workspace.setActiveLeaf(leaf, { focus: true });
+  await until(() => app.workspace.getActiveFile()?.path === path);
 
-  return until(() => app.workspace.getActiveFile()?.path === path);
+  return leaf;
 };
 
 /**
@@ -187,7 +193,7 @@ try {
         autoOpen()?.classList.contains('is-active'),
     );
     check(
-      'the bookmark action visibly remembers the current note',
+      'the Auto-open action visibly remembers the current note',
       autoOpen()?.classList.contains('is-active') &&
         autoOpen()?.getAttribute('aria-label')?.startsWith('Stop'),
       `remembered ${plugin.settings.autoOpenFiles.join(', ')}`,
@@ -211,16 +217,24 @@ try {
     await until(() => second?.view.currentFile?.path === OTHER);
 
     const linkedGroup = second?.group;
-    const mapCount = maps().length;
-
-    await activate('Tabs.md');
+    for (const leaf of app.workspace.getLeavesOfType('markdown')) {
+      if (leaf.getViewState().state?.file === 'Tabs.md') leaf.detach();
+    }
+    app.workspace.trigger('layout-change');
     await settle();
+    const tabsSource = await activate('Tabs.md');
+    const restoredTabs = await until(() =>
+      mapsFor('Tabs.md').find(
+        (map) =>
+          map !== second &&
+          map.group &&
+          app.workspace.getGroupLeaves(map.group).includes(tabsSource),
+      ),
+    );
     check(
-      'auto-opening a remembered note reuses the active roaming map',
-      ours.view.currentFile?.path === 'Tabs.md' &&
-        !ours.group &&
-        maps().length === mapCount,
-      `${mapCount} maps became ${maps().length}; file ${ours.view.currentFile?.path}, group ${ours.group}`,
+      'Auto-open restores a map linked to the note',
+      !!restoredTabs,
+      `${mapsFor('Tabs.md').length} maps show Tabs.md`,
     );
     check(
       'auto-opening another note never takes over an existing linked map',
@@ -241,6 +255,11 @@ try {
         .getLeavesOfType('markdown')
         .some((leaf) => leaf.getViewState().state?.file === 'Tabs.md'),
       `${app.workspace.getLeavesOfType('markdown').length} Markdown tabs remain`,
+    );
+    check(
+      'closing its Markdown source leaves the Auto-opened map open',
+      maps().includes(restoredTabs),
+      `${maps().length} maps remain`,
     );
     for (const leaf of mapsFor('Tabs.md')) {
       if (leaf === ours) {
@@ -344,10 +363,152 @@ try {
     await settle();
     check(
       'and it stays there while the active file moves',
-      mapsFor('Tabs.md').length === 1,
+      opened?.view.currentFile?.path === 'Tabs.md',
       `${maps()
         .map((l) => l.view.currentFile?.path)
         .join(', ')}`,
+    );
+  }
+  // Remembering adds persistence to an explicit Link without coupling either
+  // pane's lifetime or remembering files merely visited through that pane.
+  {
+    for (const leaf of maps()) {
+      if (leaf !== ours) leaf.detach();
+    }
+    ours.setGroup(null);
+    plugin.settings.autoOpenFiles = [];
+    plugin.settings.rememberLinkedMaps = false;
+    await plugin.saveSettings();
+
+    const plainSource = await activate(OTHER);
+    const plainLinked = await openLinked();
+
+    plugin.settings.rememberLinkedMaps = true;
+    await plugin.saveSettings();
+    app.workspace.setActiveLeaf(plainSource, { focus: true });
+    app.commands.executeCommandById('mindmap-editor:open-mindmap-linked');
+    await until(() => plugin.settings.autoOpenFiles.includes(OTHER));
+    check(
+      'asking for an already linked map remembers it when enabled',
+      plugin.settings.autoOpenFiles.includes(OTHER),
+      `remembered ${plugin.settings.autoOpenFiles.join(', ')}`,
+    );
+    plugin.settings.autoOpenFiles = [];
+    const plainScroller =
+      plainLinked.view.contentEl.querySelector('.mindmap-scroller');
+    const plainCanvas =
+      plainLinked.view.contentEl.querySelector('.mindmap-canvas');
+
+    plainSource.detach();
+    app.workspace.trigger('layout-change');
+    check(
+      'closing a Link source leaves its map open without Auto-open',
+      maps().includes(plainLinked) &&
+        !plugin.settings.autoOpenFiles.includes(OTHER),
+      `${maps().length} maps remain; remembered ${plugin.settings.autoOpenFiles.join(', ')}`,
+    );
+    const centeredAfterClose = await until(() => {
+      const left =
+        plainCanvas.offsetLeft +
+        (plainCanvas.offsetWidth * plainLinked.view.getState().zoom -
+          plainScroller.clientWidth) /
+          2;
+      const top =
+        plainCanvas.offsetTop +
+        (plainCanvas.offsetHeight * plainLinked.view.getState().zoom -
+          plainScroller.clientHeight) /
+          2;
+
+      return (
+        Math.abs(plainScroller.scrollLeft - left) < 1 &&
+        Math.abs(plainScroller.scrollTop - top) < 1
+      );
+    });
+
+    check(
+      'the surviving map recenters after its Markdown split closes',
+      !!centeredAfterClose,
+      `scroll ${plainScroller.scrollLeft}, ${plainScroller.scrollTop}`,
+    );
+    plainLinked.detach();
+
+    plugin.settings.closeLinkedMapWithSource = true;
+    await plugin.saveSettings();
+    const closingSource = await activate(OTHER);
+    const closingMap = await openLinked();
+
+    closingSource.detach();
+    app.workspace.trigger('layout-change');
+    check(
+      'the optional source-close setting closes the linked map',
+      !!(await until(() => !maps().includes(closingMap))),
+      `${maps().length} maps remain`,
+    );
+    plugin.settings.closeLinkedMapWithSource = false;
+
+    plugin.settings.rememberLinkedMaps = true;
+    await plugin.saveSettings();
+
+    const source = await activate(OTHER);
+    let linked = await openLinked();
+
+    check(
+      'an explicit Link remembers the note when the setting is on',
+      plugin.settings.autoOpenFiles.includes(OTHER),
+      `remembered ${plugin.settings.autoOpenFiles.join(', ')}`,
+    );
+
+    linked.detach();
+    app.workspace.trigger('layout-change');
+    check(
+      'closing a linked map leaves its Markdown source open',
+      app.workspace.getLeavesOfType('markdown').includes(source),
+      `${app.workspace.getLeavesOfType('markdown').length} Markdown tabs remain`,
+    );
+    app.workspace.setActiveLeaf(source, { focus: true });
+    linked = await openLinked();
+
+    await source.openFile(app.vault.getAbstractFileByPath('Tabs.md'), {
+      active: true,
+    });
+    app.workspace.setActiveLeaf(source, { focus: true });
+    await until(() => linked.view.currentFile?.path === 'Tabs.md');
+    check(
+      'following a linked tab does not remember the visited note',
+      !plugin.settings.autoOpenFiles.includes('Tabs.md'),
+      `remembered ${plugin.settings.autoOpenFiles.join(', ')}`,
+    );
+
+    source.detach();
+    app.workspace.trigger('layout-change');
+    check(
+      'closing a remembered Link source leaves its map open',
+      maps().includes(linked),
+      `${maps().length} maps remain`,
+    );
+    linked.detach();
+
+    const restoredSource = await activate(OTHER);
+    const restored = await until(() =>
+      mapsFor(OTHER).find(
+        (map) =>
+          map !== ours &&
+          map.group &&
+          app.workspace.getGroupLeaves(map.group).includes(restoredSource),
+      ),
+    );
+    check(
+      'a remembered map reopens linked to its note',
+      !!restored,
+      `${mapsFor(OTHER).length} maps show ${OTHER}`,
+    );
+
+    restoredSource.detach();
+    app.workspace.trigger('layout-change');
+    check(
+      'closing an Auto-open source leaves its restored map open',
+      maps().includes(restored),
+      `${maps().length} maps remain`,
     );
   }
 } finally {
@@ -360,6 +521,8 @@ try {
   // the active file, and its setup would fail for no reason it can name.
   ours.setGroup(null);
   plugin.settings.autoOpenFiles = originalAutoOpenFiles;
+  plugin.settings.rememberLinkedMaps = originalRememberLinkedMaps;
+  plugin.settings.closeLinkedMapWithSource = originalCloseLinkedMapWithSource;
   await plugin.saveSettings();
   await activate('Fixtures.md');
   // Following is a render behind the active file, and the next check's setup

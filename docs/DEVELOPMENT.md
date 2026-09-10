@@ -13,15 +13,7 @@ npm test       # the Vitest unit tests (npm run test:watch to watch)
 npm run e2e    # the checks that need Obsidian itself; see below
 ```
 
-### Code style
-
-- Prefer array methods when the operation produces an array or searches one.
-  Do not use `map` only for side effects; keep a loop when mutation or control
-  flow is clearer.
-- Do not nest conditional (`?:`) expressions. Use a named value or `if`/`else`
-  when a choice contains another choice.
-
-### Map pane vocabulary
+## Map pane vocabulary
 
 Keep these four behaviors separate:
 

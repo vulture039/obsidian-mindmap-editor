@@ -355,7 +355,18 @@ export class MindmapView extends ItemView {
       // Only while the edit has the keyboard. An editor left open with the
       // focus elsewhere is not who the key is for - and taking every key for
       // it would leave the map with none.
-      return input && input.doc.activeElement === input ? true : run();
+      if (!input || input.doc.activeElement !== input) {
+        return run();
+      }
+      // Obsidian consumes Escape before the document capture listener in
+      // some releases, so finish the edit from the scope that saw it.
+      if (key === 'Escape') {
+        this.closeEdit?.();
+
+        return false;
+      }
+
+      return true;
     });
   }
 

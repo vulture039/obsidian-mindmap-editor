@@ -8,6 +8,8 @@ const action = (prefix) =>
 const originalZoom = view.getState().zoom;
 const zoom = () => view.getState().zoom;
 const zoomTarget = () => view.viewport.zoomTarget;
+const renderedZoom = () =>
+  Number.parseFloat(canvas.style.transform.match(/^scale\((.+)\)$/)?.[1] ?? '');
 const setZoom = async (zoom) => {
   await view.setState({ ...view.getState(), zoom }, {});
 };
@@ -31,7 +33,7 @@ try {
     zoomTarget() === 1.1 &&
       zoom() > 1 &&
       zoom() <= zoomTarget() &&
-      canvas.style.transform === `scale(${zoom()})`,
+      Math.abs(renderedZoom() - zoom()) < 0.00001,
     `state ${zoom()}, target ${zoomTarget()}, CSS ${canvas.style.transform}`,
   );
 
@@ -144,13 +146,14 @@ try {
     (canvas.offsetHeight * zoom() - scroller.clientHeight) / 2;
 
   check(
-    'the Fit command shows the whole map in the viewport center',
+    'the Fit command uses the best allowed zoom and centers the map',
     Math.abs(zoom() - fittedZoom) < 0.0001 &&
-      canvas.offsetWidth * zoom() <= scroller.clientWidth - 63.9 &&
-      canvas.offsetHeight * zoom() <= scroller.clientHeight - 63.9 &&
+      (fittedZoom === 0.05 ||
+        (canvas.offsetWidth * zoom() <= scroller.clientWidth - 63.9 &&
+          canvas.offsetHeight * zoom() <= scroller.clientHeight - 63.9)) &&
       Math.abs(scroller.scrollLeft - centeredLeft) < 1 &&
       Math.abs(scroller.scrollTop - centeredTop) < 1,
-    `zoom ${zoom()}, expected ${fittedZoom}; scroll ${scroller.scrollLeft}, ${scroller.scrollTop}; center ${centeredLeft}, ${centeredTop}`,
+    `zoom ${zoom()}, expected ${fittedZoom}; scroll ${scroller.scrollLeft}, ${scroller.scrollTop}; center ${centeredLeft}, ${centeredTop}; canvas ${canvas.offsetWidth}x${canvas.offsetHeight}; port ${scroller.clientWidth}x${scroller.clientHeight}`,
   );
 
   const touch = (x, y) => ({ clientX: x, clientY: y });

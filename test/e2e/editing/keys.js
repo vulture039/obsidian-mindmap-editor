@@ -76,10 +76,15 @@ for (const [key, mods] of [
 
   // And Escape is not a discard any more - it is just the end of the edit.
   await press('Escape');
-  await settle();
+  await until(() => !editing());
   check(
     'Escape leaves what was typed in the file',
     (await now()).includes('- plain itemTYPED') && !editing(),
+    `${editing() ? 'editor still open' : 'editor closed'}; ${
+      (await now()).includes('- plain itemTYPED')
+        ? 'text saved'
+        : 'text missing'
+    }`,
   );
 }
 

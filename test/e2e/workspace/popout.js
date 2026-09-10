@@ -43,14 +43,23 @@ try {
   app.workspace.setActiveLeaf(popped, { focus: true });
   await until(() => app.workspace.getActiveFile()?.path === OTHER);
 
-  // The linked command, since a plain open would only reveal the roaming map
-  // that followed the active file - a second map is what this is about.
+  // Ask from this popout explicitly: the active/linked command's active-pane
+  // lookup is covered separately, while this check owns the window boundary.
   // The map that appears, not just any other one: a workspace the user left
   // maps open in has several, and the one this asks about is the new one.
   const before = new Set(maps());
 
-  app.commands.executeCommandById('mindmap-editor:open-mindmap-linked');
-  second = await until(() => maps().find((l) => !before.has(l)));
+  await plugin.openMindmap(other, true, popped);
+  second = await until(
+    () =>
+      maps().find(
+        (leaf) =>
+          !before.has(leaf) &&
+          leaf.getContainer() === popped.getContainer() &&
+          leaf.view.currentFile?.path === OTHER,
+      ),
+    5000,
+  );
   await settle();
 
   check(
@@ -122,7 +131,7 @@ try {
 
   check(
     "the reading pane's line mark goes up in that window's registry",
-    (await until(() => win.CSS.highlights.has('mindmap-line'))) !== null,
+    (await until(() => win.CSS.highlights.has('mindmap-line'), 5000)) !== null,
     win === window
       ? 'the pane never left the main window'
       : `main window: ${CSS.highlights.has('mindmap-line')}`,

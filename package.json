@@ -17,7 +17,8 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "e2e": "node test/e2e/run.mjs",
+    "e2e": "node --experimental-websocket test/e2e/suite.mjs",
+    "e2e:one": "node --experimental-websocket test/e2e/run.mjs",
     "check": "npm run build && npm run lint && npm run format:check && npm test",
     "release:check": "npm run review:obsidian && npm run check"
   },

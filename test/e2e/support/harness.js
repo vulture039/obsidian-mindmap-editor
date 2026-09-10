@@ -6,13 +6,9 @@
  * Waiting is by condition, never by clock: the map renders when it renders, and
  * a check that slept long enough on one machine reports nonsense on another.
  */
-const mapLeaves = app.workspace.getLeavesOfType('mindmap-editor');
-const view =
-  mapLeaves.find((leaf) => leaf.view.containerEl.isShown())?.view ??
-  mapLeaves[0]?.view;
-const md = app.workspace
-  .getLeavesOfType('markdown')
-  .find((l) => l.view.file?.path === 'Fixtures.md');
+const e2eFixtureContext = window.__mindmapE2EFixture;
+const view = e2eFixtureContext?.map.view;
+const md = e2eFixtureContext?.md;
 const results = [];
 const check = (name, ok, detail) => results.push({ name, ok: !!ok, detail });
 const fail = (detail) => ({
@@ -146,13 +142,23 @@ const openBody = async (target) => {
 
 /** Opens the editor on a node's label; null when none opened. */
 const openLabel = async (text) => {
-  const node = label(text);
+  let node = await until(() => label(text));
 
   click(node);
   await wait(80);
   click(node, 'dblclick');
+  let input = await until(() => editing());
 
-  return until(() => editing());
+  if (!input) {
+    await drawn();
+    node = await until(() => label(text));
+    click(node);
+    await wait(80);
+    click(node, 'dblclick');
+    input = await until(() => editing());
+  }
+
+  return input;
 };
 
 /** Waits for what was typed to reach the file, and the map to settle after it. */
@@ -163,5 +169,14 @@ const written = async (before) => {
 };
 
 await drawn();
+await until(
+  () =>
+    view.viewportReady &&
+    !view.renderQueued &&
+    view.layoutBuildSeq === null &&
+    view.revealTimer === null &&
+    view.contentEl.offsetHeight > 0,
+  5000,
+);
 const original = await now();
 const restore = () => setFile(original);

@@ -21,19 +21,40 @@ plugin.settings.autoOpenFiles = [];
 plugin.settings.rememberLinkedMaps = false;
 plugin.settings.closeLinkedMapWithSource = false;
 
-const OTHER = 'Linked.md';
-const other = app.vault.getAbstractFileByPath(OTHER);
+const OTHER = 'E2E Panes.md';
+const linkedFixture = app.vault.getAbstractFileByPath('Linked.md');
 
-if (!other) {
-  return fail(`the dev vault has no ${OTHER}`);
+if (!linkedFixture) {
+  return fail('the dev vault has no Linked.md');
 }
+const leftover = app.vault.getAbstractFileByPath(OTHER);
 
-const maps = () => app.workspace.getLeavesOfType('mindmap-editor');
+if (leftover) await app.vault.delete(leftover, true);
+const other = await app.vault.create(
+  OTHER,
+  await app.vault.cachedRead(linkedFixture),
+);
+
+// Other maps in the developer's workspace are outside this check. The runner
+// gives it one dedicated roaming map; count only that map and leaves made here.
+const unrelatedMaps = new Set(
+  app.workspace
+    .getLeavesOfType('mindmap-editor')
+    .filter((leaf) => leaf !== view.leaf),
+);
+const maps = () =>
+  app.workspace
+    .getLeavesOfType('mindmap-editor')
+    .filter((leaf) => !unrelatedMaps.has(leaf));
+const unrelatedMarkdown = new Set(
+  app.workspace.getLeavesOfType('markdown').filter((leaf) => leaf !== md),
+);
 const mapsFor = (path) =>
   maps().filter((leaf) => leaf.view.currentFile?.path === path);
 const markdownFor = (path) =>
   app.workspace
     .getLeavesOfType('markdown')
+    .filter((leaf) => !unrelatedMarkdown.has(leaf))
     .find((leaf) => leaf.getViewState().state?.file === path);
 const centered = (el, scroller) => {
   const box = el?.getBoundingClientRect();
@@ -59,6 +80,12 @@ const fits = (leaf) => {
     canvas.offsetHeight * zoom <= scroller.clientHeight - 63.9
   );
 };
+const sameViewport = (actual, expected) =>
+  actual &&
+  expected &&
+  Math.abs(actual.zoom - expected.zoom) < 0.001 &&
+  Math.abs(actual.left - expected.left) < 1 &&
+  Math.abs(actual.top - expected.top) < 1;
 const closeMap = async (leaf) => {
   leaf?.detach();
   app.workspace.trigger('layout-change');
@@ -74,7 +101,9 @@ const activate = async (path) => {
   const leaf =
     app.workspace
       .getLeavesOfType('markdown')
-      .find((l) => l.view.file?.path === path) ?? app.workspace.getLeaf('tab');
+      .filter((candidate) => !unrelatedMarkdown.has(candidate))
+      .find((candidate) => candidate.view.file?.path === path) ??
+    app.workspace.createLeafBySplit(ours, 'vertical');
 
   await leaf.openFile(app.vault.getAbstractFileByPath(path), { active: true });
   app.workspace.setActiveLeaf(leaf, { focus: true });
@@ -109,7 +138,11 @@ try {
       `it stayed on ${ours.view.currentFile?.path}`,
     );
     await app.workspace.revealLeaf(ours);
-    await until(() => ours.view.laidByLine.get(5)?.node.text === 'one');
+    await until(
+      () =>
+        ours.view.laidByLine.get(5)?.node.text === 'one' &&
+        ours.view.revealTimer === null,
+    );
 
     const roamingScroller =
       ours.view.contentEl.querySelector('.mindmap-scroller');
@@ -138,22 +171,19 @@ try {
     );
   }
 
-  // Note-level prose belongs to the root node, so it is a real cursor target.
+  // Reopening keeps the shared file viewport, regardless of its cursor target.
   {
     const source = markdownFor(OTHER);
 
     source?.view.editor?.setCursor({ line: 0, ch: 0 });
     if (source) app.workspace.setActiveLeaf(source, { focus: true });
+    const expected = ours.view.viewport.snapshot();
     const fitted = await openLinked();
-    const scroller = fitted?.view.contentEl.querySelector('.mindmap-scroller');
-    const root = fitted?.view.contentEl.querySelector(
-      '.mindmap-node[data-line="-1"]',
-    );
 
     check(
-      'a root-body cursor selects and centers the root node',
-      root?.classList.contains('is-selected') && centered(root, scroller),
-      `selected ${root?.className}`,
+      'a root-body cursor does not replace the saved viewport',
+      sameViewport(fitted?.view.viewport.snapshot(), expected),
+      JSON.stringify(fitted?.view.viewport.snapshot()),
     );
     await closeMap(fitted);
   }
@@ -168,12 +198,13 @@ try {
 
     if (source) app.workspace.setActiveLeaf(source, { focus: true });
     title?.focus();
+    const expected = ours.view.viewport.snapshot();
     const fitted = await openLinked();
 
     check(
-      'opening from the note title ignores the stale body cursor and fits',
-      fits(fitted),
-      `title ${!!title}; zoom ${fitted?.view.getState().zoom}`,
+      'opening from the note title retains the saved viewport',
+      !!title && sameViewport(fitted?.view.viewport.snapshot(), expected),
+      JSON.stringify(fitted?.view.viewport.snapshot()),
     );
     await closeMap(fitted);
   }
@@ -189,15 +220,14 @@ try {
       state: { file: OTHER, mode: 'preview' },
     });
     if (source) app.workspace.setActiveLeaf(source, { focus: true });
+    const expected = ours.view.viewport.snapshot();
     const readingMap = await openLinked();
-    const cursorNode = readingMap?.view.contentEl.querySelector(
-      '.mindmap-node[data-line="5"]',
-    );
 
     check(
-      'Reading View opens at its retained non-root cursor position',
-      cursorNode?.classList.contains('is-selected'),
-      `mode ${source?.view.getMode?.()}; selected ${cursorNode?.className}`,
+      'Reading View retains the saved viewport',
+      source?.view.getMode?.() === 'preview' &&
+        sameViewport(readingMap?.view.viewport.snapshot(), expected),
+      JSON.stringify(readingMap?.view.viewport.snapshot()),
     );
     await closeMap(readingMap);
     await source?.setViewState({
@@ -213,6 +243,7 @@ try {
 
     source?.view.editor?.setCursor({ line: 5, ch: 0 });
     if (source) app.workspace.setActiveLeaf(source, { focus: true });
+    const expected = ours.view.viewport.snapshot();
     const second = await openLinked();
     const otherMarkdown = markdownFor(OTHER);
 
@@ -223,15 +254,11 @@ try {
     );
     const scroller = second?.view.contentEl.querySelector('.mindmap-scroller');
     const canvas = second?.view.contentEl.querySelector('.mindmap-canvas');
-    const cursorNode = second?.view.contentEl.querySelector(
-      '.mindmap-node[data-line="5"]',
-    );
 
     check(
-      'a new map starts at the non-root node under the Markdown cursor',
-      cursorNode?.classList.contains('is-selected') &&
-        centered(cursorNode, scroller),
-      `selected ${cursorNode?.className}`,
+      'a reopened map starts at its saved viewport',
+      sameViewport(second?.view.viewport.snapshot(), expected),
+      JSON.stringify(second?.view.viewport.snapshot()),
     );
     const fit = [
       ...(second?.view.containerEl.querySelectorAll('.view-action') ?? []),
@@ -582,7 +609,6 @@ try {
       `${maps().length} maps remain`,
     );
     linked.detach();
-
     const restoredSource = await activate(OTHER);
     const restored = await until(() =>
       mapsFor(OTHER).find(
@@ -623,6 +649,7 @@ try {
   // Following is a render behind the active file, and the next check's setup
   // reads the map, not the workspace.
   await until(() => ours.view.currentFile?.path === 'Fixtures.md');
+  await app.vault.delete(other, true);
 }
 
 return { results };

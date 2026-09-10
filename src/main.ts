@@ -3,19 +3,30 @@ import {
   Notice,
   Platform,
   Plugin,
+  TAbstractFile,
   TFile,
+  TFolder,
   WorkspaceLeaf,
 } from 'obsidian';
 import { MindmapView, VIEW_TYPE_MINDMAP } from './obsidian/map/mindmap-view';
 import { FoldKind } from './core/folds';
 import { DEFAULT_SETTINGS, MindmapSettings } from './core/settings';
-import {
-  findMarkdownView,
-  sameSplit,
-  sameWindow,
-} from './obsidian/markdown/file-io';
+import { findMarkdownView } from './obsidian/markdown/file-io';
+import { sameSplit, sameWindow, moveLeafToSplit } from './obsidian/workspace';
 import { MindmapSettingTab } from './obsidian/settings';
 import { AutoOpenMaps } from './obsidian/map/auto-open';
+
+function descendantFilePaths(file: TAbstractFile): string[] {
+  if (file instanceof TFile) {
+    return [file.path];
+  }
+
+  if (!(file instanceof TFolder)) {
+    return [];
+  }
+
+  return file.children.flatMap(descendantFilePaths);
+}
 
 export default class MindmapPlugin extends Plugin {
   settings!: MindmapSettings;
@@ -92,6 +103,26 @@ export default class MindmapPlugin extends Plugin {
     });
     this.addFoldCommands();
     this.addFileMenuItem();
+    this.registerEvent(
+      this.app.vault.on('rename', (file, oldPath) => {
+        for (const path of descendantFilePaths(file)) {
+          const oldKey = `mindmap-editor:viewport:${oldPath}${path.slice(file.path.length)}`;
+          const state: unknown = this.app.loadLocalStorage(oldKey);
+
+          if (state) {
+            this.app.saveLocalStorage(`mindmap-editor:viewport:${path}`, state);
+            this.app.saveLocalStorage(oldKey, null);
+          }
+        }
+      }),
+    );
+    this.registerEvent(
+      this.app.vault.on('delete', (file) => {
+        for (const path of descendantFilePaths(file)) {
+          this.app.saveLocalStorage(`mindmap-editor:viewport:${path}`, null);
+        }
+      }),
+    );
     this.autoOpen.register();
     this.addSettingTab(new MindmapSettingTab(this.app, this));
   }
@@ -267,11 +298,7 @@ export default class MindmapPlugin extends Plugin {
     );
 
     if (already) {
-      await this.app.workspace.revealLeaf(already);
-      // A repeated Link request can still enable Auto-open.
-      if (linked && !this.isMobile && already.view instanceof MindmapView) {
-        await this.rememberLinkedMap(file);
-      }
+      await this.reuseMap(already, file, near, linked);
 
       return;
     }
@@ -286,23 +313,57 @@ export default class MindmapPlugin extends Plugin {
       active: true,
       state: { file: file.path },
     });
-    // Asked for by note, so it is tied to that note's tab rather than left to
-    // the active file. Obsidian's own link, undone from the tab menu - the
-    // map keeps no follow flag of its own.
-    if (linked && !this.isMobile && leaf.view instanceof MindmapView) {
-      await leaf.view.linkToEditor();
+    const view = leaf.view;
+
+    if (!(view instanceof MindmapView)) {
+      await this.revealMap(leaf);
+
+      return;
     }
+    if (linked && !this.isMobile) {
+      await view.linkToEditor();
+    }
+    await this.revealMap(leaf);
+    view.initialViewportAfterReveal(cursorLine);
+    if (this.isMobile) {
+      return;
+    }
+    this.keepMarkdownCursorVisible(file, near, cursorLine, sourceHeight);
+  }
+
+  private async revealMap(leaf: WorkspaceLeaf): Promise<void> {
     if (this.isMobile) {
       this.app.workspace.setActiveLeaf(leaf, { focus: true });
-    } else {
-      await this.app.workspace.revealLeaf(leaf);
+
+      return;
     }
-    if (leaf.view instanceof MindmapView) {
-      leaf.view.initialViewportAfterReveal(cursorLine);
+    await this.app.workspace.revealLeaf(leaf);
+  }
+
+  private async reuseMap(
+    leaf: WorkspaceLeaf,
+    file: TFile,
+    near: WorkspaceLeaf | null,
+    linked: boolean,
+  ): Promise<void> {
+    const shown = await this.ensureMapSplit(leaf, near);
+
+    await this.app.workspace.revealLeaf(shown);
+    // A repeated Link request can still enable Auto-open.
+    if (linked && !this.isMobile && shown.view instanceof MindmapView) {
+      await this.rememberLinkedMap(file);
     }
-    if (!this.isMobile) {
-      this.keepMarkdownCursorVisible(file, near, cursorLine, sourceHeight);
+  }
+
+  private async ensureMapSplit(
+    leaf: WorkspaceLeaf,
+    near: WorkspaceLeaf | null,
+  ): Promise<WorkspaceLeaf> {
+    if (this.isMobile || !near || leaf.parent !== near.parent) {
+      return leaf;
     }
+
+    return moveLeafToSplit(this.app, leaf, near, this.settings.splitDirection);
   }
 
   /** Keeps a source caret visible after a new split reduces its pane height. */
@@ -367,7 +428,8 @@ export default class MindmapPlugin extends Plugin {
    * nearest whoever asked - a tab menu names its own, a command has none.
    */
   private paneFor(file: TFile, from?: WorkspaceLeaf): WorkspaceLeaf | null {
-    const asked = from ?? this.app.workspace.getMostRecentLeaf();
+    const active = this.app.workspace.getActiveViewOfType(MarkdownView)?.leaf;
+    const asked = from ?? active ?? this.app.workspace.getMostRecentLeaf();
 
     return findMarkdownView(this.app, file, asked ?? undefined)?.leaf ?? asked;
   }
@@ -396,7 +458,8 @@ export default class MindmapPlugin extends Plugin {
         : this.openSplit(near);
     }
     const beside = this.mapLeaves().find(
-      (leaf) => !near || sameWindow(leaf, near),
+      (leaf) =>
+        !near || (sameWindow(leaf, near) && leaf.parent !== near.parent),
     )?.parent;
 
     return beside

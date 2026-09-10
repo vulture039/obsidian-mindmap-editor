@@ -1,16 +1,6 @@
 import { App, Editor, MarkdownView, TFile, WorkspaceLeaf } from 'obsidian';
 
-/** Whether two panes are in the same window - a popout is a window of its own. */
-export function sameWindow(a: WorkspaceLeaf, b: WorkspaceLeaf): boolean {
-  return a.getContainer() === b.getContainer();
-}
-
-/** Whether two panes were split off each other - a pair read side by side. */
-export function sameSplit(a: WorkspaceLeaf, b: WorkspaceLeaf): boolean {
-  const split = a.parent?.parent;
-
-  return a.parent !== b.parent && !!split && split === b.parent?.parent;
-}
+import { sameWindow } from '../workspace';
 
 /** Itself, its window, or neither: how close a pane is to the one asking. */
 export function leafNearness(

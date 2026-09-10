@@ -1,3 +1,4 @@
+import type { ViewportState } from '../../core/render/viewport-state';
 import {
   clampZoom,
   MAX_ZOOM,
@@ -59,6 +60,29 @@ export class MapViewport {
 
   get isInitialized(): boolean {
     return this.initialized;
+  }
+
+  /** Obsidian removes plugin CSS before asking closing views for their state. */
+  get canCapturePosition(): boolean {
+    const styles = this.scrollerEl.win.getComputedStyle(this.scrollerEl);
+    const scrollable = (overflow: string): boolean =>
+      overflow === 'auto' || overflow === 'scroll';
+
+    return scrollable(styles.overflowX) && scrollable(styles.overflowY);
+  }
+
+  snapshot(): ViewportState {
+    return {
+      zoom: this.zoom,
+      left: this.scrollerEl.scrollLeft,
+      top: this.scrollerEl.scrollTop,
+    };
+  }
+
+  restorePosition(state: ViewportState): void {
+    this.restore(state.zoom);
+    this.scrollerEl.scrollLeft = state.left;
+    this.scrollerEl.scrollTop = state.top;
   }
 
   bindActions(out: HTMLElement, into: HTMLElement): void {

@@ -39,7 +39,7 @@ import {
   readEditorFolds,
 } from '../markdown/folds';
 import { LaidNode, layoutTree, makeLaid } from '../../core/render/layout';
-import { MAX_ZOOM } from '../../core/render/zoom';
+import { clampZoom, MAX_ZOOM } from '../../core/render/zoom';
 import {
   NodeColor,
   nodeColorFor,
@@ -54,6 +54,10 @@ import { EditorPane } from '../markdown/editor-pane';
 import { blockOf, clearPreviewLine } from '../markdown/preview-line';
 import { caretAtEnd, EditSession, runEditor } from './inline-edit';
 import { MapViewport } from './viewport';
+import {
+  readViewportState,
+  ViewportState,
+} from '../../core/render/viewport-state';
 import {
   addChildOp,
   addSiblingOp,
@@ -73,6 +77,9 @@ import {
 } from '../markdown/file-io';
 
 export const VIEW_TYPE_MINDMAP = 'mindmap-editor';
+
+const VIEWPORT_SETTLE_INTERVAL_MS = 16;
+const VIEWPORT_STABLE_SAMPLES = 6;
 
 /**
  * Gap (px) between a node's right edge and its collapse handle. Short, because
@@ -196,11 +203,20 @@ export class MindmapView extends ItemView {
   private linkedSourceLeaf: WorkspaceLeaf | null = null;
   /** Restored before the viewport DOM exists during workspace startup. */
   private savedZoom = 1;
+  private hasRestoredViewport = false;
+  private viewportReady = false;
+  private lastViewport: ViewportState | null = null;
+  private persistViewport = debounce(() => this.saveViewport(), 200, true);
+
   /** A revealed pane waits for its first visible, stable layout to frame it. */
   private revealPending:
-    { kind: 'center' } | { kind: 'initial'; cursorLine: number | null } | null =
-    null;
+    | { kind: 'center' }
+    | { kind: 'initial'; cursorLine: number | null }
+    | { kind: 'restore'; position: ViewportState }
+    | null = null;
   private revealTimer: number | null = null;
+  private revealSize: string | null = null;
+  private revealStableSamples = 0;
   /** How many `pointEditorAtFile` calls this map has in flight. */
   private pointing = 0;
   /** The two bulk-fold buttons in the header, by what each one folds. */
@@ -1181,6 +1197,13 @@ export class MindmapView extends ItemView {
       this.savedZoom,
     );
     this.viewport.bindActions(zoomOutAction, zoomInAction);
+    this.registerDomEvent(this.scrollerEl, 'scroll', () => {
+      if (this.canCaptureViewport) {
+        this.lastViewport = this.viewport.snapshot();
+        this.persistViewport();
+      }
+    });
+    this.register(() => this.persistViewport.cancel());
     // The map asking for the keyboard back is the end of any edit still open:
     // an edit left behind when the focus went elsewhere must not keep the keys
     // it is no longer typing into.
@@ -1196,6 +1219,8 @@ export class MindmapView extends ItemView {
 
   /** Left up by a map that is gone, the mark quiets the pane's next flash. */
   async onClose(): Promise<void> {
+    this.saveViewport();
+    this.persistViewport.cancel();
     if (this.revealTimer !== null) {
       this.containerEl.win.clearTimeout(this.revealTimer);
     }
@@ -1351,18 +1376,90 @@ export class MindmapView extends ItemView {
     );
   }
 
+  private get canCaptureViewport(): boolean {
+    return (
+      this.viewportReady &&
+      !this.revealPending &&
+      !this.renderQueued &&
+      this.layoutBuildSeq === null &&
+      this.contentEl.offsetHeight > 0 &&
+      this.viewport.canCapturePosition
+    );
+  }
+
+  private saveViewport(): void {
+    const file = this.file;
+    const canSave = file !== null && this.viewportReady;
+
+    if (!canSave) {
+      return;
+    }
+    const position = this.captureViewport();
+
+    if (position) {
+      this.app.saveLocalStorage(
+        `mindmap-editor:viewport:${file.path}`,
+        position,
+      );
+      this.app.workspace.requestSaveLayout();
+    }
+  }
+
+  private captureViewport(): ViewportState | null {
+    if (this.revealPending?.kind === 'restore') {
+      return this.revealPending.position;
+    }
+    if (this.canCaptureViewport) {
+      this.lastViewport = this.viewport.snapshot();
+    }
+
+    return this.lastViewport;
+  }
+
   getState(): Record<string, unknown> {
+    const position = this.captureViewport();
+
     return {
       file: this.file?.path ?? null,
       hideCompleted: this.hideCompleted,
       showBodyText: this.showBodyText,
-      zoom: this.viewport?.value ?? this.savedZoom,
+      zoom: position?.zoom ?? this.viewport?.value ?? this.savedZoom,
+      viewport: position,
     };
+  }
+
+  /** Live-only state used when Obsidian transfers this view to another leaf. */
+  getEphemeralState(): Record<string, unknown> {
+    return {
+      ...super.getEphemeralState(),
+      viewport: this.captureViewport(),
+    };
+  }
+
+  setEphemeralState(state: unknown): void {
+    super.setEphemeralState(state);
+    const shown = (state ?? {}) as Record<string, unknown>;
+    const position = readViewportState(shown.viewport);
+
+    if (position) {
+      this.scrollerEl.addClass('is-positioning');
+      this.hasRestoredViewport = false;
+      this.revealPending = { kind: 'restore', position };
+      this.revealAfterLayout();
+    }
   }
 
   async setState(state: unknown, result: ViewStateResult): Promise<void> {
     // What this pane was left drawing, which is its own and not the settings'.
     const shown = (state ?? {}) as Record<string, unknown>;
+    const zoom =
+      typeof shown.zoom === 'number' && Number.isFinite(shown.zoom)
+        ? clampZoom(shown.zoom)
+        : null;
+    const updatingVisibleViewport =
+      zoom !== null &&
+      this.canCaptureViewport &&
+      (!shown.file || shown.file === this.file?.path);
 
     if (typeof shown.hideCompleted === 'boolean') {
       this.hideCompleted = shown.hideCompleted;
@@ -1370,18 +1467,9 @@ export class MindmapView extends ItemView {
     if (typeof shown.showBodyText === 'boolean') {
       this.showBodyText = shown.showBodyText;
     }
-    if (typeof shown.zoom === 'number' && Number.isFinite(shown.zoom)) {
-      this.savedZoom = shown.zoom;
-      this.viewport?.restore(shown.zoom);
-    }
     this.syncToggleActions();
-    if (
-      state &&
-      typeof state === 'object' &&
-      'file' in state &&
-      typeof state.file === 'string'
-    ) {
-      const af = this.app.vault.getAbstractFileByPath(state.file);
+    if (typeof shown.file === 'string') {
+      const af = this.app.vault.getAbstractFileByPath(shown.file);
 
       if (af instanceof TFile && !this.isCurrentFile(af)) {
         // Switching between files (following a wikilink, or walking
@@ -1395,16 +1483,60 @@ export class MindmapView extends ItemView {
         await this.setFile(af);
       }
     }
+    if (zoom !== null) {
+      this.savedZoom = zoom;
+      this.viewport?.restore(zoom);
+    }
+    const position = readViewportState(shown.viewport);
+
+    if (position) {
+      const restored = { ...position, zoom: zoom ?? position.zoom };
+
+      if (updatingVisibleViewport) {
+        // Live zoom/state updates are not an opening or a layout transition.
+        this.viewport.restorePosition(restored);
+        this.lastViewport = this.viewport.snapshot();
+      } else {
+        this.scrollerEl.addClass('is-positioning');
+        this.hasRestoredViewport = false;
+        this.revealPending = { kind: 'restore', position: restored };
+        this.revealAfterLayout();
+      }
+    }
     await super.setState(state, result);
   }
 
   async setFile(file: TFile): Promise<void> {
+    this.saveViewport();
+    this.persistViewport.cancel();
+    this.viewportReady = false;
+    this.hasRestoredViewport = false;
+    this.lastViewport = null;
+    let position: ViewportState | null = null;
+
+    position = readViewportState(
+      this.app.loadLocalStorage(`mindmap-editor:viewport:${file.path}`),
+    );
+
+    if (!position) {
+      // Do not carry a remembered map's zoom into an ordinary one.
+      this.savedZoom = 1;
+      this.viewport?.restore(1);
+    }
+
     this.revealPending = null;
     if (this.revealTimer !== null) {
       this.containerEl.win.clearTimeout(this.revealTimer);
       this.revealTimer = null;
     }
     this.file = file;
+    this.scrollerEl.addClass('is-positioning');
+    // File changes and workspace restoration can bypass the opening command.
+    if (position) {
+      this.revealPending = { kind: 'restore', position };
+    } else {
+      this.revealPending = { kind: 'initial', cursorLine: null };
+    }
     this.syncToggleActions();
     this.selectOnly(null);
     this.cursorLine = null;
@@ -1447,18 +1579,34 @@ export class MindmapView extends ItemView {
 
   /** Centers a revealed map after its first visible render settles. */
   private centerAfterReveal(): void {
+    this.scrollerEl.addClass('is-positioning');
     this.revealPending = { kind: 'center' };
-    if (this.renderQueued && this.contentEl.offsetHeight > 0) {
-      void this.render();
+    this.revealAfterLayout();
+  }
+
+  /** Reopenings resume their viewport; first openings frame the caret. */
+  initialViewportAfterReveal(cursorLine: number | null): void {
+    const restored =
+      this.hasRestoredViewport || this.revealPending?.kind === 'restore';
+
+    if (restored) {
+      this.revealAfterLayout();
 
       return;
     }
-    this.schedulePendingReveal();
+    // setFile may have fitted the map while the opening command awaited the
+    // pane reveal. Cursor-based ordinary openings start at their normal scale,
+    // then center the cursor without changing it.
+    if (cursorLine !== null && !restored) {
+      this.savedZoom = 1;
+      this.viewport.restore(1);
+    }
+    this.scrollerEl.addClass('is-positioning');
+    this.revealPending = { kind: 'initial', cursorLine };
+    this.revealAfterLayout();
   }
 
-  /** Focuses a concrete Markdown node, or fits the whole newly opened map. */
-  initialViewportAfterReveal(cursorLine: number | null): void {
-    this.revealPending = { kind: 'initial', cursorLine };
+  private revealAfterLayout(): void {
     if (this.renderQueued && this.contentEl.offsetHeight > 0) {
       void this.render();
 
@@ -1471,6 +1619,7 @@ export class MindmapView extends ItemView {
     if (
       !this.revealPending ||
       this.renderQueued ||
+      this.layoutBuildSeq !== null ||
       !this.laidRoot ||
       this.contentEl.offsetHeight === 0
     ) {
@@ -1482,26 +1631,62 @@ export class MindmapView extends ItemView {
     if (this.revealTimer !== null) {
       win.clearTimeout(this.revealTimer);
     }
-    // Keep the target framed throughout the opening resize sequence, not only
-    // after it. It should already look settled while the split is animating.
+    this.revealSize = `${this.scrollerEl.clientWidth}:${this.scrollerEl.clientHeight}`;
+    this.revealStableSamples = 0;
+    this.revealTimer = win.setTimeout(
+      () => this.checkViewportSettled(seq),
+      VIEWPORT_SETTLE_INTERVAL_MS,
+    );
+  }
+
+  private checkViewportSettled(seq: number): void {
+    this.revealTimer = null;
+    if (
+      !this.revealPending ||
+      seq !== this.renderSeq ||
+      this.renderQueued ||
+      this.layoutBuildSeq !== null ||
+      this.contentEl.offsetHeight === 0
+    ) {
+      return;
+    }
+    const size = `${this.scrollerEl.clientWidth}:${this.scrollerEl.clientHeight}`;
+
+    if (size === this.revealSize) {
+      this.revealStableSamples += 1;
+    } else {
+      this.revealSize = size;
+      this.revealStableSamples = 0;
+    }
+    if (this.revealStableSamples >= VIEWPORT_STABLE_SAMPLES) {
+      this.finishPendingReveal();
+
+      return;
+    }
+    this.revealTimer = this.containerEl.win.setTimeout(
+      () => this.checkViewportSettled(seq),
+      VIEWPORT_SETTLE_INTERVAL_MS,
+    );
+  }
+
+  private finishPendingReveal(): void {
+    this.scrollerEl.removeClass('is-positioning');
     this.applyPendingReveal();
-    this.revealTimer = win.setTimeout(() => {
-      this.revealTimer = null;
-      if (
-        this.revealPending &&
-        seq === this.renderSeq &&
-        !this.renderQueued &&
-        this.contentEl.offsetHeight > 0
-      ) {
-        this.applyPendingReveal();
-        this.revealPending = null;
-      }
-    }, 350);
+    this.revealPending = null;
+    this.saveViewport();
   }
 
   private applyPendingReveal(): void {
     const pending = this.revealPending;
 
+    if (pending?.kind === 'restore') {
+      this.hasRestoredViewport = true;
+      this.viewport.restorePosition(pending.position);
+      this.viewportReady = true;
+      this.lastViewport = this.viewport.snapshot();
+
+      return;
+    }
     if (pending?.kind === 'initial') {
       if (!this.focusInitialCursor(pending.cursorLine)) {
         this.fit();
@@ -1617,12 +1802,11 @@ export class MindmapView extends ItemView {
     if (seq !== this.renderSeq) {
       return;
     }
-    if (this.isBusy()) {
+    if (this.isBusy() || this.contentEl.offsetHeight === 0) {
       this.renderQueued = true;
 
       return;
     }
-
     const restoreViewport = this.viewport.isInitialized;
     const scrollLeft = this.scrollerEl.scrollLeft;
     const scrollTop = this.scrollerEl.scrollTop;
@@ -1669,6 +1853,12 @@ export class MindmapView extends ItemView {
     if (seq !== this.renderSeq) {
       return;
     }
+    // Reading and rendering Markdown can outlive the tab's visible layout.
+    if (this.contentEl.offsetHeight === 0) {
+      this.renderQueued = true;
+
+      return;
+    }
     this.applyLayout();
     this.layoutBuildSeq = null;
     this.finishRenderStaging();
@@ -1676,6 +1866,7 @@ export class MindmapView extends ItemView {
       this.scrollerEl.scrollLeft = scrollLeft;
       this.scrollerEl.scrollTop = scrollTop;
     }
+    this.viewportReady = true;
     this.schedulePendingReveal();
 
     if (this.cursorLine !== null) {

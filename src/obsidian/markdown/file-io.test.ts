@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { WorkspaceLeaf } from 'obsidian';
-import { joinLike, leafNearness, sameSplit } from './file-io';
+import { joinLike, leafNearness } from './file-io';
+import { sameSplit } from '../workspace';
 
 function leaf(container: object): WorkspaceLeaf {
   return { getContainer: () => container } as WorkspaceLeaf;

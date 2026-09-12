@@ -1,5 +1,6 @@
 import { App, Keymap, TFile, WorkspaceLeaf } from 'obsidian';
-import { findEditingView, findMarkdownView, sameWindow } from './file-io';
+import { findEditingView, findMarkdownView } from './file-io';
+import { sameWindow } from '../workspace';
 import {
   clearPreviewLine,
   markPreviewLine,

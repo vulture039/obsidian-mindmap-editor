@@ -20,7 +20,7 @@ No new file format, no markup to add.
 - **Tasks and folds** - Toggle checkboxes, collapse branches, and optionally hide completed tasks.
 - **Rich node text** - Show body text with inline Markdown, links, and image previews.
 - **Map/editor sync** - Selection, cursor position, folds, and wikilinks stay in sync.
-- **Flexible views** - Zoom, pan, fit, and open multiple maps as splits or tabs.
+- **Flexible views** - Zoom, pan, fit, and reopen each map at its saved position.
 - **Link and Auto-open** - Link a map to a Markdown tab, or reopen it automatically with a note.
 - **Visual hierarchy** - Depth, headings, and customizable branch colors remain easy to distinguish.
 

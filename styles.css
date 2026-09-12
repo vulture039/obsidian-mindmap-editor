@@ -22,6 +22,10 @@
   min-height: 100%;
 }
 
+.mindmap-scroller.is-positioning .mindmap-surface {
+  visibility: hidden;
+}
+
 .mindmap-canvas {
   position: absolute;
   transform-origin: top left;

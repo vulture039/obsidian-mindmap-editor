@@ -13,15 +13,7 @@ npm test       # the Vitest unit tests (npm run test:watch to watch)
 npm run e2e    # the checks that need Obsidian itself; see below
 ```
 
-### Code style
-
-- Prefer array methods when the operation produces an array or searches one.
-  Do not use `map` only for side effects; keep a loop when mutation or control
-  flow is clearer.
-- Do not nest conditional (`?:`) expressions. Use a named value or `if`/`else`
-  when a choice contains another choice.
-
-### Map pane vocabulary
+## Map pane vocabulary
 
 Keep these four behaviors separate:
 
@@ -97,48 +89,26 @@ editor back. Close Obsidian, then:
 
 ```bash
 open -a Obsidian --args --remote-debugging-port=9222
-npm run e2e     # Fixtures.md open in a map and in an editing pane
+npm run e2e     # with dev-vault open
 ```
 
-The runner talks CDP over a WebSocket, which Node has as a global from 21 on:
-on an older one it dies with `WebSocket is not defined`.
+The runner opens and normalizes the required unlinked `Fixtures.md` pane pair;
+the vault only needs to be open. It runs the complete desktop suite by default;
+pass one or more check files after `--` to narrow it. Unrelated panes are left
+alone, and individual checks restore the files and settings they change.
 
-`harness.js` goes in front of whichever check runs - the map, the pane, and the
-few ways of acting on either, so a check file is nothing but its cases. It waits
-for conditions rather than on a clock. Each file below is a check, a line per
-case:
+The runner talks CDP over a WebSocket. The npm script enables Node 20's
+experimental implementation; Node 21 and newer provide it by default.
 
-- **`fidelity.js`** (the default) - every write against the file it should
-  leave, character for character, and everything the map draws against what the
-  file says. Run it twice, once with the pane editing and once in reading view,
-  since the map writes through the editor in one and straight to the file in
-  the other.
-- **`keys.js`** (`npm run e2e test/e2e/keys.js`) - real keystrokes through
-  Obsidian's keymap. It sees a key before the page does, so this is the only
-  way to tell whether the map claims one that belonged to the editor open on
-  top of it.
-- **`root.js`** (`npm run e2e test/e2e/root.js`) - the note itself as a node:
-  its own prose, and its folds.
-- **`node-text.js`** (`npm run e2e test/e2e/node-text.js`) - real inline Markdown rendering, image path
-  resolution and sizing, missing-image fallback, code fences and text folding.
-- **`drag-rendered-node.js`** (`npm run e2e test/e2e/drag-rendered-node.js`) - moving an image-heavy
-  heading after its asynchronous content has settled.
-- **`zoom.js`** (`npm run e2e test/e2e/zoom.js`) - header, cursor-anchored wheel
-  and pinch zoom, fitting, limits, and restoring one pane's zoom level.
-- **`mobile.js`** (`npm run e2e test/e2e/mobile.js`) - opening and rendering a
-  map in Obsidian's emulated mobile workspace.
-- **`panes.js`** (`npm run e2e test/e2e/panes.js`) - active following, Link,
-  Auto-open restore, closing Markdown, pane reuse and initial framing. It
-  opens and closes panes of its own, then puts them back.
-- **`initial-viewport.js`** (`npm run e2e test/e2e/initial-viewport.js`) - a
-  newly stacked map keeps the Markdown cursor visible in the resized source.
-- **`popout.js`** (`npm run e2e test/e2e/popout.js`) - a note in a window of its
-  own: which window the map lands in, and whether it drives the editor there
-  rather than the one in the main window. It pops a window out and closes it
-  again.
+`harness.js` goes in front of each check with the shared map, pane, and actions.
+It waits for conditions rather than on a clock. `suite.mjs` is the canonical
+list of desktop checks; each check describes its own scope at the top. These
+checks are not run in CI. Mobile is excluded from the default suite and runs
+separately after mobile emulation is enabled:
 
-None of them are in CI. Checks start with Fixtures.md open in both views; the
-mobile check instead starts after mobile emulation is enabled.
+```bash
+npm run e2e -- test/e2e/workspace/mobile.js
+```
 
 ### Mobile layout and touch
 
@@ -153,7 +123,7 @@ Set a phone size in the device toolbar; restore with
 pinch on a device. See Obsidian's
 [mobile guide](https://docs.obsidian.md/Plugins/Getting%20started/Mobile%20development).
 
-A one-off goes the same way (`npm run e2e my-check.js`): a snippet evaluated in
+A one-off goes the same way (`npm run e2e -- my-check.js`): a snippet evaluated in
 the renderer, returning whatever you want printed. It reaches the map's DOM and
 its measurements, every click, the editor's text and fold state, the plugin's
 commands and settings, and a screenshot of the window. Two traps: read the text

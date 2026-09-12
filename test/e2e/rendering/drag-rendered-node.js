@@ -37,14 +37,14 @@ if (source && target && image) {
       clientY: from.top + 12,
     }),
   );
-  document.dispatchEvent(
+  source.doc.dispatchEvent(
     new PointerEvent('pointermove', {
       ...pointer,
       clientX: to.left + to.width / 2,
       clientY: to.top + to.height / 2,
     }),
   );
-  document.dispatchEvent(
+  source.doc.dispatchEvent(
     new PointerEvent('pointerup', {
       ...pointer,
       buttons: 0,

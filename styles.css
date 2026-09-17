@@ -377,11 +377,16 @@
   width: 16px;
   height: 16px;
   transform: translate(-50%, -50%);
-  border: 1px solid var(--text-faint);
+  border: 1px solid var(--color-yellow);
   border-radius: 999px;
-  background: var(--background-primary);
-  color: var(--text-muted);
+  background: var(--color-yellow);
+  color: var(--text-normal);
+  box-shadow: 0 0 0 2px var(--background-primary);
   pointer-events: none;
+}
+
+.theme-dark .mindmap-bookmark-mark {
+  color: var(--background-primary);
 }
 
 .mindmap-bookmark-mark .svg-icon {

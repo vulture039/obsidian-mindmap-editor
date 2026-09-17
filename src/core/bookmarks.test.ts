@@ -113,6 +113,36 @@ describe('node bookmarks', () => {
     ).toBeNull();
   });
 
+  it('follows an isolated list converted to a heading', () => {
+    const before = '# Parent\n- target\n- sibling';
+    const after = '# Parent\n## renamed\n- sibling';
+    const anchor = anchorFor(nodeAt(before, 1));
+
+    expect(
+      trackAnchor(parseMarkdown(after, 'Note'), anchor, before, after),
+    ).toMatchObject({ type: 'heading', text: 'renamed', line: 1 });
+  });
+
+  it('follows an isolated heading converted to a list with body text', () => {
+    const before = '# Parent\n## target\n## Sibling';
+    const after = '# Parent\n- renamed\n  description\n## Sibling';
+    const anchor = anchorFor(nodeAt(before, 1));
+
+    expect(
+      trackAnchor(parseMarkdown(after, 'Note'), anchor, before, after),
+    ).toMatchObject({ type: 'list', text: 'renamed', line: 1 });
+  });
+
+  it('refuses a type change that also changes another node', () => {
+    const before = '# Parent\n- target\n- sibling';
+    const after = '# Parent\n## renamed\n- changed sibling';
+    const anchor = anchorFor(nodeAt(before, 1));
+
+    expect(
+      trackAnchor(parseMarkdown(after, 'Note'), anchor, before, after),
+    ).toBeNull();
+  });
+
   it('uses ancestors to distinguish duplicate text', () => {
     const before = '# One\n- target\n# Two\n- target';
     const after = '# Zero\n# One\n- target\n# Two\n- target';

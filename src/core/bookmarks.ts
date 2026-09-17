@@ -368,30 +368,31 @@ export function trackAnchor(
   const changedAlone =
     beforeChangedNodes.length === 1 &&
     beforeChangedNodes[0] === beforeNode &&
-    afterChangedNodes.length === 1 &&
-    afterChangedNodes[0]?.type === anchor.type;
+    afterChangedNodes.length === 1;
   const lineCountChanged =
     before.split(/\r?\n/).length !== after.split(/\r?\n/).length;
 
   if (beforeExact.length > 1 && lineCountChanged) {
     return null;
   }
-  if (mapped?.changed && atMapped) {
+  if (mapped?.changed) {
     if (!changedAlone) {
       return null;
     }
+    const changedNode = afterChangedNodes[0]!;
+
     const belongedToAnotherNode = nodesOf(beforeRoot).some(
       (node) =>
         node !== beforeNode &&
-        node.type === atMapped.type &&
-        node.text === atMapped.text,
+        node.type === changedNode.type &&
+        node.text === changedNode.text,
     );
 
     if (belongedToAnotherNode) {
       return null;
     }
 
-    return atMapped;
+    return changedNode;
   }
   if (!mapped && changedAlone) {
     return afterChangedNodes[0]!;

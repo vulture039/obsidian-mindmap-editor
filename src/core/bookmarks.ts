@@ -358,6 +358,18 @@ export function trackAnchor(
   const atMapped = mapped
     ? afterNodes.find((node) => node.line === mapped.line)
     : null;
+  const change = changedLines(before, after);
+  const beforeChangedNodes = nodesOf(beforeRoot).filter(
+    (node) => node.line >= change.from && node.line < change.oldEnd,
+  );
+  const afterChangedNodes = nodesOf(root).filter(
+    (node) => node.line >= change.from && node.line < change.newEnd,
+  );
+  const changedAlone =
+    beforeChangedNodes.length === 1 &&
+    beforeChangedNodes[0] === beforeNode &&
+    afterChangedNodes.length === 1 &&
+    afterChangedNodes[0]?.type === anchor.type;
   const lineCountChanged =
     before.split(/\r?\n/).length !== after.split(/\r?\n/).length;
 
@@ -365,16 +377,7 @@ export function trackAnchor(
     return null;
   }
   if (mapped?.changed && atMapped) {
-    const beforeChangedNodes = nodesOf(beforeRoot).filter(
-      (node) => node.line >= mapped.from && node.line < mapped.to,
-    );
-    const afterChangedNodes = nodesOf(root).filter(
-      (node) => node.line >= mapped.from && node.line < mapped.to,
-    );
-    const hasOneNodeOnEachSide =
-      beforeChangedNodes.length === 1 && afterChangedNodes.length === 1;
-
-    if (!hasOneNodeOnEachSide) {
+    if (!changedAlone) {
       return null;
     }
     const belongedToAnotherNode = nodesOf(beforeRoot).some(
@@ -389,6 +392,9 @@ export function trackAnchor(
     }
 
     return atMapped;
+  }
+  if (!mapped && changedAlone) {
+    return afterChangedNodes[0]!;
   }
   const exact = afterNodes.filter(
     (node) => node.text === anchor.text && sameAncestors(node, anchor),

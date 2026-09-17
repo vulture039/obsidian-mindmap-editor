@@ -83,6 +83,36 @@ describe('node bookmarks', () => {
     ).toBe('new name');
   });
 
+  it('follows a rename that also adds body text to the node', () => {
+    const before = '# Parent\n- target\n- sibling';
+    const after = '# Parent\n- renamed\n  new description\n- sibling';
+    const anchor = anchorFor(nodeAt(before, 1));
+
+    expect(
+      trackAnchor(parseMarkdown(after, 'Note'), anchor, before, after)?.text,
+    ).toBe('renamed');
+  });
+
+  it('follows a rename that also removes body text from the node', () => {
+    const before = '# Parent\n- target\n  old description\n- sibling';
+    const after = '# Parent\n- renamed\n- sibling';
+    const anchor = anchorFor(nodeAt(before, 1));
+
+    expect(
+      trackAnchor(parseMarkdown(after, 'Note'), anchor, before, after)?.text,
+    ).toBe('renamed');
+  });
+
+  it('refuses a line-changing edit that spans multiple nodes', () => {
+    const before = '# Parent\n- target\n- sibling';
+    const after = '# Parent\n- renamed\n  new description\n- changed sibling';
+    const anchor = anchorFor(nodeAt(before, 1));
+
+    expect(
+      trackAnchor(parseMarkdown(after, 'Note'), anchor, before, after),
+    ).toBeNull();
+  });
+
   it('uses ancestors to distinguish duplicate text', () => {
     const before = '# One\n- target\n# Two\n- target';
     const after = '# Zero\n# One\n- target\n# Two\n- target';

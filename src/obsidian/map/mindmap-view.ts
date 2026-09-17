@@ -6,6 +6,7 @@ import {
   Modifier,
   Notice,
   Scope,
+  setIcon,
   TAbstractFile,
   TFile,
   ViewStateResult,
@@ -55,6 +56,13 @@ import { blockOf, clearPreviewLine } from '../markdown/preview-line';
 import { caretAtEnd, EditSession, runEditor } from './inline-edit';
 import { MapViewport } from './viewport';
 import {
+  anchorFor,
+  NodeBookmark,
+  resolveAnchor,
+  trackAnchor,
+} from '../../core/bookmarks';
+import { BookmarkNameModal } from '../bookmarks';
+import {
   readViewportState,
   ViewportState,
 } from '../../core/render/viewport-state';
@@ -80,6 +88,7 @@ export const VIEW_TYPE_MINDMAP = 'mindmap-editor';
 
 const VIEWPORT_SETTLE_INTERVAL_MS = 16;
 const VIEWPORT_STABLE_SAMPLES = 6;
+const ORDERED_LABEL = /^\d+[.)](?:\s+|$)/;
 
 /**
  * Gap (px) between a node's right edge and its collapse handle. Short, because
@@ -100,6 +109,7 @@ const EDGE_MIN_RUN = 12;
 /** How far out of the parent the bend is spent, at most. */
 const BEND_LEAD = 60;
 const BEND_SETTLE = 110;
+const EDGE_ENTRY_RUN = 8;
 
 /**
  * Out of the parent, across to the child's row early, then all but straight in.
@@ -111,11 +121,15 @@ function branchCurve(x1: number, y1: number, x2: number, y2: number): string {
     return `M ${x1} ${y1} H ${x2}`;
   }
   const run = x2 - x1;
-  const lead = Math.min(run * 0.25, BEND_LEAD);
-  const settle = Math.min(run * 0.45, BEND_SETTLE);
+  const entryRun = Math.min(EDGE_ENTRY_RUN, run * 0.25);
+  const curveEnd = x2 - entryRun;
+  const curveRun = curveEnd - x1;
+  const lead = Math.min(curveRun * 0.25, BEND_LEAD);
+  const settle = Math.min(curveRun * 0.45, BEND_SETTLE);
 
   return (
-    `M ${x1} ${y1} C ${x1 + lead} ${y1}, ` + `${x1 + settle} ${y2}, ${x2} ${y2}`
+    `M ${x1} ${y1} C ${x1 + lead} ${y1}, ` +
+    `${x1 + settle} ${y2}, ${curveEnd} ${y2} H ${x2}`
   );
 }
 
@@ -170,6 +184,8 @@ export class MindmapView extends ItemView {
   private readonly plugin: MindmapPlugin;
   private file: TFile | null = null;
   private root: MindNode | null = null;
+  /** Markdown revision that produced `root`; bookmark tracking starts here. */
+  private renderedSource = '';
   private scrollerEl!: HTMLElement;
   private canvasEl!: HTMLElement;
   private selectedLine: number | null = null;
@@ -536,6 +552,22 @@ export class MindmapView extends ItemView {
     }
     // Obsidian passes KeyboardEvent.key through, so space is ' '.
     this.onKey([], ' ', () => this.toggleSelectedCheckbox());
+    this.onKey(['Mod'], 'B', () => {
+      const node = this.selectedNode();
+
+      if (!node || node.type === 'root' || !this.file) {
+        return true;
+      }
+      const bookmark = this.bookmarkFor(node);
+
+      if (bookmark) {
+        void this.plugin.removeBookmark(bookmark.id);
+      } else {
+        void this.addNodeBookmark(node);
+      }
+
+      return false;
+    });
     this.onKey([], 'Escape', () => {
       // A flag left set with no editor on screen: the edit is over, and this
       // is what unfreezes the map. An editor that is still there kept the key
@@ -1164,9 +1196,12 @@ export class MindmapView extends ItemView {
       this.toggleLink(),
     );
     this.autoOpenActionEl = this.addAction(
-      'bookmark',
+      'file-check-2',
       'Open this map automatically with the note',
       () => void this.toggleAutoOpen(),
+    );
+    this.addAction('bookmark', 'Node bookmarks', (event) =>
+      this.showBookmarksMenu(event),
     );
     this.syncToggleActions();
     this.foldAllActionEls.set(
@@ -1793,6 +1828,7 @@ export class MindmapView extends ItemView {
       this.finishRenderStaging();
       this.canvasEl.empty();
       this.laidByLine.clear();
+      this.renderedSource = '';
       this.canvasEl.createDiv({
         cls: 'mindmap-empty',
         text: 'Open a Markdown file, then run "Open mind map for the active file".',
@@ -1837,6 +1873,7 @@ export class MindmapView extends ItemView {
     this.canvasEl.empty();
     this.laidByLine.clear();
     this.root = parseMarkdown(text, this.file.basename);
+    this.renderedSource = text;
     // Keyed by line, so re-derive: the editor's folds, else prune.
     if (!this.pullEditorFolds(this.root)) {
       this.collapsedBranches = pruneLines(
@@ -2138,7 +2175,11 @@ export class MindmapView extends ItemView {
    */
   private addCollapseToggles(laid: LaidNode): Map<LaidNode, number> {
     const branches: [LaidNode, HTMLElement][] = [];
+    const bookmarkedLines = this.bookmarkedLines();
     const visit = (l: LaidNode): void => {
+      if (bookmarkedLines.has(l.node.line)) {
+        this.addBookmarkMark(l);
+      }
       if (l.node.children.length > 0) {
         branches.push([l, this.addBranchToggle(l)]);
       }
@@ -2158,6 +2199,34 @@ export class MindmapView extends ItemView {
     }
 
     return outlets;
+  }
+
+  private bookmarkedLines(): Set<number> {
+    if (!this.root) {
+      return new Set();
+    }
+    const root = this.root;
+    const lines = this.plugin
+      .bookmarksFor(this.file)
+      .filter((bookmark) => !bookmark.unresolved)
+      .map((bookmark) => resolveAnchor(root, bookmark)?.line)
+      .filter((line): line is number => line !== undefined);
+
+    return new Set(lines);
+  }
+
+  /** Persistent state opposite the transient text-fold handle. */
+  private addBookmarkMark(laid: LaidNode): void {
+    const mark = this.canvasEl.createDiv({
+      cls: 'mindmap-bookmark-mark',
+      attr: { 'aria-label': 'Bookmarked' },
+    });
+
+    setIcon(mark, 'bookmark');
+    mark.setCssStyles({
+      left: `${laid.x}px`,
+      top: `${laid.y}px`,
+    });
   }
 
   /** "−"/"+n" beside the node: folds the branch, and the editor with it. */
@@ -2337,7 +2406,7 @@ export class MindmapView extends ItemView {
       return;
     }
     this.canvasEl
-      .querySelectorAll('.mindmap-collapse')
+      .querySelectorAll('.mindmap-collapse, .mindmap-bookmark-mark')
       .forEach((handle) => handle.remove());
     svg.empty();
     const { width, height } = layoutTree(this.laidRoot);
@@ -2607,6 +2676,31 @@ export class MindmapView extends ItemView {
       );
     }
     if (node.type !== 'root') {
+      if (this.file) {
+        const bookmark = this.bookmarkFor(node);
+
+        add(
+          bookmark ? 'Remove bookmark' : 'Add bookmark',
+          bookmark ? 'bookmark-minus' : 'bookmark-plus',
+          () => {
+            if (bookmark) {
+              void this.plugin.removeBookmark(bookmark.id);
+            } else {
+              void this.addNodeBookmark(node);
+            }
+          },
+        );
+        if (bookmark) {
+          add('Rename bookmark label', 'pencil', () => {
+            new BookmarkNameModal(
+              this.app,
+              bookmark.name ?? '',
+              (name) => void this.plugin.renameBookmark(bookmark.id, name),
+            ).open();
+          });
+        }
+        menu.addSeparator();
+      }
       add(
         'Add sibling',
         'corner-down-right',
@@ -2645,6 +2739,199 @@ export class MindmapView extends ItemView {
       });
     }
     menu.showAtMouseEvent(e);
+  }
+
+  private bookmarkFor(node: MindNode): NodeBookmark | null {
+    if (!this.root) {
+      return null;
+    }
+
+    return (
+      this.plugin
+        .bookmarksFor(this.file)
+        .filter((bookmark) => !bookmark.unresolved)
+        .find(
+          (bookmark) => resolveAnchor(this.root!, bookmark)?.line === node.line,
+        ) ?? null
+    );
+  }
+
+  private async addNodeBookmark(node: MindNode): Promise<void> {
+    if (!this.file) {
+      return;
+    }
+    const source = await this.getFileText(false);
+    const current = trackAnchor(
+      parseMarkdown(source, this.file.basename),
+      anchorFor(node),
+      this.renderedSource,
+      source,
+    );
+
+    if (!current) {
+      new Notice('Mind map: node changed before it could be bookmarked.');
+
+      return;
+    }
+    await this.plugin.addBookmark(this.file, current, source);
+  }
+
+  private showBookmarksMenu(event: MouseEvent): void {
+    const menu = new Menu().setUseNativeMenu(false);
+
+    const bookmarks = [...this.plugin.bookmarksFor(this.file)].sort((a, b) => {
+      if (a.unresolved !== b.unresolved) {
+        return a.unresolved ? 1 : -1;
+      }
+
+      return a.line - b.line;
+    });
+
+    if (!bookmarks.length) {
+      menu.addItem((item) =>
+        item.setTitle('No bookmarks for this note').setDisabled(true),
+      );
+    }
+    for (const bookmark of bookmarks) {
+      const title = bookmark.name ?? this.bookmarkNodeLabel(bookmark);
+      let icon = 'circle-alert';
+
+      if (!bookmark.unresolved) {
+        icon = this.bookmarkNodeIcon(bookmark);
+      }
+
+      menu.addItem((item) =>
+        item
+          .setTitle(this.bookmarkMenuTitle(menu, bookmark, title))
+          .setIcon(icon)
+          .onClick(() => void this.revealBookmark(bookmark)),
+      );
+    }
+    if (bookmarks.length) {
+      menu.addSeparator();
+      menu.addItem((item) =>
+        item
+          .setTitle('Remove all bookmarks')
+          .setIcon('trash')
+          .onClick(() => this.removeAllBookmarks()),
+      );
+    }
+    menu.showAtMouseEvent(event);
+  }
+
+  private removeAllBookmarks(): void {
+    if (
+      this.plugin.bookmarksFor(this.file).length &&
+      this.containerEl.win.confirm('Remove all bookmarks for this note?')
+    ) {
+      void this.plugin.resetBookmarks(this.file ?? undefined);
+    }
+  }
+
+  private bookmarkMenuTitle(
+    menu: Menu,
+    bookmark: NodeBookmark,
+    title: string,
+  ): DocumentFragment {
+    const fragment = this.containerEl.doc
+      .createRange()
+      .createContextualFragment(
+        '<span class="mindmap-bookmark-menu-title">' +
+          '<span class="mindmap-bookmark-menu-label"></span>' +
+          '<span class="mindmap-bookmark-remove" role="button" tabindex="0"></span>' +
+          '</span>',
+      );
+    const label = fragment.querySelector('.mindmap-bookmark-menu-label');
+    const remove = fragment.querySelector<HTMLElement>(
+      '.mindmap-bookmark-remove',
+    );
+
+    label!.textContent = bookmark.unresolved ? `${title} (not found)` : title;
+    remove!.ariaLabel = 'Remove bookmark';
+    setIcon(remove!, 'trash');
+    const removeBookmark = (): void => {
+      menu.hide();
+      void this.plugin.removeBookmark(bookmark.id);
+    };
+
+    remove!.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      removeBookmark();
+    });
+    remove!.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') {
+        return;
+      }
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      removeBookmark();
+    });
+
+    return fragment;
+  }
+
+  private bookmarkNodeIcon(bookmark: NodeBookmark): string {
+    if (bookmark.type === 'heading') {
+      const level = bookmark.level ?? 1;
+
+      return `heading-${Math.max(1, Math.min(6, level))}`;
+    }
+    if (typeof bookmark.checked === 'boolean') {
+      return 'list-checks';
+    }
+
+    const ordered =
+      /^\d+[.)]$/.test(bookmark.marker ?? '') ||
+      ORDERED_LABEL.test(bookmark.text);
+
+    return ordered ? 'list-ordered' : 'list';
+  }
+
+  private bookmarkNodeLabel(bookmark: NodeBookmark): string {
+    if (
+      bookmark.type === 'list' &&
+      typeof bookmark.checked !== 'boolean' &&
+      ORDERED_LABEL.test(bookmark.text)
+    ) {
+      return bookmark.text.replace(ORDERED_LABEL, '');
+    }
+
+    return bookmark.text;
+  }
+
+  private async revealBookmark(bookmark: NodeBookmark): Promise<void> {
+    if (!this.root) {
+      return;
+    }
+    const node = resolveAnchor(this.root, bookmark);
+
+    if (!node) {
+      new Notice('Mind map: bookmarked node could not be found.');
+
+      return;
+    }
+    this.revealPending = null;
+    if (this.revealTimer !== null) {
+      this.containerEl.win.clearTimeout(this.revealTimer);
+      this.revealTimer = null;
+    }
+    for (let parent = node.parent; parent; parent = parent.parent) {
+      this.collapsedBranches.delete(parent.line);
+      this.expandedDone.add(parent.line);
+    }
+    this.syncCollapseToEditor();
+    await this.render();
+    const refreshed = this.root && resolveAnchor(this.root, bookmark);
+    const laid = refreshed && this.laidByLine.get(refreshed.line);
+
+    if (refreshed && laid) {
+      if (this.viewport.value < 1) {
+        this.viewport.restore(1);
+      }
+      this.selectNode(refreshed, laid.el);
+      laid.el.scrollIntoView({ block: 'center', inline: 'center' });
+    }
   }
 
   private async addSiblingNode(node: MindNode, task?: boolean): Promise<void> {

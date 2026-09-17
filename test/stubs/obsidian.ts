@@ -12,6 +12,10 @@ export const Keymap = {
 
 export class Component {}
 
+export class Modal extends Component {}
+
+export class Setting {}
+
 export class MarkdownRenderer {
   static async render(
     _app: unknown,

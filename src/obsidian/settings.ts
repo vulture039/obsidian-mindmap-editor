@@ -59,6 +59,11 @@ export class MindmapSettingTab extends PluginSettingTab {
         control: { type: 'toggle', key: 'closeLinkedMapWithSource' },
       },
       {
+        name: 'Remove all node bookmarks',
+        desc: 'Remove every bookmark from every note.',
+        render: (setting) => this.addRemoveBookmarksButton(setting),
+      },
+      {
         name: 'Branch colors',
         desc: 'Top-level branch colors, one hex per line. Colors repeat; leave blank for defaults.',
         control: {
@@ -92,6 +97,15 @@ export class MindmapSettingTab extends PluginSettingTab {
     const str = (v: unknown): string => (typeof v === 'string' ? v : '');
 
     for (const def of this.getSettingDefinitions()) {
+      if ('render' in def && def.render) {
+        const setting = new Setting(containerEl).setName(def.name);
+
+        if (typeof def.desc === 'string') {
+          setting.setDesc(def.desc);
+        }
+        this.addRemoveBookmarksButton(setting);
+        continue;
+      }
       if (!('control' in def) || !def.control) {
         continue;
       }
@@ -129,5 +143,22 @@ export class MindmapSettingTab extends PluginSettingTab {
         });
       }
     }
+  }
+
+  private addRemoveBookmarksButton(setting: Setting): void {
+    setting.addButton((button) => {
+      button.buttonEl.addClass('mod-warning');
+
+      return button
+        .setButtonText('Remove')
+        .setDisabled(!this.plugin.settings.bookmarks.length)
+        .onClick(() => {
+          if (setting.settingEl.win.confirm('Remove all node bookmarks?')) {
+            void this.plugin
+              .resetBookmarks()
+              .then(() => button.setDisabled(true));
+          }
+        });
+    });
   }
 }

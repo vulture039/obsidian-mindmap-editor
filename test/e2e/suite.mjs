@@ -8,6 +8,7 @@ const desktopChecks = [
   'viewport/initial-viewport.js',
   'editing/fidelity.js',
   'editing/keys.js',
+  'navigation/bookmarks.js',
   'rendering/root.js',
   'rendering/node-text.js',
   'rendering/drag-rendered-node.js',

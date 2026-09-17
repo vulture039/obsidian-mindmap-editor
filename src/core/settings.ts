@@ -1,3 +1,5 @@
+import type { NodeBookmark } from './bookmarks';
+
 export interface MindmapSettings {
   palette: string;
   // What a map being opened starts with; each pane then holds its own,
@@ -18,6 +20,8 @@ export interface MindmapSettings {
   rememberLinkedMaps: boolean;
   // Optionally close the dependent map when its linked Markdown tab closes.
   closeLinkedMapWithSource: boolean;
+  // Persistent navigation points. An empty list leaves tracking idle.
+  bookmarks: NodeBookmark[];
 }
 
 export const DEFAULT_SETTINGS: MindmapSettings = {
@@ -29,4 +33,5 @@ export const DEFAULT_SETTINGS: MindmapSettings = {
   autoOpenFiles: [],
   rememberLinkedMaps: false,
   closeLinkedMapWithSource: false,
+  bookmarks: [],
 };

@@ -21,6 +21,10 @@ for (const [key, mods] of [
   ['ArrowDown', { shiftKey: true }],
   ['Tab', {}],
   ['F2', {}],
+  [
+    'B',
+    navigator.platform.includes('Mac') ? { metaKey: true } : { ctrlKey: true },
+  ],
 ]) {
   await restore();
   const before = await now();
@@ -66,6 +70,16 @@ for (const [key, mods] of [
   await restore();
   const input = await openLabel('plain item');
 
+  if (!input) {
+    check(
+      'typing reaches the file with nothing pressed',
+      false,
+      'no editor opened',
+    );
+    await restore();
+
+    return { results, mode: reading ? 'reading' : 'editing' };
+  }
   input.focus();
   type(input, 'plain itemTYPED');
   await until(async () => (await now()).includes('TYPED'));

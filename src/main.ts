@@ -15,6 +15,14 @@ import { findMarkdownView } from './obsidian/markdown/file-io';
 import { sameSplit, sameWindow, moveLeafToSplit } from './obsidian/workspace';
 import { MindmapSettingTab } from './obsidian/settings';
 import { AutoOpenMaps } from './obsidian/map/auto-open';
+import {
+  anchorFor,
+  NodeBookmark,
+  nodeBookmarksFrom,
+  renameBookmarkFiles,
+  updateBookmarkAnchor,
+} from './core/bookmarks';
+import { MindNode, parseMarkdown } from './core/parse/parser';
 
 function descendantFilePaths(file: TAbstractFile): string[] {
   if (file instanceof TFile) {
@@ -31,6 +39,8 @@ function descendantFilePaths(file: TAbstractFile): string[] {
 export default class MindmapPlugin extends Plugin {
   settings!: MindmapSettings;
   private autoOpen!: AutoOpenMaps;
+  private readonly bookmarkSources = new Map<string, string>();
+  private bookmarkUpdate: Promise<void> = Promise.resolve();
   /**
    * The note a map is pointing the Markdown side at right now. Showing it
    * makes it the active file, and the roaming map would follow it there -
@@ -49,6 +59,7 @@ export default class MindmapPlugin extends Plugin {
 
   async onload(): Promise<void> {
     await this.loadSettings();
+    await this.seedBookmarkSources();
     this.autoOpen = new AutoOpenMaps(this, (file) => {
       void this.openMindmap(file, true);
     });
@@ -104,27 +115,229 @@ export default class MindmapPlugin extends Plugin {
     this.addFoldCommands();
     this.addFileMenuItem();
     this.registerEvent(
-      this.app.vault.on('rename', (file, oldPath) => {
-        for (const path of descendantFilePaths(file)) {
-          const oldKey = `mindmap-editor:viewport:${oldPath}${path.slice(file.path.length)}`;
-          const state: unknown = this.app.loadLocalStorage(oldKey);
-
-          if (state) {
-            this.app.saveLocalStorage(`mindmap-editor:viewport:${path}`, state);
-            this.app.saveLocalStorage(oldKey, null);
-          }
+      this.app.vault.on('modify', (file) => {
+        if (
+          file instanceof TFile &&
+          file.extension === 'md' &&
+          this.settings.bookmarks.some(
+            (bookmark) => bookmark.file === file.path,
+          )
+        ) {
+          this.queueBookmarkUpdate(file);
         }
       }),
     );
     this.registerEvent(
+      this.app.vault.on('rename', (file, oldPath) => {
+        this.renameStoredFile(file, oldPath);
+      }),
+    );
+    this.registerEvent(
       this.app.vault.on('delete', (file) => {
-        for (const path of descendantFilePaths(file)) {
-          this.app.saveLocalStorage(`mindmap-editor:viewport:${path}`, null);
-        }
+        this.deleteStoredFile(file);
       }),
     );
     this.autoOpen.register();
     this.addSettingTab(new MindmapSettingTab(this.app, this));
+  }
+
+  bookmarksFor(file: TFile | null): NodeBookmark[] {
+    if (!file) {
+      return [];
+    }
+
+    return this.settings.bookmarks.filter(
+      (bookmark) => bookmark.file === file.path,
+    );
+  }
+
+  async addBookmark(
+    file: TFile,
+    node: MindNode,
+    source: string,
+  ): Promise<void> {
+    const anchor = anchorFor(node);
+
+    this.bookmarkSources.set(file.path, source);
+    this.settings.bookmarks.push({
+      ...anchor,
+      id: crypto.randomUUID(),
+      file: file.path,
+      name: null,
+      unresolved: false,
+    });
+    await this.saveData(this.settings);
+    this.refreshBookmarkViews(file.path);
+  }
+
+  async removeBookmark(id: string): Promise<void> {
+    const removed = this.settings.bookmarks.find(
+      (bookmark) => bookmark.id === id,
+    );
+
+    this.settings.bookmarks = this.settings.bookmarks.filter(
+      (bookmark) => bookmark.id !== id,
+    );
+    if (
+      removed &&
+      !this.settings.bookmarks.some(
+        (bookmark) => bookmark.file === removed.file,
+      )
+    ) {
+      this.bookmarkSources.delete(removed.file);
+    }
+    await this.saveData(this.settings);
+    this.refreshBookmarkViews(removed?.file);
+  }
+
+  async renameBookmark(id: string, name: string | null): Promise<void> {
+    const bookmark = this.settings.bookmarks.find((item) => item.id === id);
+
+    if (!bookmark) {
+      return;
+    }
+    bookmark.name = name;
+    await this.saveData(this.settings);
+  }
+
+  async resetBookmarks(file?: TFile): Promise<void> {
+    if (file) {
+      this.settings.bookmarks = this.settings.bookmarks.filter(
+        (bookmark) => bookmark.file !== file.path,
+      );
+      this.bookmarkSources.delete(file.path);
+    } else {
+      this.settings.bookmarks = [];
+      this.bookmarkSources.clear();
+    }
+    await this.saveData(this.settings);
+    this.refreshBookmarkViews(file?.path);
+  }
+
+  private refreshBookmarkViews(filePath?: string): void {
+    for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_MINDMAP)) {
+      if (
+        leaf.view instanceof MindmapView &&
+        (!filePath || leaf.view.currentFile?.path === filePath)
+      ) {
+        leaf.view.refresh();
+      }
+    }
+  }
+
+  private renameStoredFile(file: TAbstractFile, oldPath: string): void {
+    for (const path of descendantFilePaths(file)) {
+      const oldKey = `mindmap-editor:viewport:${oldPath}${path.slice(file.path.length)}`;
+      const state: unknown = this.app.loadLocalStorage(oldKey);
+
+      if (state) {
+        this.app.saveLocalStorage(`mindmap-editor:viewport:${path}`, state);
+        this.app.saveLocalStorage(oldKey, null);
+      }
+    }
+    const oldPrefix = `${oldPath}/`;
+    const renamed = renameBookmarkFiles(
+      this.settings.bookmarks,
+      oldPath,
+      file.path,
+    );
+
+    if (!renamed) {
+      return;
+    }
+    const movedSources = [...this.bookmarkSources].filter(
+      ([path]) => path === oldPath || path.startsWith(oldPrefix),
+    );
+
+    for (const [path, source] of movedSources) {
+      this.bookmarkSources.delete(path);
+      this.bookmarkSources.set(
+        `${file.path}${path.slice(oldPath.length)}`,
+        source,
+      );
+    }
+    void this.saveData(this.settings);
+  }
+
+  private deleteStoredFile(file: TAbstractFile): void {
+    const paths = new Set(descendantFilePaths(file));
+
+    paths.forEach((path) =>
+      this.app.saveLocalStorage(`mindmap-editor:viewport:${path}`, null),
+    );
+    const kept = this.settings.bookmarks.filter(
+      (bookmark) => !paths.has(bookmark.file),
+    );
+
+    if (kept.length === this.settings.bookmarks.length) {
+      return;
+    }
+    this.settings.bookmarks = kept;
+    paths.forEach((path) => this.bookmarkSources.delete(path));
+    void this.saveData(this.settings);
+  }
+
+  private queueBookmarkUpdate(file: TFile): void {
+    this.bookmarkUpdate = this.bookmarkUpdate
+      .then(() => this.updateBookmarks(file))
+      .catch((err) =>
+        console.error('Mindmap: could not update bookmarks', err),
+      );
+  }
+
+  private async updateBookmarks(file: TFile): Promise<void> {
+    const after = await this.app.vault.cachedRead(file);
+    const before = this.bookmarkSources.get(file.path);
+
+    this.bookmarkSources.set(file.path, after);
+    if (before === undefined || before === after) {
+      return;
+    }
+    const root = parseMarkdown(after, file.basename);
+    let changed = false;
+    const deleted = new Set<string>();
+
+    for (const bookmark of this.settings.bookmarks) {
+      if (bookmark.file !== file.path) {
+        continue;
+      }
+      const result = updateBookmarkAnchor(bookmark, root, before, after);
+
+      if (result === 'deleted') {
+        deleted.add(bookmark.id);
+      }
+      if (result !== 'unchanged') {
+        changed = true;
+      }
+    }
+    if (deleted.size) {
+      this.settings.bookmarks = this.settings.bookmarks.filter(
+        (bookmark) => !deleted.has(bookmark.id),
+      );
+    }
+    if (changed) {
+      await this.saveData(this.settings);
+      this.refreshBookmarkViews(file.path);
+    }
+  }
+
+  private async seedBookmarkSources(): Promise<void> {
+    const paths = [
+      ...new Set(this.settings.bookmarks.map((item) => item.file)),
+    ];
+
+    await Promise.all(
+      paths.map(async (path) => {
+        if (this.bookmarkSources.has(path)) {
+          return;
+        }
+        const file = this.app.vault.getAbstractFileByPath(path);
+
+        if (file instanceof TFile) {
+          this.bookmarkSources.set(path, await this.app.vault.cachedRead(file));
+        }
+      }),
+    );
   }
 
   /** Whether this note explicitly asks for its map when it next opens. */
@@ -485,6 +698,8 @@ export default class MindmapPlugin extends Plugin {
     const stored = (await this.loadData()) as Partial<MindmapSettings>;
 
     this.settings = Object.assign({}, DEFAULT_SETTINGS, stored);
+    delete (this.settings as MindmapSettings & { bookmarksEnabled?: unknown })
+      .bookmarksEnabled;
     this.settings.autoOpenFiles = Array.isArray(this.settings.autoOpenFiles)
       ? [
           ...new Set(
@@ -494,6 +709,7 @@ export default class MindmapPlugin extends Plugin {
           ),
         ]
       : [];
+    this.settings.bookmarks = nodeBookmarksFrom(this.settings.bookmarks);
   }
 
   async saveSettings(): Promise<void> {

@@ -22,6 +22,7 @@ No new file format, no markup to add.
 - **Map/editor sync** - Selection, cursor position, folds, and wikilinks stay in sync.
 - **Flexible views** - Zoom, pan, fit, and reopen each map at its saved position.
 - **Link and Auto-open** - Link a map to a Markdown tab, or reopen it automatically with a note.
+- **Node bookmarks** - Save important nodes and jump back from the map header. The plugin follows identifiable edits made in Obsidian even while the map is closed.
 - **Visual hierarchy** - Depth, headings, and customizable branch colors remain easy to distinguish.
 
 ## Keyboard shortcuts
@@ -38,6 +39,7 @@ Active while the mind map pane is focused.
 | `Tab`                   | Add a child                                                                                                            |
 | `F2`                    | Rename the node                                                                                                        |
 | `Space`                 | Toggle the selected task's checkbox                                                                                    |
+| `Ctrl/Cmd + B`          | Add or remove a bookmark for the selected node                                                                         |
 | `Delete` / `Backspace`  | Delete the selected node(s) and their subtrees                                                                         |
 | `Ctrl/Cmd + Z` / `+ ⇧Z` | Undo / redo, through the Markdown pane's history - or one step of the map's own when the note is only open for reading |
 | `Esc`                   | End an edit, else clear the selection                                                                                  |
@@ -72,6 +74,7 @@ None of these come with a hotkey; bind the ones you want in Settings → Hotkeys
   already there opens as a tab instead, wherever that pane sits.
 - **Remember linked maps** (default off) - Enable Auto-open when explicitly linking a map.
 - **Close linked map with source** (default off) - Close a linked map with its Markdown tab.
+- **Remove all node bookmarks** - Remove every saved node bookmark from every note.
 - **Branch colors** - Custom palette, one hex color per line.
 
 ---

@@ -81,6 +81,8 @@ ws.addEventListener('message', (e) => {
 });
 await new Promise((r) => ws.addEventListener('open', r));
 await send('Runtime.enable');
+await send('Page.bringToFront');
+await send('Emulation.setFocusEmulationEnabled', { enabled: true });
 
 // Normalize one reusable fixture pair instead of accumulating a split per
 // check. Unrelated panes in the developer's workspace are left alone.

@@ -23,7 +23,7 @@ No new file format, no markup to add.
 - **Flexible views** - Zoom, pan, fit, and reopen each map at its saved position.
 - **Link and Auto-open** - Link a map to a Markdown tab, or reopen it automatically with a note.
 - **Node bookmarks** - Save important nodes and jump back from the map header. The plugin follows identifiable edits made in Obsidian even while the map is closed.
-- **Visual hierarchy** - Depth, headings, and customizable branch colors remain easy to distinguish.
+- **Visual hierarchy** - Depth, headings, and neighboring branch colors remain easy to distinguish.
 
 ## Keyboard shortcuts
 
@@ -75,7 +75,7 @@ None of these come with a hotkey; bind the ones you want in Settings → Hotkeys
 - **Remember linked maps** (default off) - Enable Auto-open when explicitly linking a map.
 - **Close linked map with source** (default off) - Close a linked map with its Markdown tab.
 - **Remove all node bookmarks** - Remove every saved node bookmark from every note.
-- **Branch colors** - Custom palette, one hex color per line.
+- **Branch colors** - Custom family palette, one CSS color per line.
 
 ---
 

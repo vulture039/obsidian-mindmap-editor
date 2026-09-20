@@ -113,7 +113,7 @@ if (basename(file) !== 'mobile.js') {
         .find(
           (leaf) =>
             leaf.view.currentFile?.path === path &&
-            (!isolated || leaf.getContainer() === md.getContainer()),
+            leaf.getContainer() === md.getContainer(),
         );
 
       map?.setGroup(null);
@@ -123,7 +123,7 @@ if (basename(file) !== 'mobile.js') {
         .find(
           (leaf) =>
             leaf.view.currentFile?.path === path &&
-            (!isolated || leaf.getContainer() === md.getContainer()),
+            leaf.getContainer() === md.getContainer(),
         );
       if (!map) return;
       map.setGroup(null);

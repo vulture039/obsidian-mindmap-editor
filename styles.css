@@ -155,13 +155,10 @@
 .mindmap-node {
   --branch-color: var(--text-faint);
 
-  /* One lightness for every branch, so a level is the same step down whichever
-     color it is in: taken as configured, a yellow branch's whole way to the
-     background is half a blue one's, and its levels would step half as far.
-     Only the fill is levelled - the outline and the edges keep the palette's
-     own color, which is what says which branch this is. 0.55 is as dark as the
-     loudest rung can go with the note's text still reading on it. */
-  --branch-fill: oklch(from var(--branch-color) 55% c h);
+  /* The families are calibrated in OKLCH before they arrive here. In
+     particular yellow stays lighter than blue: forcing both to one lightness
+     turns yellow into ochre. The level ladder still sets every fade step. */
+  --branch-fill: var(--branch-color);
 
   position: absolute;
 
@@ -191,6 +188,16 @@
   font-size: calc(var(--font-ui-small) + var(--level-size));
   cursor: pointer;
   user-select: none;
+}
+
+/* Obsidian's normal text is deliberately soft. Strengthen it over colored
+   fills while leaving the two quiet final rungs muted. */
+.theme-light .mindmap-node:not([data-depth='5'], [data-depth='6']) {
+  --level-text: color-mix(in srgb, var(--text-normal) 55%, #000);
+}
+
+.theme-dark .mindmap-node:not([data-depth='5'], [data-depth='6']) {
+  --level-text: color-mix(in srgb, var(--text-normal) 55%, #fff);
 }
 
 /* Only while the background is actually being dragged, so the cursor answers
@@ -248,7 +255,7 @@
      tinted heading fill, still quieter than the border it echoes. */
   border-top: 1px solid color-mix(in srgb, var(--branch-color) 50%, transparent);
   padding-top: 4px;
-  color: var(--text-muted);
+  color: var(--level-text);
   font-size: var(--font-ui-smaller);
   line-height: 1.4;
   text-align: left;
@@ -421,7 +428,7 @@
 /* Read-only "✓ n done" node standing in for hidden completed tasks. */
 .mindmap-node-summary {
   border-style: dotted;
-  color: var(--text-muted);
+  color: var(--level-text);
 }
 
 .mindmap-node.is-selected {
@@ -480,7 +487,8 @@
 }
 
 .mindmap-node.is-done .mindmap-node-text {
-  color: var(--text-muted);
+  color: color-mix(in oklab, var(--level-text) 82%, var(--background-primary));
+  text-decoration: line-through;
 }
 
 /* The note itself: what every branch hangs off, so it is the largest thing on

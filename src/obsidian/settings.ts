@@ -59,19 +59,19 @@ export class MindmapSettingTab extends PluginSettingTab {
         control: { type: 'toggle', key: 'closeLinkedMapWithSource' },
       },
       {
-        name: 'Remove all node bookmarks',
-        desc: 'Remove every bookmark from every note.',
-        render: (setting) => this.addRemoveBookmarksButton(setting),
-      },
-      {
         name: 'Branch colors',
-        desc: 'Top-level branch colors, one hex per line. Colors repeat; leave blank for defaults.',
+        desc: 'Top-level color families, one CSS color per line. Colors repeat; leave blank for defaults.',
         control: {
           type: 'textarea',
           key: 'palette',
-          placeholder: '#3b82f6\n#ef4444\n#22c55e',
+          placeholder: '#0072b2\n#d55e00\n#009e73',
           rows: 5,
         },
+      },
+      {
+        name: 'Remove all node bookmarks',
+        desc: 'Remove every bookmark from every note.',
+        render: (setting) => this.addRemoveBookmarksButton(setting),
       },
     ];
   }

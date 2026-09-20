@@ -9,6 +9,7 @@ const desktopChecks = [
   'editing/fidelity.js',
   'editing/keys.js',
   'navigation/bookmarks.js',
+  'rendering/colors.js',
   'rendering/root.js',
   'rendering/node-text.js',
   'rendering/drag-rendered-node.js',

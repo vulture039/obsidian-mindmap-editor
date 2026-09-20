@@ -1,18 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import { parseMarkdown, findByLine, MindNode } from '../parse/parser';
 import {
-  branchColorFor,
+  BRANCH_FAMILY_COUNT,
   branchPosition,
-  DEFAULT_PALETTE,
   DEPTH_CAP,
+  NodeColor,
   nodeColorFor,
   parsePalette,
   rungBelow,
 } from './colors';
-
-const RED = '#ff0000';
-const GREEN = '#00ff00';
-const PALETTE = [RED, GREEN, '#0000ff'];
 
 /**
  * Two top-level branches, the first of them nested deeper than the ladder has
@@ -41,6 +37,19 @@ const HEADINGS = parseMarkdown(
     '#### four', //  line 3: heading level 4
     '- item', //     line 4: list level 0, three headings in
     '  - deeper', // line 5: list level 1
+  ].join('\n'),
+  'Note',
+);
+
+const SIBLINGS = parseMarkdown(
+  [
+    '- branch',
+    '  - first',
+    '    - first child A',
+    '    - first child B',
+    '  - second',
+    '    - second child',
+    '  - third',
   ].join('\n'),
   'Note',
 );
@@ -76,20 +85,6 @@ describe('parsePalette', () => {
       '#333',
     ]);
   });
-
-  it('falls back to the default palette when empty', () => {
-    expect(parsePalette('')).toBe(DEFAULT_PALETTE);
-    expect(parsePalette('   \n  \n')).toBe(DEFAULT_PALETTE);
-  });
-});
-
-describe('branchColorFor', () => {
-  it('cycles through the palette by position', () => {
-    expect(branchColorFor(0, PALETTE)).toBe(RED);
-    expect(branchColorFor(2, PALETTE)).toBe('#0000ff');
-    expect(branchColorFor(3, PALETTE)).toBe(RED);
-    expect(branchColorFor(4, PALETTE)).toBe(GREEN);
-  });
 });
 
 describe('branchPosition', () => {
@@ -106,16 +101,27 @@ describe('branchPosition', () => {
 });
 
 describe('nodeColorFor', () => {
-  const rung = (node: MindNode): number => nodeColorFor(node, PALETTE).depth;
+  const rung = (node: MindNode): number => nodeColorFor(node).depth;
 
   it('gives the root no color and no level', () => {
-    expect(nodeColorFor(TREE, PALETTE)).toEqual({ color: '', depth: 0 });
+    expect(nodeColorFor(TREE)).toEqual({
+      color: '',
+      depth: 0,
+    });
   });
 
-  it('gives every node its own branch color, whatever its level', () => {
-    expect(nodeColorFor(at(0), PALETTE).color).toBe(RED);
-    expect(nodeColorFor(at(2), PALETTE).color).toBe(RED);
-    expect(nodeColorFor(at(7), PALETTE).color).toBe(GREEN);
+  it('takes a fixed top-level family and varies its descendants', () => {
+    expect(nodeColorFor(at(0)).color).toBe('oklch(62% 0.131 244)');
+    expect(nodeColorFor(at(2)).color).not.toBe(nodeColorFor(at(0)).color);
+    expect(nodeColorFor(at(7)).color).not.toBe(nodeColorFor(at(0)).color);
+  });
+
+  it('uses configured colors as the family bases', () => {
+    const palette = ['#ff0000', '#00ff00'];
+
+    expect(nodeColorFor(at(0), palette).color).toBe('#ff0000');
+    expect(nodeColorFor(at(7), palette).color).toBe('#00ff00');
+    expect(nodeColorFor(at(1), palette).color).toContain('from #ff0000');
   });
 
   it('takes the rung from how deep the node sits', () => {
@@ -145,6 +151,109 @@ describe('nodeColorFor', () => {
     expect(rung(deep(DEPTH_CAP + 1))).toBe(DEPTH_CAP + 1);
     expect(rung(deep(DEPTH_CAP + 2))).toBe(DEPTH_CAP);
     expect(rung(deep(DEPTH_CAP + 3))).toBe(DEPTH_CAP + 1);
+  });
+
+  it('gives neighbours clean colors from the parent hue family', () => {
+    const style = (line: number): NodeColor =>
+      nodeColorFor(nodeAt(SIBLINGS, line));
+
+    expect(style(0).color).toBe('oklch(62% 0.131 244)');
+    expect(style(4).color).not.toBe(style(1).color);
+    expect(style(6).color).not.toBe(style(4).color);
+    expect(style(2).color).not.toBe(style(3).color);
+  });
+
+  it('separates parent and sibling hues within one family', () => {
+    const tree = parseMarkdown(
+      ['- parent', '  - one', '  - two', '  - three'].join('\n'),
+      'Note',
+    );
+    const parent = nodeColorFor(nodeAt(tree, 0));
+    const children = tree.children[0]!.children.map((node) =>
+      nodeColorFor(node),
+    );
+
+    expect(children.every((child) => child.color !== parent.color)).toBe(true);
+    expect(
+      children.every(
+        (child, index) =>
+          index === 0 || child.color !== children[index - 1]!.color,
+      ),
+    ).toBe(true);
+    expect(
+      new Set([parent.color, ...children.map((child) => child.color)]).size,
+    ).toBe(4);
+  });
+
+  it('never leaves the top-level branch color family', () => {
+    const tree = parseMarkdown(
+      [
+        '- branch',
+        '  - one',
+        '    - one A',
+        '      - one A i',
+        '        - one A i alpha',
+        '  - two',
+        '    - two A',
+        '    - two B',
+      ].join('\n'),
+      'Note',
+    );
+    const colors = tree.children
+      .flatMap(function descendants(node): MindNode[] {
+        return [node, ...node.children.flatMap(descendants)];
+      })
+      .map((node) => nodeColorFor(node).color);
+
+    expect(new Set(colors).size).toBeLessThanOrEqual(6);
+  });
+
+  it('uses every family color before looping among many siblings', () => {
+    const tree = parseMarkdown(
+      ['- branch', ...Array.from({ length: 8 }, (_, i) => `  - ${i}`)].join(
+        '\n',
+      ),
+      'Note',
+    );
+    const colors = tree.children[0]!.children.map(
+      (node) => nodeColorFor(node).color,
+    );
+
+    expect(new Set(colors.slice(0, 5)).size).toBe(5);
+    expect(colors[5]).toBe(colors[0]);
+    expect(colors[6]).toBe(colors[1]);
+  });
+
+  it('keeps yellow bright enough not to become ochre', () => {
+    const tree = parseMarkdown(
+      Array.from({ length: BRANCH_FAMILY_COUNT }, (_, i) => `- ${i}`).join(
+        '\n',
+      ),
+      'Note',
+    );
+
+    expect(nodeColorFor(tree.children[4]!).color).toBe('oklch(78% 0.172 105)');
+  });
+
+  it('loops top-level families after five branches', () => {
+    const tree = parseMarkdown(
+      Array.from({ length: BRANCH_FAMILY_COUNT + 1 }, (_, i) => `- ${i}`).join(
+        '\n',
+      ),
+      'Note',
+    );
+    const firstRun = tree.children
+      .slice(0, BRANCH_FAMILY_COUNT)
+      .map((node) => nodeColorFor(node).color);
+
+    expect(new Set(firstRun).size).toBe(BRANCH_FAMILY_COUNT);
+    expect(nodeColorFor(tree.children[BRANCH_FAMILY_COUNT]!).color).toBe(
+      firstRun[0],
+    );
+  });
+
+  it('keeps depth rungs with neighboring branch colors', () => {
+    expect(nodeColorFor(nodeAt(SIBLINGS, 5)).depth).toBe(2);
   });
 });
 

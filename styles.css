@@ -62,7 +62,6 @@
 .mindmap-canvas {
   position: absolute;
   transform-origin: top left;
-  will-change: transform;
 }
 
 /* Frozen completed frame shown while the next async layout is measured. */

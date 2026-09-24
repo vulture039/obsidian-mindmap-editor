@@ -76,12 +76,70 @@ try {
   const noteNode = view.laidByLine.get(
     Number(noteLabel?.closest('.mindmap-node')?.dataset.line),
   )?.node;
+  const sourceView = md.view.containerEl.querySelector('.markdown-source-view');
+  const staleHighlight = sourceView.createSpan({
+    cls: 'mindmap-line-highlight',
+    text: 'stale',
+  });
 
   await view.addTaskNote(noteNode);
-  await until(async () => (await now()).includes('- [ ] Note task\n\t'));
+  const withNote = await until(async () => {
+    const text = await now();
+
+    return /- \[ \] Note task\n\t(?:\n|$)/.test(text) ? text : null;
+  });
+  const noteLine = (withNote ?? '')
+    .split('\n')
+    .findIndex(
+      (line, index, lines) =>
+        index > 0 &&
+        lines[index - 1]?.includes('[ ] Note task') &&
+        /^\s*$/.test(line),
+    );
+  const noteField = await until(() => {
+    const line = drawnAt(noteLine);
+
+    return line?.querySelector('.mindmap-mirrored-caret') ? line : null;
+  });
+  const activeEditorLine = await until(() =>
+    drawnAt(noteLine)?.querySelector('.mindmap-mirrored-caret'),
+  );
   check(
-    'creating a task note writes an indented Markdown line and opens text',
-    (await now()).includes('- [ ] Note task\n\t') && view.showBodyText,
+    'creating a task note writes its line and opens a field on the map',
+    !!noteField &&
+      view.showBodyText &&
+      editor.hasFocus() &&
+      editor.getCursor().ch === 1 &&
+      !!activeEditorLine &&
+      staleHighlight.isConnected &&
+      !staleHighlight.hasClass('mindmap-line-highlight') &&
+      !md.view.containerEl.querySelector('.mindmap-line-highlight') &&
+      !CSS.highlights.has('mindmap-line'),
+    noteField?.outerHTML ?? (await now()),
+  );
+
+  editor.replaceRange('first line', editor.getCursor());
+  check(
+    'the note cursor stays visible while typing',
+    !!drawnAt(noteLine)?.querySelector('.mindmap-mirrored-caret'),
+  );
+  await until(() => drawnAt(noteLine)?.textContent.includes('first line'));
+  editor.setCursor({ line: noteLine, ch: editor.getLine(noteLine).length });
+  const nodesBeforeEnter = el.querySelectorAll('.mindmap-node').length;
+  const linesBeforeEnter = editor.lineCount();
+
+  await press('Enter');
+  const nextLine = await until(() =>
+    editor.lineCount() === linesBeforeEnter + 1 ? drawnAt(noteLine + 1) : null,
+  );
+  check(
+    'Enter in a mirrored task note adds a note line, not a node',
+    !!nextLine &&
+      editor.getCursor().line === noteLine + 1 &&
+      editor.getLine(noteLine + 1) ===
+        /^\s*/.exec(editor.getLine(noteLine))?.[0] &&
+      !!nextLine?.querySelector('.mindmap-mirrored-caret') &&
+      el.querySelectorAll('.mindmap-node').length === nodesBeforeEnter,
     await now(),
   );
 
@@ -90,6 +148,40 @@ try {
   check(
     'Markdown changes synchronize nested parents bottom-up',
     (await now()).startsWith('- [ ] Outer\n\t- [ ] Inner'),
+    await now(),
+  );
+
+  await setFile('# Heading\n- Plain list');
+  const heading = view.root.children.find((node) => node.text === 'Heading');
+  const plain = heading?.children.find((node) => node.text === 'Plain list');
+
+  await view.addTaskNote(plain);
+  const plainLine = (plain?.line ?? -1) + 1;
+  const plainNote = await until(() => {
+    const line = drawnAt(plainLine);
+
+    return line?.querySelector('.mindmap-mirrored-caret') ? line : null;
+  });
+  check(
+    'a plain list node can add and display a note',
+    !!plainNote &&
+      editor.getLine(plainLine) === '\t' &&
+      editor.getCursor().ch === 1 &&
+      !!plainNote.querySelector('.mindmap-mirrored-caret'),
+    await now(),
+  );
+
+  await setFile('# Heading');
+  const freshHeading = view.root.children.find(
+    (node) => node.text === 'Heading',
+  );
+
+  await view.addTaskNote(freshHeading);
+  const headingLine = (freshHeading?.line ?? -1) + 1;
+  const headingNote = await until(() => drawnAt(headingLine));
+  check(
+    'a heading node can add and display a note',
+    !!headingNote && editor.getLine(headingLine) === '',
     await now(),
   );
 } finally {

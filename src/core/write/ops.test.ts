@@ -187,10 +187,22 @@ describe('addTaskNoteOp', () => {
     });
   });
 
-  it('refuses a note on a plain list item', () => {
+  it('adds an indented note to a plain list item', () => {
     const { root, lines } = setup('- plain');
 
-    expect(() => addTaskNoteOp(lines, root.children[0]!)).toThrow();
+    expect(addTaskNoteOp(lines, root.children[0]!)).toEqual({
+      lines: ['- plain', '\t'],
+      insertedLine: 1,
+    });
+  });
+
+  it('adds an unindented note to a heading', () => {
+    const { root, lines } = setup('# Heading');
+
+    expect(addTaskNoteOp(lines, root.children[0]!)).toEqual({
+      lines: ['# Heading', ''],
+      insertedLine: 1,
+    });
   });
 });
 

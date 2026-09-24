@@ -61,6 +61,17 @@ try {
     5000,
   );
   await settle();
+  if (!second) {
+    throw new Error(
+      `No popout map: ${JSON.stringify(
+        maps().map((leaf) => ({
+          file: leaf.view.currentFile?.path,
+          new: !before.has(leaf),
+          sameWindow: leaf.getContainer() === popped.getContainer(),
+        })),
+      )}`,
+    );
+  }
 
   check(
     "the map for a note in a popout opens in the note's own window",

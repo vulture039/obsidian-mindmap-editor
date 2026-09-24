@@ -42,7 +42,7 @@ Active while the mind map pane is focused.
 | `Ctrl/Cmd + B`          | Add or remove a bookmark for the selected node                                                                         |
 | `Delete` / `Backspace`  | Delete the selected node(s) and their subtrees                                                                         |
 | `Ctrl/Cmd + Z` / `+ ⇧Z` | Undo / redo, through the Markdown pane's history - or one step of the map's own when the note is only open for reading |
-| `Esc`                   | End an edit, else clear the selection                                                                                  |
+| `Esc`                   | End an edit, then clear the body-line and node selections                                                              |
 
 Back/forward use Obsidian's own Navigate back / forward command:
 `Ctrl + Alt + ←/→` (`Cmd + Option + ←/→` on macOS).

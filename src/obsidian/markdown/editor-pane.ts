@@ -3,6 +3,7 @@ import { findEditingView, findMarkdownView } from './file-io';
 import { sameWindow } from '../workspace';
 import {
   clearPreviewLine,
+  markSourceLine,
   markPreviewLine,
   PreviewBlock,
   keepPreviewScroll,
@@ -242,15 +243,15 @@ export class EditorPane {
     }
     const ch = editor.getLine(line).length;
 
-    // The unfocused editor hides its caret, so flash-highlight the line (what
-    // search results and outline clicks use). First: it places the caret at
-    // the start of the line, and the caret belongs at the end.
-    clearPreviewLine();
-    const settle =
-      mdView.getMode() === 'preview' ? keepPreviewScroll(mdView) : null;
+    // Source mode remains an untouched Obsidian editor. Reading View has no
+    // caret to point at, so it alone receives the ordinary preview marker.
+    const preview = mdView.getMode() === 'preview';
 
-    mdView.setEphemeralState({ line });
-    if (settle) {
+    if (preview) {
+      clearPreviewLine();
+      const settle = keepPreviewScroll(mdView);
+
+      mdView.setEphemeralState({ line });
       if (block) {
         markPreviewLine(mdView, line, block);
       }
@@ -258,6 +259,9 @@ export class EditorPane {
     }
     editor.setCursor({ line, ch });
     editor.scrollIntoView({ from: { line, ch: 0 }, to: { line, ch } }, true);
+    if (!preview) {
+      markSourceLine(mdView, line);
+    }
     if (had) {
       this.deps.focusMap();
     }
@@ -286,11 +290,30 @@ export class EditorPane {
 
   /**
    * A double-click on body text means "let me edit this", so unlike every
-   * other jump this one hands the keyboard over to the editor.
+   * other jump this one hands the keyboard over to the editor. It must not
+   * use goToLine: its ephemeral source highlight can change CodeMirror's
+   * measured indentation just as the editor receives focus.
    */
   async editLine(line: number): Promise<void> {
-    await this.goToLine(line);
+    if (line < 0) {
+      return;
+    }
     await this.focus();
+    const file = this.deps.file();
+
+    if (!file) {
+      return;
+    }
+    const view = findMarkdownView(this.deps.app, file, this.near());
+    const editor = view?.editor;
+
+    if (!editor || line > editor.lastLine()) {
+      return;
+    }
+    const ch = editor.getLine(line).length;
+
+    editor.setCursor({ line, ch });
+    editor.scrollIntoView({ from: { line, ch: 0 }, to: { line, ch } }, true);
   }
 
   /**

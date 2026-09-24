@@ -72,6 +72,27 @@ function setup(sharedParent: boolean, mobile = false) {
 }
 
 describe('opening the active map', () => {
+  it('does not tie equal group ids across different windows', () => {
+    const plugin = Object.create(MindmapPlugin.prototype) as MindmapPlugin;
+    const tiedTo = Reflect.get(plugin, 'tiedTo') as (
+      leaf: object,
+      tab: object,
+    ) => boolean;
+    const group = 'same-id';
+    const leaf = { group, getContainer: () => ({ window: 'one' }) };
+    const tab = { group, getContainer: () => ({ window: 'two' }) };
+    const container = {};
+
+    expect(tiedTo.call(plugin, leaf, tab)).toBe(false);
+    expect(
+      tiedTo.call(
+        plugin,
+        { group, getContainer: () => container },
+        { group, getContainer: () => container },
+      ),
+    ).toBe(true);
+  });
+
   it('replaces a same-group tab with a split while preserving its state', async () => {
     const test = setup(true);
 

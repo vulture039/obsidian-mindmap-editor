@@ -155,6 +155,15 @@ function wireLinks(
   }
 }
 
+/** MarkdownRenderer surrounds blockquote content with source newlines. */
+function compactBlockquote(containerEl: HTMLElement): void {
+  containerEl.querySelectorAll('blockquote').forEach((quote) => {
+    [...quote.childNodes]
+      .filter((node) => node.nodeName === '#text' && !node.textContent?.trim())
+      .forEach((node) => node.remove());
+  });
+}
+
 /** Renders one source line as inline Markdown and bounded image previews. */
 export async function renderNodeText(
   containerEl: HTMLElement,
@@ -182,10 +191,10 @@ export async function renderNodeText(
   const indent = /^\s+/.exec(markdown)?.[0] ?? '';
 
   if (indent) {
-    const token = `\u{e000}${nonce}-indent\u{e001}`;
-
-    tokens.set(token, { kind: 'literal', syntax: indent });
-    markdown = token + markdown.slice(indent.length);
+    // MarkdownRenderer sees indentation after a blank line as a code block.
+    // It is body text here, so keep it outside the Markdown it parses.
+    containerEl.append(containerEl.doc.createTextNode(indent));
+    markdown = markdown.slice(indent.length);
   }
 
   await MarkdownRenderer.render(
@@ -195,6 +204,7 @@ export async function renderNodeText(
     sourcePath,
     component,
   );
+  compactBlockquote(containerEl);
   const context = { containerEl, app, sourcePath, onContentSettled };
 
   if (restoreEmbeds(tokens, context) !== tokens.size) {

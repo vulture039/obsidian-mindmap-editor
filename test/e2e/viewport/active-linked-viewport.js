@@ -38,14 +38,15 @@ const centeredOffset = (map) => {
     : null;
 };
 const open = async (linked) => {
-  const source = app.workspace.getLeaf('tab');
+  const source = app.workspace.createLeafInParent(md.parent, -1);
 
   created.push(source);
   await source.setViewState({
     type: 'markdown',
-    active: false,
+    active: true,
     state: { file: path },
   });
+  await app.workspace.revealLeaf(source);
   source.view.editor.setCursor({ line: 5, ch: 0 });
   for (const map of app.workspace.getLeavesOfType('mindmap-editor')) {
     if (map.view.currentFile?.path === path) map.detach();
@@ -62,7 +63,10 @@ const open = async (linked) => {
   const leaf = await until(() =>
     app.workspace
       .getLeavesOfType('mindmap-editor')
-      .find((candidate) => !before.has(candidate)),
+      .find(
+        (candidate) =>
+          !before.has(candidate) && candidate.view.currentFile?.path === path,
+      ),
   );
 
   if (leaf && !before.has(leaf)) created.push(leaf);
@@ -70,6 +74,7 @@ const open = async (linked) => {
     () =>
       leaf?.view.viewportReady &&
       !leaf.view.renderQueued &&
+      leaf.view.revealPending === null &&
       leaf.view.revealTimer === null &&
       leaf.view.layoutBuildSeq === null,
     5000,

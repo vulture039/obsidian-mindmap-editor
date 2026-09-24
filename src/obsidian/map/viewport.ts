@@ -133,6 +133,17 @@ export class MapViewport {
     this.syncActions();
   }
 
+  /** Centers an item without asking ancestor panes to scroll with it. */
+  centerElement(el: HTMLElement): void {
+    const viewport = this.scrollerEl.getBoundingClientRect();
+    const target = el.getBoundingClientRect();
+
+    this.scrollerEl.scrollLeft +=
+      target.left + target.width / 2 - (viewport.left + viewport.width / 2);
+    this.scrollerEl.scrollTop +=
+      target.top + target.height / 2 - (viewport.top + viewport.height / 2);
+  }
+
   /** Zooms until the whole map fits, then places it in the middle. */
   fit(): void {
     const width = this.canvasEl.offsetWidth;

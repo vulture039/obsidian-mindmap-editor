@@ -86,7 +86,7 @@ installObsidianDom();
 beforeEach(() => menus.splice(0));
 
 describe('bookmark menus', () => {
-  it('offers note creation for a task without body text', () => {
+  it('offers note creation for a node without body text', () => {
     const root = parseMarkdown('- [ ] task', 'Note');
     const node = root.children[0]!;
     const addTaskNote = vi.fn();
@@ -112,7 +112,7 @@ describe('bookmark menus', () => {
       document.createElement('div'),
       new MouseEvent('contextmenu'),
     );
-    menus[0]?.items.find((item) => item.title === 'Add task note')?.click?.();
+    menus[0]?.items.find((item) => item.title === 'Add note')?.click?.();
 
     expect(addTaskNote).toHaveBeenCalledWith(node);
   });

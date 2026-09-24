@@ -444,7 +444,9 @@ export default class MindmapPlugin extends Plugin {
     const group = (leaf as WorkspaceLeaf & { group?: string }).group;
 
     return (
-      !!group && group === (tab as WorkspaceLeaf & { group?: string }).group
+      sameWindow(leaf, tab) &&
+      !!group &&
+      group === (tab as WorkspaceLeaf & { group?: string }).group
     );
   }
 

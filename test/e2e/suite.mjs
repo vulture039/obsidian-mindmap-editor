@@ -5,6 +5,7 @@ const desktopChecks = [
   // Popout must start before checks that create and close many split panes.
   'workspace/popout.js',
   'workspace/panes.js',
+  'workspace/selected-pane.js',
   'viewport/initial-viewport.js',
   'editing/fidelity.js',
   'editing/keys.js',

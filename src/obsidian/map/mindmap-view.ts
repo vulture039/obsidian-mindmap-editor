@@ -41,6 +41,7 @@ import {
 } from '../markdown/folds';
 import { LaidNode, layoutTree, makeLaid } from '../../core/render/layout';
 import { clampZoom, MAX_ZOOM } from '../../core/render/zoom';
+import { mirrorCursorInBody } from '../../core/render/mirror-cursor';
 import {
   NodeColor,
   nodeColorFor,
@@ -87,6 +88,8 @@ import {
 } from '../../core/write/ops';
 import {
   findEditingView,
+  findFocusedEditingView,
+  findMarkdownView,
   updateFileLines,
   WroteToDisk,
 } from '../markdown/file-io';
@@ -146,6 +149,7 @@ const EDIT_INPUT = 'mindmap-edit-input';
 const HEAD = 'mindmap-node-head';
 const BODY = 'mindmap-node-body';
 const BODY_LINE = 'mindmap-node-body-line';
+const MIRROR_EDITOR_OWNERS = new WeakMap<MarkdownView, MindmapView>();
 
 /** Just enough scrolling to bring something into view, and no more. */
 const KEEP_IN_VIEW: ScrollIntoViewOptions = {
@@ -157,7 +161,7 @@ const KEEP_IN_VIEW: ScrollIntoViewOptions = {
 const LINK_LABEL = 'Link this map to its note';
 
 /** How long the map waits before redrawing after a change to the file. */
-const RENDER_DELAY = 250;
+const RENDER_DELAY = 80;
 
 /** How long after a click or key it looks for a fold the user just made. */
 const FOLD_CHECK_DELAY = 120;
@@ -200,6 +204,14 @@ export class MindmapView extends ItemView {
   private readonly selectedLines = new Set<number>();
   /** File line the editor's caret was last seen on; re-marked after a render. */
   private cursorLine: number | null = null;
+  /** Read-only mirror of Obsidian's caret; these nodes restore the rich text. */
+  private mirroredCursor: { el: HTMLElement; contents: Node[] } | null = null;
+  /** Body run whose trailing blank lines stay visible while it is edited. */
+  private pendingBodyLine: {
+    path: string;
+    ownerLine: number;
+    line: number;
+  } | null = null;
   /** A just-added node, to select and open for naming after the render. */
   private insertedLine: number | null = null;
   /** The last write the map made with no editor pane to remember it. */
@@ -227,6 +239,8 @@ export class MindmapView extends ItemView {
   private viewport!: MapViewport;
   /** Last Markdown source observed for this map's Obsidian Link group. */
   private linkedSourceLeaf: WorkspaceLeaf | null = null;
+  /** Markdown leaf opened from this map, retained while it closes. */
+  private mapDrivenSourceLeaf: WorkspaceLeaf | null = null;
   /** Restored before the viewport DOM exists during workspace startup. */
   private savedZoom = 1;
   private hasRestoredViewport = false;
@@ -243,8 +257,21 @@ export class MindmapView extends ItemView {
   private revealTimer: number | null = null;
   private revealSize: string | null = null;
   private revealStableSamples = 0;
+  /** A node selected while Markdown opens waits for the map's new width. */
+  private selectedNodeReveal: {
+    line: number;
+    size: string;
+    stable: number;
+    requireSelection: boolean;
+  } | null = null;
+  private selectedNodeRevealTimer: number | null = null;
   /** How many `pointEditorAtFile` calls this map has in flight. */
   private pointing = 0;
+  /** Changes when a body interaction deliberately hands focus to Markdown. */
+  private bodyEditSeq = 0;
+  private returningFromBodyEdit = false;
+  private composing = false;
+  private readonly mirrorEditorScopes = new Set<Scope>();
   /** The two bulk-fold buttons in the header, by what each one folds. */
   private foldAllActionEls = new Map<FoldKind, HTMLElement>();
   /**
@@ -377,8 +404,30 @@ export class MindmapView extends ItemView {
    * its own, and those are not registered through here.
    */
   private onKey(mods: Modifier[], key: string, run: () => boolean): void {
-    this.scope?.register(mods, key, () => {
+    this.scope?.register(mods, key, (event) => {
       const input = this.canvasEl.querySelector(`.${EDIT_INPUT}`);
+      const markdown = this.file && findFocusedEditingView(this.app, this.file);
+
+      if (key === 'Enter' && event.isComposing) {
+        return true;
+      }
+
+      // A mirrored edit still belongs entirely to Obsidian's editor. Let its
+      // keymap handle Enter and every other key the map normally claims. The
+      // visible mirror is also enough: focus reporting can lag the keydown.
+      if (
+        this.mirroredCursor?.el.isConnected ||
+        (markdown &&
+          markdown.file?.path === this.file?.path &&
+          markdown.getMode() === 'source' &&
+          markdown.editor.hasFocus())
+      ) {
+        if (key === 'Enter' && this.insertMirroredLine()) {
+          return false;
+        }
+
+        return true;
+      }
 
       // Only while the edit has the keyboard. An editor left open with the
       // focus elsewhere is not who the key is for - and taking every key for
@@ -412,6 +461,9 @@ export class MindmapView extends ItemView {
 
       return false;
     });
+    // Obsidian normally treats Shift+Enter differently. In a mirrored body,
+    // both keys mean the same continuation line; outside one it passes on.
+    this.onKey(['Shift'], 'Enter', () => true);
     this.onKey([], 'Tab', () => {
       const node = this.selectedNode();
 
@@ -590,6 +642,9 @@ export class MindmapView extends ItemView {
 
         return false;
       }
+      if (this.clearBodyLineSelection()) {
+        return false;
+      }
       if (this.selectedLine === null) {
         return true;
       }
@@ -598,6 +653,47 @@ export class MindmapView extends ItemView {
 
       return false;
     });
+  }
+
+  /** Adds a body line when the map, rather than Markdown, holds the key. */
+  private insertMirroredLine(): boolean {
+    const file = this.file;
+    const view = file && findEditingView(this.app, file, this.leaf);
+
+    if (!view || view.editor.somethingSelected()) {
+      return false;
+    }
+    const cursor = view.editor.getCursor();
+    const current = view.editor.getLine(cursor.line);
+    let indent = /^\s*/.exec(current)?.[0] ?? '';
+
+    if (!current.trim() && this.root) {
+      const node = findEnclosing(this.root, cursor.line);
+      const first = Math.max(0, node?.line ?? 0);
+      const last = Math.min(
+        view.editor.lastLine(),
+        node?.endLine ?? cursor.line,
+      );
+
+      for (let distance = 1; distance <= last - first + 1; distance++) {
+        const source = [cursor.line - distance, cursor.line + distance].find(
+          (line) =>
+            line >= first &&
+            line <= last &&
+            view.editor.getLine(line).trim().length > 0,
+        );
+
+        if (source !== undefined) {
+          indent = /^\s*/.exec(view.editor.getLine(source))?.[0] ?? '';
+
+          break;
+        }
+      }
+    }
+    view.editor.replaceRange(`\n${indent}`, cursor);
+    view.editor.setCursor({ line: cursor.line + 1, ch: indent.length });
+
+    return true;
   }
 
   /** Selects a node found by tree navigation and keeps it in view. */
@@ -619,12 +715,27 @@ export class MindmapView extends ItemView {
     if (this.isBusy() || !this.root || !this.file) {
       return;
     }
-    const mdView = this.app.workspace.getActiveViewOfType(MarkdownView);
+    const mdView =
+      findFocusedEditingView(this.app, this.file) ??
+      (this.mirroredCursor
+        ? findEditingView(this.app, this.file, this.leaf)
+        : null) ??
+      this.app.workspace.getActiveViewOfType(MarkdownView);
 
     if (mdView?.file?.path !== this.file.path) {
       return;
     }
     const cursorLine = mdView.editor.getCursor().line;
+
+    // An insertion shifts every line below it before the debounced render has
+    // rebuilt the tree. Remember the caret, but never select against that
+    // stale line map: Shift+Enter would flash the following node as selected.
+    if (mdView.editor.getValue() !== this.renderedSource) {
+      this.cursorLine = cursorLine;
+      this.requestRender();
+
+      return;
+    }
 
     // Before the node work below, which returns early on an unchanged node -
     // the caret moving between two lines of the same body still moves.
@@ -671,9 +782,136 @@ export class MindmapView extends ItemView {
     );
 
     el?.addClass('is-cursor-line');
+    this.mirrorEditorCursor();
     if (moved) {
       el?.scrollIntoView(KEEP_IN_VIEW);
     }
+  }
+
+  /** Leaves the node selected while stepping out of its selected body line. */
+  private clearBodyLineSelection(): boolean {
+    const selected = this.canvasEl.querySelectorAll(
+      `.${BODY_LINE}.is-cursor-line`,
+    );
+
+    if (!selected.length) {
+      return false;
+    }
+    selected.forEach((line) => line.removeClass('is-cursor-line'));
+    this.cursorLine = null;
+
+    return true;
+  }
+
+  /** Restores the rendered Markdown replaced by the read-only editing mirror. */
+  private clearMirroredCursor(keepBodyEdit = false): void {
+    const mirrored = this.mirroredCursor;
+
+    if (!mirrored?.el.isConnected) {
+      this.mirroredCursor = null;
+
+      return;
+    }
+    mirrored.el.replaceChildren(
+      ...mirrored.contents.map((node) => node.cloneNode(true)),
+    );
+    mirrored.el.removeClass('is-mirror-editing');
+    if (!keepBodyEdit) {
+      this.mirroredCursor = null;
+    }
+  }
+
+  /** Blank lines kept visible while a newly added task note is being typed. */
+  private pendingBodyLines(node: MindNode): { line: number; text: string }[] {
+    const pending = this.pendingBodyLine;
+
+    if (
+      !pending ||
+      pending.path !== this.file?.path ||
+      pending.ownerLine !== node.line
+    ) {
+      return [];
+    }
+    const source = this.renderedSource.split(/\r?\n/);
+    const lines: { line: number; text: string }[] = [];
+
+    for (let line = pending.line; line < source.length; line++) {
+      if (node.body.some((body) => body.line === line)) {
+        continue;
+      }
+      if (/^\s*$/.test(source[line] ?? '\u0000')) {
+        lines.push({ line, text: '' });
+
+        continue;
+      }
+      break;
+    }
+
+    return lines;
+  }
+
+  /**
+   * Mirrors the focused Markdown editor without writing anything back. A
+   * broken or stale mirror can therefore only affect this temporary display.
+   */
+  private mirrorEditorCursor(): void {
+    const view = this.file && findFocusedEditingView(this.app, this.file);
+
+    if (!view?.file || view.file.path !== this.file?.path) {
+      // The map keeps Enter as a body continuation after focus returns from a
+      // source pane, but the read-only caret itself belongs only to that pane.
+      this.clearMirroredCursor(
+        !!(this.file && findEditingView(this.app, this.file, this.leaf)),
+      );
+
+      return;
+    }
+    const cursor = view.editor.getCursor();
+    const lineEl = this.canvasEl.querySelector<HTMLElement>(
+      `.${BODY_LINE}[data-line="${cursor.line}"]`,
+    );
+    const node = this.root && findEnclosing(this.root, cursor.line);
+    const body =
+      node?.body.find((item) => item.line === cursor.line) ??
+      (this.pendingBodyLine &&
+      cursor.line >= this.pendingBodyLine.line &&
+      /^\s*$/.test(this.renderedSource.split(/\r?\n/)[cursor.line] ?? '\u0000')
+        ? { line: cursor.line, text: '' }
+        : undefined);
+
+    if (!lineEl || !body) {
+      this.clearMirroredCursor();
+
+      return;
+    }
+    if (this.mirroredCursor?.el !== lineEl) {
+      this.clearMirroredCursor();
+      this.mirroredCursor = {
+        el: lineEl,
+        contents: [...lineEl.childNodes].map((child) => child.cloneNode(true)),
+      };
+    }
+    const renderedSource =
+      this.renderedSource.split(/\r?\n/)[cursor.line] ?? '';
+    const composingLine = this.composing
+      ? view.containerEl.querySelector<HTMLElement>('.cm-activeLine')
+          ?.textContent
+      : null;
+    const mirrored = mirrorCursorInBody(
+      composingLine ?? view.editor.getLine(cursor.line),
+      cursor.ch,
+      renderedSource,
+      body.text,
+      /^\s*/.exec(lineEl.textContent ?? '')?.[0] ?? '',
+    );
+    const before = lineEl.doc.createTextNode(mirrored.before);
+    const caret = lineEl.createSpan();
+    const after = lineEl.doc.createTextNode(mirrored.after);
+
+    caret.addClass('mindmap-mirrored-caret');
+    caret.setAttribute('aria-hidden', 'true');
+    lineEl.replaceChildren(before, caret, after);
+    lineEl.addClass('is-mirror-editing');
   }
 
   /**
@@ -1298,6 +1536,7 @@ export class MindmapView extends ItemView {
     if (this.revealTimer !== null) {
       this.containerEl.win.clearTimeout(this.revealTimer);
     }
+    this.cancelSelectedNodeReveal();
     this.finishRenderStaging();
     this.viewport?.destroy();
     clearPreviewLine();
@@ -1320,6 +1559,7 @@ export class MindmapView extends ItemView {
     this.registerEvent(
       this.app.workspace.on('editor-change', (_editor, info) => {
         if (this.isCurrentFile(info.file)) {
+          this.followEditorCursor();
           this.requestRender();
         }
       }),
@@ -1336,12 +1576,20 @@ export class MindmapView extends ItemView {
     this.registerEvent(
       this.app.workspace.on('active-leaf-change', (leaf) => {
         const editorStillOpen = this.editor.hasOpenLastActive();
+        const returning = this.returningFromBodyEdit;
 
+        this.returningFromBodyEdit = false;
         this.editor.noteActiveLeaf(leaf);
+        this.mirrorEditorCursor();
         // Selecting a map tab points the Markdown side at its note. Closing
         // the last-active Markdown tab can also activate this map, but that
         // must not recreate the pane the user just closed.
-        if (leaf === this.leaf && editorStillOpen && !this.plugin.isMobile) {
+        if (
+          leaf === this.leaf &&
+          editorStillOpen &&
+          !returning &&
+          !this.plugin.isMobile
+        ) {
           void this.pointEditorAtFile();
         }
       }),
@@ -1367,18 +1615,18 @@ export class MindmapView extends ItemView {
     this.registerDomEvent(this.scrollerEl, 'pointerdown', (e) =>
       this.onBackgroundPointerDown(e),
     );
-    // A real interaction with a map points the Markdown side at its note.
-    // Merely becoming the active leaf is not enough: closing the Markdown
-    // pane can activate its neighboring map, and reopening the note there
-    // would make that pane impossible to close.
-    this.registerDomEvent(this.contentEl, 'pointerdown', () => {
-      if (!this.plugin.isMobile) {
-        void this.pointEditorAtFile();
-      }
-    });
     // The caret moving in an editor fires no workspace event, but it does
     // move the document selection, which does.
-    this.everyDocument(['selectionchange'], () => this.followEditorCursor());
+    this.everyDocument(['selectionchange'], () => {
+      this.followEditorCursor();
+    });
+    this.everyDocument(
+      ['compositionstart', 'compositionupdate', 'compositionend'],
+      (event) => {
+        this.composing = event.type !== 'compositionend';
+        this.mirrorEditorCursor();
+      },
+    );
     // Nothing fires on a fold, so check once clicks and keys settle.
     const checkFolds = debounce(
       () => this.syncCollapseFromEditor(),
@@ -1412,7 +1660,8 @@ export class MindmapView extends ItemView {
 
         return;
       }
-      this.centerAfterReveal();
+      this.scrollerEl.removeClass('is-positioning');
+      this.revealSelectedNodeAfterPaneChange(this.selectedLine);
     }
   }
 
@@ -1422,7 +1671,7 @@ export class MindmapView extends ItemView {
    */
   private everyDocument<K extends keyof DocumentEventMap>(
     types: readonly K[],
-    run: () => void,
+    run: (event: DocumentEventMap[K]) => void,
   ): void {
     const listening = new Set<Document>();
     const listen = (doc: Document): void => {
@@ -1655,13 +1904,6 @@ export class MindmapView extends ItemView {
     this.viewport.fit();
   }
 
-  /** Centers a revealed map after its first visible render settles. */
-  private centerAfterReveal(): void {
-    this.scrollerEl.addClass('is-positioning');
-    this.revealPending = { kind: 'center' };
-    this.revealAfterLayout();
-  }
-
   /** Reopenings resume their viewport; first openings frame the caret. */
   initialViewportAfterReveal(cursorLine: number | null): void {
     const restored =
@@ -1752,6 +1994,80 @@ export class MindmapView extends ItemView {
     this.applyPendingReveal();
     this.revealPending = null;
     this.saveViewport();
+  }
+
+  /** Centers a selected node only after opening Markdown settles the split. */
+  private revealSelectedNodeAfterPaneChange(line: number | null): void {
+    this.revealNodeAfterPaneChange(line, true);
+  }
+
+  /** Keeps a node visible after an action whose caret may select its parent. */
+  private revealNodeAfterPaneChange(
+    line: number | null,
+    requireSelection: boolean,
+  ): void {
+    this.cancelSelectedNodeReveal();
+    if (line === null) {
+      return;
+    }
+    this.selectedNodeReveal = {
+      line,
+      size: `${this.scrollerEl.clientWidth}:${this.scrollerEl.clientHeight}`,
+      stable: 0,
+      requireSelection,
+    };
+    this.scheduleSelectedNodeReveal();
+  }
+
+  private scheduleSelectedNodeReveal(): void {
+    if (!this.selectedNodeReveal || this.selectedNodeRevealTimer !== null) {
+      return;
+    }
+    this.selectedNodeRevealTimer = this.containerEl.win.setTimeout(() => {
+      this.selectedNodeRevealTimer = null;
+      this.checkSelectedNodeReveal();
+    }, VIEWPORT_SETTLE_INTERVAL_MS);
+  }
+
+  private checkSelectedNodeReveal(): void {
+    const pending = this.selectedNodeReveal;
+
+    if (
+      !pending ||
+      (pending.requireSelection && pending.line !== this.selectedLine)
+    ) {
+      this.cancelSelectedNodeReveal();
+
+      return;
+    }
+    const size = `${this.scrollerEl.clientWidth}:${this.scrollerEl.clientHeight}`;
+
+    if (size === pending.size) {
+      pending.stable += 1;
+    } else {
+      pending.size = size;
+      pending.stable = 0;
+    }
+    if (pending.stable < VIEWPORT_STABLE_SAMPLES) {
+      this.scheduleSelectedNodeReveal();
+
+      return;
+    }
+    const laid = this.laidByLine?.get(pending.line);
+
+    if (laid) {
+      this.viewport.centerElement(laid.el);
+      this.lastViewport = this.viewport.snapshot();
+    }
+    this.cancelSelectedNodeReveal();
+  }
+
+  private cancelSelectedNodeReveal(): void {
+    if (this.selectedNodeRevealTimer !== null) {
+      this.containerEl.win.clearTimeout(this.selectedNodeRevealTimer);
+      this.selectedNodeRevealTimer = null;
+    }
+    this.selectedNodeReveal = null;
   }
 
   private applyPendingReveal(): void {
@@ -1858,6 +2174,7 @@ export class MindmapView extends ItemView {
 
     if (!this.file) {
       this.finishRenderStaging();
+      this.clearMirroredCursor();
       this.canvasEl.empty();
       this.laidByLine.clear();
       this.renderedSource = '';
@@ -1887,6 +2204,23 @@ export class MindmapView extends ItemView {
       return;
     }
     const parsed = parseMarkdown(text, this.file.basename);
+    const pendingOwner =
+      this.pendingBodyLine?.path === this.file.path
+        ? findByLine(parsed, this.pendingBodyLine.ownerLine)
+        : null;
+
+    if (
+      this.pendingBodyLine &&
+      (!pendingOwner ||
+        (!pendingOwner.body.some(
+          ({ line }) => line === this.pendingBodyLine?.line,
+        ) &&
+          !/^\s*$/.test(
+            text.split(/\r?\n/)[this.pendingBodyLine.line] ?? '\u0000',
+          )))
+    ) {
+      this.pendingBodyLine = null;
+    }
     const taskUpdates = taskParentUpdates(parsed);
 
     if (taskUpdates.length && !this.syncingTasks) {
@@ -1928,6 +2262,7 @@ export class MindmapView extends ItemView {
     if (this.renderSnapshot) {
       this.canvasEl.addClass('is-render-staging');
     }
+    this.clearMirroredCursor();
     this.canvasEl.empty();
     this.laidByLine.clear();
     this.root = parsed;
@@ -2189,7 +2524,12 @@ export class MindmapView extends ItemView {
    * click can name the line it hit.
    */
   private addBodyText(node: MindNode, el: HTMLElement): void {
-    if (!this.showBodyText || !node.body.length) {
+    const pending = this.pendingBodyLines(node);
+    const body = pending.length
+      ? [...node.body, ...pending].sort((a, b) => a.line - b.line)
+      : node.body;
+
+    if (!this.showBodyText || !body.length) {
       return;
     }
     if (this.isTextFolded(node)) {
@@ -2202,7 +2542,7 @@ export class MindmapView extends ItemView {
     let previous = -1;
     let inFence = false;
 
-    for (const { line, text } of node.body) {
+    for (const { line, text } of body) {
       const lineEl = bodyEl.createDiv({ cls: BODY_LINE });
       const fence = FENCE_RE.test(text);
 
@@ -2238,7 +2578,16 @@ export class MindmapView extends ItemView {
     // double-click opens the line there, with the caret on it.
     bodyEl.addEventListener('dblclick', (e) => {
       e.stopPropagation();
-      void this.editor.editLine(lineAt(e.target));
+      const line = lineAt(e.target);
+
+      if (this.file) {
+        this.pendingBodyLine = {
+          path: this.file.path,
+          ownerLine: node.line,
+          line,
+        };
+      }
+      void this.editBodyLine(line);
     });
   }
 
@@ -2600,9 +2949,20 @@ export class MindmapView extends ItemView {
     // no pane has it, and side by side that is two tabs of the same file.
     // The editor always follows the current selection, whether it came from
     // a click or from arrow-key navigation.
-    void this.pointEditorAtFile().then(() =>
-      this.editor.goToLine(line ?? node.line, blockOf(node, line ?? node.line)),
-    );
+    const bodyEditSeq = this.bodyEditSeq;
+
+    void this.pointEditorAtFile().then(() => {
+      // A double-click can start editing while this earlier selection is
+      // revealing its pane. Its flash must not arrive over the real editor.
+      if (bodyEditSeq !== this.bodyEditSeq) {
+        return;
+      }
+
+      return this.editor.goToLine(
+        line ?? node.line,
+        blockOf(node, line ?? node.line),
+      );
+    });
   }
 
   private clearSelectionClass(): void {
@@ -2621,6 +2981,18 @@ export class MindmapView extends ItemView {
     // opened note changes all of them behind the user's back and leaves no tab
     // to restore for a remembered note.
     if (this.plugin.isMobile) {
+      return;
+    }
+    const source = this.mapDrivenSourceLeaf;
+
+    if (
+      source &&
+      !this.app.workspace.getLeavesOfType('markdown').includes(source)
+    ) {
+      this.mapDrivenSourceLeaf = null;
+      this.scrollerEl.removeClass('is-positioning');
+      this.revealSelectedNodeAfterPaneChange(this.selectedLine);
+
       return;
     }
     if (this.editor.linkedLeaf()) {
@@ -2650,6 +3022,10 @@ export class MindmapView extends ItemView {
       return;
     }
     const had = this.containerEl.contains(this.containerEl.doc.activeElement);
+    const bodyEditSeq = this.bodyEditSeq;
+    const opensNewPane =
+      !this.editor.linkedLeaf() &&
+      !findMarkdownView(this.app, this.file, this.leaf);
 
     // Counted, because clicking a node calls this twice - once for the leaf
     // going active, once for the node. The second finds the tab already up and
@@ -2661,7 +3037,15 @@ export class MindmapView extends ItemView {
       // Only the focus we took is given back: grabbing it unasked makes this
       // map the active leaf, and Obsidian then has no active file at all -
       // the next note the user opens goes nowhere.
-      if ((await this.editor.showFile(this.file)) && had) {
+      const opened = await this.editor.showFile(this.file);
+
+      this.mapDrivenSourceLeaf =
+        findMarkdownView(this.app, this.file, this.leaf)?.leaf ?? null;
+      if (opensNewPane) {
+        this.revealSelectedNodeAfterPaneChange(this.selectedLine);
+      }
+
+      if (opened && had && bodyEditSeq === this.bodyEditSeq) {
         this.scrollerEl.focus({ preventScroll: true });
       }
     } finally {
@@ -2669,6 +3053,66 @@ export class MindmapView extends ItemView {
         this.plugin.mapDrivenOpen = null;
       }
     }
+  }
+
+  /** Focuses a body line without an earlier pointerdown taking focus back. */
+  private async editBodyLine(line: number): Promise<boolean> {
+    const file = this.file;
+    const opensNewPane = !!file && !findMarkdownView(this.app, file, this.leaf);
+
+    this.bodyEditSeq++;
+    clearPreviewLine();
+    await this.editor.editLine(line);
+    const view = file && findFocusedEditingView(this.app, file);
+    const scope = this.app.scope;
+
+    if (!view) {
+      return false;
+    }
+    if (opensNewPane) {
+      this.revealSelectedNodeAfterPaneChange(this.selectedLine);
+    }
+    clearPreviewLine(view.containerEl);
+    MIRROR_EDITOR_OWNERS.set(view, this);
+    if (this.mirrorEditorScopes.has(scope)) {
+      return opensNewPane;
+    }
+    this.mirrorEditorScopes.add(scope);
+    const handleEnter = (event: KeyboardEvent): boolean => {
+      if (event.isComposing) {
+        return true;
+      }
+
+      return MIRROR_EDITOR_OWNERS.get(view) === this &&
+        this.insertMirroredLine()
+        ? false
+        : true;
+    };
+    const enter = scope.register([], 'Enter', handleEnter);
+    const shiftEnter = scope.register(['Shift'], 'Enter', handleEnter);
+    const escape = scope.register([], 'Escape', () => {
+      if (MIRROR_EDITOR_OWNERS.get(view) !== this) {
+        return true;
+      }
+      this.clearMirroredCursor();
+      this.returningFromBodyEdit = true;
+      this.app.workspace.setActiveLeaf(this.leaf, { focus: true });
+      this.scrollerEl.focus({ preventScroll: true });
+
+      return false;
+    });
+
+    this.register(() => {
+      scope.unregister(enter);
+      scope.unregister(shiftEnter);
+      scope.unregister(escape);
+      this.mirrorEditorScopes.delete(scope);
+      if (MIRROR_EDITOR_OWNERS.get(view) === this) {
+        MIRROR_EDITOR_OWNERS.delete(view);
+      }
+    });
+
+    return opensNewPane;
   }
 
   /**
@@ -2811,22 +3255,16 @@ export class MindmapView extends ItemView {
       if (this.reorderTarget(node, 1)) {
         add('Move down', 'arrow-down', () => void this.reorderNode(node, 1));
       }
-      if (node.type === 'list') {
-        if (node.checked !== null) {
-          add(
-            node.body.length ? 'Edit task note' : 'Add task note',
-            'sticky-note',
-            () => {
-              const line = node.body[0]?.line;
+      add(node.body.length ? 'Edit note' : 'Add note', 'sticky-note', () => {
+        const line = node.body[0]?.line;
 
-              if (line === undefined) {
-                void this.addTaskNote(node);
-              } else {
-                void this.editor.editLine(line);
-              }
-            },
-          );
+        if (line === undefined) {
+          void this.addTaskNote(node);
+        } else {
+          void this.editBodyLine(line);
         }
+      });
+      if (node.type === 'list') {
         add(
           node.checked === null ? 'Add checkbox' : 'Remove checkbox',
           'check-square',
@@ -3059,6 +3497,7 @@ export class MindmapView extends ItemView {
     }
     const file = this.file;
     let insertedLine: number | null = null;
+    let ownerLine: number | null = null;
 
     try {
       await this.writeFile(file, (lines) => {
@@ -3071,22 +3510,26 @@ export class MindmapView extends ItemView {
         const result = addTaskNoteOp(lines, target);
 
         insertedLine = result.insertedLine;
+        ownerLine = target.line;
 
         return result.lines;
       });
     } catch (err) {
       this.reportOpError(err);
     }
-    if (insertedLine === null) {
+    if (insertedLine === null || ownerLine === null) {
       await this.render();
 
       return;
     }
     this.showBodyText = true;
+    this.pendingBodyLine = { path: file.path, ownerLine, line: insertedLine };
     this.app.workspace.requestSaveLayout();
     this.syncToggleActions();
     await this.render();
-    await this.editor.editLine(insertedLine);
+    if (await this.editBodyLine(insertedLine)) {
+      this.revealNodeAfterPaneChange(ownerLine, false);
+    }
   }
 
   private async applyInsert(

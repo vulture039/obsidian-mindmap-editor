@@ -251,15 +251,14 @@ export function addChildOp(
   return { lines, insertedLine: at };
 }
 
-/** Adds an indented continuation line for a list item's note. */
+/** Adds a continuation line for a node's note. */
 export function addTaskNoteOp(lines: string[], node: MindNode): InsertResult {
   requireNodeLine(lines, node);
-  if (node.type !== 'list' || node.checked === null) {
-    throw new Error(`Mindmap: line ${node.line} is not a task item`);
-  }
   const insertedLine = node.line + 1;
+  const indent =
+    node.type === 'list' ? node.indent + detectIndentUnit(lines) : '';
 
-  lines.splice(insertedLine, 0, node.indent + detectIndentUnit(lines));
+  lines.splice(insertedLine, 0, indent);
 
   return { lines, insertedLine };
 }

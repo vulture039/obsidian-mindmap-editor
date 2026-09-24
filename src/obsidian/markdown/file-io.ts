@@ -71,6 +71,27 @@ export function findEditingView(
   return findView(app, file, true, near);
 }
 
+/** The source pane for this file that actually owns the keyboard. */
+export function findFocusedEditingView(
+  app: App,
+  file: TFile,
+): MarkdownView | null {
+  for (const leaf of app.workspace.getLeavesOfType('markdown')) {
+    const view = leaf.view;
+
+    if (
+      view instanceof MarkdownView &&
+      view.file?.path === file.path &&
+      view.getMode() === 'source' &&
+      view.editor.hasFocus()
+    ) {
+      return view;
+    }
+  }
+
+  return null;
+}
+
 /** Both line endings, since a note can have come from anywhere. */
 const LINE = /\r?\n/;
 

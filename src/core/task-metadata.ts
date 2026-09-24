@@ -76,7 +76,3 @@ export function formatTaskMetadata(
 
   return parts.join(' ');
 }
-
-export function taskTitle(text: string): string {
-  return parseTaskMetadata(text).title;
-}

@@ -25,8 +25,14 @@ if (view.file?.path !== 'Fixtures.md') {
 
 // Obsidian hands a key to the view whose leaf is active; a check that presses
 // one has to be sure that is the map.
-const focusMap = () => app.workspace.setActiveLeaf(view.leaf, { focus: true });
+const focusMap = () => {
+  app.workspace.setActiveLeaf(view.leaf, { focus: true });
+  view.scrollerEl.focus({ preventScroll: true });
+};
 
+// Earlier checks can leave the same note open elsewhere in the window. This
+// fixture owns `md`, so make it the map's most recently used editor as well.
+view.editor.noteActiveLeaf(md);
 focusMap();
 const file = md.view.file;
 const editor = md.view.editor;

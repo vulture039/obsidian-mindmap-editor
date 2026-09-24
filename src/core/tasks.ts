@@ -1,4 +1,5 @@
 import { MindNode } from './parse/parser';
+import { relocateNode } from './write/relocate';
 
 export interface TaskProgress {
   completed: number;
@@ -10,12 +11,27 @@ export interface TaskStateUpdate {
   checked: boolean;
 }
 
-/** Whether this branch contains work that is still open. */
-export function hasIncompleteTask(node: MindNode): boolean {
+function sameTaskShape(node: MindNode, other: MindNode | undefined): boolean {
   return (
-    node.checked === false ||
-    node.children.some((child) => hasIncompleteTask(child))
+    !!other &&
+    node.type === other.type &&
+    node.level === other.level &&
+    node.indent === other.indent &&
+    node.checked !== null &&
+    other.checked !== null
   );
+}
+
+function nodesByPath(root: MindNode): Map<string, MindNode> {
+  const nodes = new Map<string, MindNode>();
+  const visit = (node: MindNode, path: number[]): void => {
+    nodes.set(path.join('.'), node);
+    node.children.forEach((child, index) => visit(child, [...path, index]));
+  };
+
+  visit(root, []);
+
+  return nodes;
 }
 
 /** Progress from direct child tasks; deeper work belongs to its own parent. */
@@ -41,27 +57,72 @@ export function descendantTasks(node: MindNode): MindNode[] {
   ]);
 }
 
-/** Parent states derived bottom-up, so every level agrees with its children. */
-export function taskParentUpdates(root: MindNode): TaskStateUpdate[] {
-  const states = new Map<MindNode, boolean>();
-  const updates: TaskStateUpdate[] = [];
-  const visit = (node: MindNode): void => {
-    node.children.forEach(visit);
-    if (node.checked === null) {
-      return;
-    }
-    const children = childTasks(node);
-    const checked = children.length
-      ? children.every((child) => states.get(child) ?? child.checked === true)
-      : node.checked;
+/**
+ * Syncs only from an identifiable checkbox edit. An initial render or a
+ * structural rewrite is not permission to normalize Markdown behind the user.
+ */
+export function taskEditUpdates(
+  previous: MindNode,
+  current: MindNode,
+): TaskStateUpdate[] {
+  const beforeByPath = nodesByPath(previous);
+  const changed: MindNode[] = [];
+  const visit = (node: MindNode, path: number[]): void => {
+    const relocated = relocateNode(previous, node);
+    const samePosition = beforeByPath.get(path.join('.'));
+    const renamedInPlace =
+      !relocated &&
+      samePosition?.line === node.line &&
+      samePosition?.text !== node.text &&
+      sameTaskShape(node, samePosition);
+    const old = relocated ?? (renamedInPlace ? samePosition : undefined);
 
-    states.set(node, checked);
-    if (checked !== node.checked) {
-      updates.push({ node, checked });
+    if (sameTaskShape(node, old) && node.checked !== old?.checked) {
+      changed.push(node);
     }
+    node.children.forEach((child, index) => visit(child, [...path, index]));
   };
 
-  visit(root);
+  visit(current, []);
+  if (!changed.length) {
+    return [];
+  }
 
-  return updates;
+  const explicitlyChanged = new Set(changed);
+  const desired = new Map<MindNode, boolean>();
+
+  // A parent-only edit is an explicit command for its unchanged descendants.
+  changed.forEach((node) => {
+    const descendants = descendantTasks(node);
+
+    if (!descendants.some((child) => explicitlyChanged.has(child))) {
+      descendants.forEach((child) => desired.set(child, node.checked!));
+    }
+  });
+
+  // Recompute only ancestors of an edited task, deepest first. This avoids
+  // changing an unrelated inconsistent branch merely because it was opened.
+  const ancestors = new Set<MindNode>();
+
+  changed.forEach((node) => {
+    for (let parent = node.parent; parent; parent = parent.parent) {
+      if (parent.checked !== null && !explicitlyChanged.has(parent)) {
+        ancestors.add(parent);
+      }
+    }
+  });
+  [...ancestors]
+    .sort((a, b) => b.level - a.level)
+    .forEach((parent) => {
+      const children = childTasks(parent);
+      const checked =
+        children.length > 0 &&
+        children.every((child) => desired.get(child) ?? child.checked === true);
+
+      desired.set(parent, checked);
+    });
+
+  return [...desired]
+    .filter(([node, checked]) => node.checked !== checked)
+    .map(([node, checked]) => ({ node, checked }));
 }

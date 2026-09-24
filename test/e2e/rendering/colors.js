@@ -3,7 +3,6 @@ const plugin = app.plugins.getPlugin('mindmap-editor');
 const originalPalette = plugin.settings.palette;
 const wasShowingBody = view.showBodyText;
 const wasHideCompleted = view.hideCompleted;
-const wasFocusingTasks = view.focusIncompleteTasks;
 const body = el.doc.body;
 const wasDark = body.classList.contains('theme-dark');
 const wasLight = body.classList.contains('theme-light');
@@ -12,7 +11,6 @@ try {
   plugin.settings.palette = '';
   await plugin.saveSettings();
   view.hideCompleted = false;
-  view.focusIncompleteTasks = false;
   await drawn();
   if (!wasShowingBody) {
     view.showBodyText = true;
@@ -87,7 +85,8 @@ try {
     ]);
     const ratios = coloredText.map((text) => {
       const node = text.closest('.mindmap-node');
-      const style = el.win.getComputedStyle(node);
+      const surface = text.closest('.mindmap-node-body') ?? node;
+      const style = el.win.getComputedStyle(surface);
 
       return contrast(
         el.win.getComputedStyle(text).color,
@@ -147,7 +146,6 @@ try {
     view.showBodyText = false;
   }
   view.hideCompleted = wasHideCompleted;
-  view.focusIncompleteTasks = wasFocusingTasks;
   await drawn();
 }
 

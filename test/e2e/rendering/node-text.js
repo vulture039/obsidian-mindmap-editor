@@ -78,15 +78,24 @@ check(
   }),
 );
 if (!reading) {
-  click(plainLine);
+  await app.workspace.revealLeaf(md);
+  view.editor.noteActiveLeaf(md);
+  await until(() => md.view.containerEl.isShown());
+  const plainLineNumber = Number(plainLine?.dataset.line);
+
+  await view.editor.goToLine(plainLineNumber);
   const sourceHighlight = await until(
     () => [...(CSS.highlights.get('mindmap-line') ?? [])][0] ?? null,
   );
 
   check(
-    'map selection highlights source content without its indent',
+    'source highlighting excludes structural indent',
     sourceHighlight?.toString() === 'indented code stays literal',
-    sourceHighlight?.toString(),
+    JSON.stringify({
+      highlight: sourceHighlight?.toString(),
+      wanted: plainLineNumber,
+      cursor: editor.getCursor().line,
+    }),
   );
 }
 check(
@@ -200,7 +209,8 @@ if (!reading) {
     () =>
       editor.hasFocus() &&
       editor.getCursor().line === listLine &&
-      editor.getCursor().ch === editor.getLine(listLine).length,
+      editor.getCursor().ch === editor.getLine(listLine).length &&
+      view.mirrorEditorView === md.view,
   );
   await press('Enter');
   await until(() => editor.getLine(listLine + 1) === '  ');
@@ -326,6 +336,7 @@ if (!reading) {
 
     click(nextText);
     await until(() => document.activeElement === view.scrollerEl);
+    focusMap();
     const restoredLine = await until(() => {
       const current = drawnAt(at + 1);
 
@@ -359,6 +370,7 @@ if (!reading) {
       mapWrites === 0,
       `${mapWrites} map writes`,
     );
+    app.workspace.setActiveLeaf(md, { focus: true });
     editor.focus();
     await press('Escape');
     const leftEditing = await until(
@@ -374,13 +386,13 @@ if (!reading) {
     await press('Escape');
     const leftBodySelection = await until(
       () =>
-        !restoredLine?.hasClass('is-cursor-line') &&
+        !drawnAt(at + 1)?.hasClass('is-cursor-line') &&
         !!el.querySelector('.mindmap-node.is-selected'),
     );
     check(
       'a second Escape leaves the node selected after its body line',
       !!leftBodySelection,
-      restoredLine?.className,
+      drawnAt(at + 1)?.className,
     );
     await press('Escape');
     const leftNodeSelection = await until(

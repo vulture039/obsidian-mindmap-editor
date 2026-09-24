@@ -1,26 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseMarkdown } from './parse/parser';
-import {
-  childTasks,
-  hasIncompleteTask,
-  taskParentUpdates,
-  taskProgress,
-} from './tasks';
-
-describe('hasIncompleteTask', () => {
-  it('keeps open tasks and the structural branches leading to them', () => {
-    const root = parseMarkdown(
-      '- group\n\t- [x] done\n\t- nested\n\t\t- [ ] open\n- plain',
-      'Note',
-    );
-    const group = root.children[0]!;
-
-    expect(hasIncompleteTask(root)).toBe(true);
-    expect(hasIncompleteTask(group)).toBe(true);
-    expect(hasIncompleteTask(group.children[0]!)).toBe(false);
-    expect(hasIncompleteTask(root.children[1]!)).toBe(false);
-  });
-});
+import { childTasks, taskEditUpdates, taskProgress } from './tasks';
 
 describe('taskProgress', () => {
   it('counts only direct child tasks', () => {
@@ -55,24 +35,110 @@ describe('childTasks', () => {
   });
 });
 
-describe('taskParentUpdates', () => {
-  it('derives nested parents bottom-up', () => {
-    const root = parseMarkdown(
-      '- [x] parent\n\t- [x] child\n\t\t- [ ] grandchild\n\t- [x] sibling',
+describe('taskEditUpdates', () => {
+  it('flows an explicit parent edit down to its children', () => {
+    const before = parseMarkdown(
+      '- [ ] parent\n\t- [ ] first\n\t- [x] second',
+      'Note',
+    );
+    const after = parseMarkdown(
+      '- [x] parent\n\t- [ ] first\n\t- [x] second',
       'Note',
     );
 
     expect(
-      taskParentUpdates(root).map(({ node, checked }) => [node.text, checked]),
+      taskEditUpdates(before, after).map(({ node, checked }) => [
+        node.text,
+        checked,
+      ]),
+    ).toEqual([['first', true]]);
+  });
+
+  it('flows an explicit child edit up to its parents', () => {
+    const before = parseMarkdown(
+      '- [ ] parent\n\t- [x] first\n\t- [ ] second',
+      'Note',
+    );
+    const after = parseMarkdown(
+      '- [ ] parent\n\t- [x] first\n\t- [x] second',
+      'Note',
+    );
+
+    expect(
+      taskEditUpdates(before, after).map(({ node, checked }) => [
+        node.text,
+        checked,
+      ]),
+    ).toEqual([['parent', true]]);
+  });
+
+  it('derives nested parents bottom-up from an edited leaf', () => {
+    const before = parseMarkdown(
+      '- [x] parent\n\t- [x] child\n\t\t- [x] grandchild',
+      'Note',
+    );
+    const after = parseMarkdown(
+      '- [x] parent\n\t- [x] child\n\t\t- [ ] grandchild',
+      'Note',
+    );
+
+    expect(
+      taskEditUpdates(before, after).map(({ node, checked }) => [
+        node.text,
+        checked,
+      ]),
     ).toEqual([
       ['child', false],
       ['parent', false],
     ]);
   });
 
-  it('leaves standalone task states alone', () => {
-    const root = parseMarkdown('- [x] done\n- [ ] open', 'Note');
+  it('does not normalize an inconsistent document on first observation', () => {
+    const current = parseMarkdown('- [x] parent\n\t- [ ] child', 'Note');
 
-    expect(taskParentUpdates(root)).toEqual([]);
+    expect(taskEditUpdates(current, current)).toEqual([]);
+  });
+
+  it('does not overwrite explicit parent and child edits in one rewrite', () => {
+    const before = parseMarkdown('- [ ] parent\n\t- [ ] child', 'Note');
+    const after = parseMarkdown('- [x] parent\n\t- [x] child', 'Note');
+
+    expect(taskEditUpdates(before, after)).toEqual([]);
+  });
+
+  it('finds a checkbox edit after lines moved', () => {
+    const before = parseMarkdown(
+      '- [ ] parent\n\t- [ ] first\n\t- [x] second',
+      'Note',
+    );
+    const after = parseMarkdown(
+      'intro\n- [ ] parent\n\t- [x] first\n\t- [x] second',
+      'Note',
+    );
+
+    expect(
+      taskEditUpdates(before, after).map(({ node, checked }) => [
+        node.text,
+        checked,
+      ]),
+    ).toEqual([['parent', true]]);
+  });
+
+  it('finds a checkbox edit made with an in-place rename', () => {
+    const before = parseMarkdown(
+      '- [ ] parent\n\t- [ ] first\n\t- [x] second',
+      'Note',
+    );
+    const after = parseMarkdown(
+      '- [ ] parent\n\t- [x] renamed first\n\t- [x] second',
+      'Note',
+    );
+
+    expect(
+      taskEditUpdates(before, after).map(({ node, checked }) => [
+        node.text,
+        checked,
+      ]),
+    ).toEqual([['parent', true]]);
   });
 });

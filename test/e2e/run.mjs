@@ -206,10 +206,12 @@ await send('Runtime.evaluate', {
     const file = app.vault.getAbstractFileByPath(path);
     const fixture = window.__mindmapE2EFixture;
     const isolated = ${isolatedWindow};
+    const isolatedWindow = isolated ? fixture?.map.getContainer().win : null;
 
     if (isolated) {
       fixture?.map.detach();
       fixture?.md.detach();
+      isolatedWindow?.close();
     } else {
       fixture?.map.setGroup(null);
     }
@@ -218,6 +220,9 @@ await send('Runtime.evaluate', {
       await app.workspace.revealLeaf(fixture.md);
     }
     for (let i = 0; !isolated && i < 40 && fixture?.map.view.currentFile?.path !== path; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    for (let i = 0; isolatedWindow && !isolatedWindow.closed && i < 100; i++) {
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
     delete window.__mindmapE2EFixture;

@@ -5,7 +5,6 @@ if (reading) {
 
 const wasHideCompleted = view.hideCompleted;
 const wasShowingBody = view.showBodyText;
-const wasFocusingTasks = view.focusIncompleteTasks;
 
 try {
   view.hideCompleted = false;
@@ -23,15 +22,6 @@ try {
       progress.textContent === '1/2',
     progress?.outerHTML,
   );
-
-  view.focusIncompleteTasks = true;
-  await view.render();
-  check(
-    'task focus keeps open work and hides completed-only branches',
-    label('Parent') && label('Open') && label('Note task') && !label('Done'),
-  );
-  view.focusIncompleteTasks = false;
-  await view.render();
 
   await setFile(
     ['- [ ] Parent', '\t- [x] Done', '\t- [ ] Open', '- [ ] Note task'].join(
@@ -143,11 +133,57 @@ try {
     await now(),
   );
 
-  await setFile(['- [x] Outer', '\t- [x] Inner', '\t\t- [ ] Leaf'].join('\n'));
+  await setFile(['- [x] Outer', '\t- [x] Inner', '\t\t- [x] Leaf'].join('\n'));
+  const leafBox = editor.getLine(2).indexOf('x');
+
+  editor.replaceRange(
+    ' ',
+    { line: 2, ch: leafBox },
+    {
+      line: 2,
+      ch: leafBox + 1,
+    },
+  );
   await until(async () => (await now()).startsWith('- [ ] Outer'));
   check(
     'Markdown changes synchronize nested parents bottom-up',
     (await now()).startsWith('- [ ] Outer\n\t- [ ] Inner'),
+    await now(),
+  );
+
+  await setFile(['- [ ] Parent', '\t- [ ] First', '\t- [ ] Second'].join('\n'));
+  const markdownParentBox = editor.getLine(0).indexOf('[ ]') + 1;
+
+  editor.replaceRange(
+    'x',
+    { line: 0, ch: markdownParentBox },
+    {
+      line: 0,
+      ch: markdownParentBox + 1,
+    },
+  );
+  await until(async () =>
+    (await now()).split('\n').every((line) => line.includes('[x]')),
+  );
+  check(
+    'checking a parent in Markdown checks its descendants',
+    (await now()).split('\n').every((line) => line.includes('[x]')),
+    await now(),
+  );
+
+  await setFile(['- [ ] Parent', '\t- [ ] First', '\t- [x] Second'].join('\n'));
+  editor.replaceRange('intro\n', { line: 0, ch: 0 });
+  const movedChildBox = editor.getLine(2).indexOf('[ ]') + 1;
+
+  editor.replaceRange(
+    'x',
+    { line: 2, ch: movedChildBox },
+    { line: 2, ch: movedChildBox + 1 },
+  );
+  await until(async () => (await now()).split('\n')[1]?.includes('[x] Parent'));
+  check(
+    'Markdown checkbox sync survives lines inserted before the task',
+    (await now()).split('\n')[1]?.includes('[x] Parent'),
     await now(),
   );
 
@@ -263,6 +299,16 @@ try {
     ),
   );
 
+  view.selectNode(dueTask, dueTaskEl);
+  dueInput.focus();
+  await press('Delete');
+  check(
+    'date input keeps Delete from deleting its task',
+    (await now()).includes('- [ ] Due task') &&
+      !!label('Due task')?.closest('.mindmap-node'),
+    await now(),
+  );
+
   type(dueInput, '2026-10-01');
   const beforeDueDate = await now();
 
@@ -323,10 +369,23 @@ try {
     (await now()) === '- [ ] Due task 📅 2026-10-02',
     await now(),
   );
+
+  await setFile('- [ ] Concurrent metadata task ▲');
+  const staleMetadataNode = view.root.children[0];
+
+  editor.replaceRange(' 📅 2026-12-31', {
+    line: 0,
+    ch: editor.getLine(0).length,
+  });
+  await view.setTaskMetadata(staleMetadataNode, { priority: 'low' });
+  check(
+    'metadata controls preserve a newer Markdown-side value',
+    editor.getLine(0) === '- [ ] Concurrent metadata task ▼ 📅 2026-12-31',
+    editor.getLine(0),
+  );
 } finally {
   view.hideCompleted = wasHideCompleted;
   view.showBodyText = wasShowingBody;
-  view.focusIncompleteTasks = wasFocusingTasks;
   await restore();
 }
 

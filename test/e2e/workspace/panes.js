@@ -521,6 +521,10 @@ try {
     const plainCanvas =
       plainLinked.view.contentEl.querySelector('.mindmap-canvas');
 
+    app.workspace.setActiveLeaf(plainLinked, { focus: true });
+    plainLinked.view.scrollerEl.focus({ preventScroll: true });
+    plainLinked.view.clearSelectionClass();
+    plainLinked.view.selectOnly(null);
     plainSource.detach();
     app.workspace.trigger('layout-change');
     check(

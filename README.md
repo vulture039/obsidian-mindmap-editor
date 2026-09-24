@@ -17,7 +17,7 @@ No new file format, no markup to add.
 
 - **Markdown-native maps** - Headings and lists form the map; edits write back to the same note.
 - **Direct editing** - Add, rename, delete, multi-select, and drag nodes with undo/redo support.
-- **Tasks and folds** - Add task notes, track and sync subtasks, focus on unfinished work, collapse branches, and optionally hide completed tasks.
+- **Tasks and folds** - Add task notes, track and sync subtasks, collapse branches, and optionally hide completed tasks.
 - **Rich node text** - Show body text with inline Markdown, links, and image previews.
 - **Map/editor sync** - Selection, cursor position, folds, and wikilinks stay in sync.
 - **Flexible views** - Zoom, pan, fit, and reopen each map at its saved position.
@@ -68,8 +68,6 @@ None of these come with a hotkey; bind the ones you want in Settings → Hotkeys
 
 - **Hide completed tasks by default** / **Show node text by default** - What a map starts with; each one is
   then switched on its own from its header (`✓✓`, `¶`).
-- **Focus on incomplete tasks** - The header's filter button keeps unfinished tasks and the branches leading
-  to them visible without changing the Markdown.
 - **Sync collapse state with Markdown folding** (default on) - An editing pane folds both ways; a reading pane
   follows along by its headings. List folding also follows Obsidian's Editor → Fold settings.
 - **Split direction** - Side by side / stacked, for any pane the plugin splits open. A map that can join one

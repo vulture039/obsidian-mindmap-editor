@@ -1,4 +1,4 @@
-import { App, Keymap, TFile, WorkspaceLeaf } from 'obsidian';
+import { App, Keymap, MarkdownView, TFile, WorkspaceLeaf } from 'obsidian';
 import { findEditingView, findMarkdownView } from './file-io';
 import { sameWindow } from '../workspace';
 import {
@@ -31,6 +31,7 @@ export interface EditorPaneDeps {
  */
 export class EditorPane {
   private readonly deps: EditorPaneDeps;
+  private lineJumpSeq = 0;
   /**
    * Most recently focused Markdown leaf, so a new tab lands beside the editor
    * the user was actually looking at instead of an arbitrary open one.
@@ -84,6 +85,26 @@ export class EditorPane {
     return this.linkedLeaf() ?? this.deps.leaf;
   }
 
+  /** The matching pane the user last used here, before workspace-list order. */
+  private viewFor(file: TFile, sourceOnly = false): MarkdownView | null {
+    const recentLeaf = this.lastActive;
+    const recent = recentLeaf?.view;
+
+    if (
+      recentLeaf &&
+      recent instanceof MarkdownView &&
+      recent.file?.path === file.path &&
+      sameWindow(recentLeaf, this.near()) &&
+      (!sourceOnly || recent.getMode() === 'source')
+    ) {
+      return recent;
+    }
+
+    return sourceOnly
+      ? findEditingView(this.deps.app, file, this.near())
+      : findMarkdownView(this.deps.app, file, this.near());
+  }
+
   /**
    * The linked tab's file, read from its view state so a tab that is still
    * deferred (never opened in this session) counts too.
@@ -133,7 +154,7 @@ export class EditorPane {
    * use it: while a map is linked, only the linked tab may be written to.
    */
   async tabFor(file: TFile): Promise<WorkspaceLeaf> {
-    const open = findMarkdownView(this.deps.app, file, this.near());
+    const open = this.viewFor(file);
 
     if (open) {
       return open.leaf;
@@ -162,7 +183,7 @@ export class EditorPane {
         ? this.reveal(linked)
         : this.openThere(file);
     }
-    const open = findMarkdownView(this.deps.app, file, this.near());
+    const open = this.viewFor(file);
 
     return open ? this.reveal(open.leaf) : this.openThere(file);
   }
@@ -199,7 +220,7 @@ export class EditorPane {
     if (!file) {
       return;
     }
-    const existing = findMarkdownView(this.deps.app, file, this.near());
+    const existing = this.viewFor(file);
     const leaf = existing?.leaf ?? this.resolveLeaf();
 
     if (!existing) {
@@ -220,6 +241,7 @@ export class EditorPane {
     if (!file || line < 0) {
       return;
     }
+    const jumpSeq = ++this.lineJumpSeq;
     // Only what the jump takes is given back. Focusing the map unasked makes
     // it the active leaf, and Obsidian then has no active file at all - the
     // note the user opens next goes nowhere.
@@ -260,7 +282,21 @@ export class EditorPane {
     editor.setCursor({ line, ch });
     editor.scrollIntoView({ from: { line, ch: 0 }, to: { line, ch } }, true);
     if (!preview) {
-      markSourceLine(mdView, line);
+      const markWhenDrawn = (attempts: number): void => {
+        if (
+          mdView.file?.path !== file.path ||
+          jumpSeq !== this.lineJumpSeq ||
+          markSourceLine(mdView, line) ||
+          attempts === 0
+        ) {
+          return;
+        }
+        mdView.containerEl.win.requestAnimationFrame(() =>
+          markWhenDrawn(attempts - 1),
+        );
+      };
+
+      markWhenDrawn(120);
     }
     if (had) {
       this.deps.focusMap();
@@ -274,7 +310,7 @@ export class EditorPane {
    */
   stepHistory(back: boolean): boolean {
     const file = this.deps.file();
-    const view = file && findEditingView(this.deps.app, file, this.near());
+    const view = file && this.viewFor(file, true);
 
     if (!view) {
       return false;
@@ -294,26 +330,29 @@ export class EditorPane {
    * use goToLine: its ephemeral source highlight can change CodeMirror's
    * measured indentation just as the editor receives focus.
    */
-  async editLine(line: number): Promise<void> {
+  async editLine(line: number): Promise<MarkdownView | null> {
     if (line < 0) {
-      return;
+      return null;
     }
     await this.focus();
     const file = this.deps.file();
 
     if (!file) {
-      return;
+      return null;
     }
-    const view = findMarkdownView(this.deps.app, file, this.near());
+    const view = this.viewFor(file);
     const editor = view?.editor;
 
     if (!editor || line > editor.lastLine()) {
-      return;
+      return null;
     }
     const ch = editor.getLine(line).length;
 
+    editor.focus();
     editor.setCursor({ line, ch });
     editor.scrollIntoView({ from: { line, ch: 0 }, to: { line, ch } }, true);
+
+    return view;
   }
 
   /**

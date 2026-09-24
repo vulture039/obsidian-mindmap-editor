@@ -120,8 +120,9 @@ export async function updateFileLines(
   app: App,
   file: TFile,
   mutate: (lines: string[]) => string[],
+  near?: WorkspaceLeaf,
 ): Promise<WroteToDisk | null> {
-  const mdView = findEditingView(app, file);
+  const mdView = findEditingView(app, file, near);
 
   if (mdView) {
     const oldLines = mdView.editor.getValue().split(LINE);

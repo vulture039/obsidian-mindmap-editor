@@ -111,10 +111,19 @@ export function markSourceLine(view: MarkdownView, line: number): boolean {
     if (!from || !to) {
       return false;
     }
-    const range = view.containerEl.doc.createRange();
+    let range = view.containerEl.doc.createRange();
 
     range.setStart(from.node, from.offset);
     range.setEnd(to.node, to.offset);
+    if (range.toString() !== text.slice(first)) {
+      const active =
+        view.containerEl.querySelector<HTMLElement>('.cm-activeLine');
+
+      range = active ? textRange(active, first, text.length) : range;
+      if (range.toString() !== text.slice(first)) {
+        return false;
+      }
+    }
     const win = view.containerEl.win;
     const Highlight = (
       win as unknown as {
@@ -133,6 +142,42 @@ export function markSourceLine(view: MarkdownView, line: number): boolean {
   } catch {
     return false;
   }
+}
+
+/** A character range within an element's rendered text. */
+function textRange(root: HTMLElement, from: number, to: number): Range {
+  const range = root.doc.createRange();
+  const walker = root.doc.createTreeWalker(
+    root,
+    root.doc.defaultView!.NodeFilter.SHOW_TEXT,
+  );
+  let offset = 0;
+  let node = walker.nextNode();
+
+  while (node) {
+    const end = offset + (node.textContent?.length ?? 0);
+
+    if (from >= offset && from <= end) {
+      range.setStart(node, from - offset);
+      break;
+    }
+    offset = end;
+    node = walker.nextNode();
+  }
+  while (node) {
+    const end = offset + (node.textContent?.length ?? 0);
+
+    if (to >= offset && to <= end) {
+      range.setEnd(node, to - offset);
+
+      return range;
+    }
+    offset = end;
+    node = walker.nextNode();
+  }
+  range.collapse(true);
+
+  return range;
 }
 
 /** Puts the mark up, and takes it down when the flash it stands in for goes. */

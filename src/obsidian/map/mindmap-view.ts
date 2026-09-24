@@ -92,6 +92,7 @@ import {
 } from '../markdown/file-io';
 
 export const VIEW_TYPE_MINDMAP = 'mindmap-editor';
+export const MINDMAP_ICON = 'workflow';
 
 const VIEWPORT_SETTLE_INTERVAL_MS = 16;
 const VIEWPORT_STABLE_SAMPLES = 6;
@@ -801,7 +802,7 @@ export class MindmapView extends ItemView {
   }
 
   getIcon(): string {
-    return 'git-fork';
+    return MINDMAP_ICON;
   }
 
   /**

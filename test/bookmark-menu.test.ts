@@ -26,6 +26,9 @@ const mocks = vi.hoisted(() => {
 
       return this;
     }
+    setChecked(): this {
+      return this;
+    }
     setWarning(): this {
       return this;
     }
@@ -61,6 +64,9 @@ const mocks = vi.hoisted(() => {
       return this;
     }
     showAtMouseEvent(): this {
+      return this;
+    }
+    showAtPosition(): this {
       return this;
     }
     hide(): void {
@@ -115,6 +121,49 @@ describe('bookmark menus', () => {
     menus[0]?.items.find((item) => item.title === 'Add note')?.click?.();
 
     expect(addTaskNote).toHaveBeenCalledWith(node);
+  });
+
+  it('offers metadata controls for task nodes only', () => {
+    const root = parseMarkdown('- [ ] task\n- plain', 'Note');
+    const task = root.children[0]!;
+    const plain = root.children[1]!;
+    const view = Object.create(MindmapView.prototype) as MindmapView;
+
+    Object.assign(view, {
+      root,
+      file: null,
+      canvasEl: document.body,
+      collapsedBranches: new Set(),
+      foldedText: new Set(),
+    });
+    const show = Reflect.get(view, 'showNodeMenu') as (
+      this: MindmapView,
+      node: MindNode,
+      el: HTMLElement,
+      event: MouseEvent,
+    ) => void;
+
+    show.call(
+      view,
+      task,
+      document.createElement('div'),
+      new MouseEvent('contextmenu'),
+    );
+    const titles = menus[0]!.items.map((item) => item.title);
+
+    expect(titles).toContain('Priority');
+    expect(titles).toContain('Set due date');
+    menus[0]?.items.find((item) => item.title === 'Priority')?.click?.();
+    expect(menus[1]?.items.map((item) => item.title)).toContain('▲ High');
+    menus.splice(0);
+    show.call(
+      view,
+      plain,
+      document.createElement('div'),
+      new MouseEvent('contextmenu'),
+    );
+
+    expect(menus[0]!.items.map((item) => item.title)).not.toContain('Priority');
   });
 
   it('adds a bookmark from the node menu', async () => {

@@ -56,6 +56,12 @@ import {
   taskParentUpdates,
   taskProgress,
 } from '../../core/tasks';
+import {
+  formatTaskMetadata,
+  priorityMark,
+  TaskMetadata,
+  TaskPriority,
+} from '../../core/task-metadata';
 import { DRAGGING_SELECTOR, setupNodeDrag } from './drag';
 import { EditorPane } from '../markdown/editor-pane';
 import { blockOf, clearPreviewLine } from '../markdown/preview-line';
@@ -82,6 +88,7 @@ import {
   moveNodesOp,
   reorderSiblingOp,
   setTaskTreeCheckboxOp,
+  setTaskMetadataOp,
   setTextOp,
   syncTaskParentsOp,
   toggleTaskOp,
@@ -188,6 +195,7 @@ const SUMMARY_NODE: MindNode = {
   indent: '',
   marker: '',
   checked: null,
+  taskMetadata: null,
   children: [],
   parent: null,
 };
@@ -234,6 +242,8 @@ export class MindmapView extends ItemView {
   private hideCompletedActionEl: HTMLElement | null = null;
   private focusTasksActionEl: HTMLElement | null = null;
   private bodyTextActionEl: HTMLElement | null = null;
+  private priorityMenu: Menu | null = null;
+  private taskDatePicker: HTMLInputElement | null = null;
   private linkActionEl: HTMLElement | null = null;
   private autoOpenActionEl: HTMLElement | null = null;
   private viewport!: MapViewport;
@@ -1533,6 +1543,8 @@ export class MindmapView extends ItemView {
   async onClose(): Promise<void> {
     this.saveViewport();
     this.persistViewport.cancel();
+    this.taskDatePicker?.remove();
+    this.taskDatePicker = null;
     if (this.revealTimer !== null) {
       this.containerEl.win.clearTimeout(this.revealTimer);
     }
@@ -2263,6 +2275,8 @@ export class MindmapView extends ItemView {
       this.canvasEl.addClass('is-render-staging');
     }
     this.clearMirroredCursor();
+    this.taskDatePicker?.remove();
+    this.taskDatePicker = null;
     this.canvasEl.empty();
     this.laidByLine.clear();
     this.root = parsed;
@@ -2367,6 +2381,7 @@ export class MindmapView extends ItemView {
       el.dataset.depth = String(own.depth);
     }
 
+    this.addTaskMetadata(node, el);
     // The checkbox and the label share a row of their own, so body text below
     // them is a block under it rather than another item on the same line.
     const head = el.createDiv({ cls: HEAD });
@@ -2386,8 +2401,10 @@ export class MindmapView extends ItemView {
     const textTag = node.checked ? 's' : 'span';
     const textEl = head.createEl(textTag, { cls: 'mindmap-node-text' });
 
-    if (node.text.length) {
-      this.renderText(textEl, node.text);
+    const label = node.taskMetadata?.title ?? node.text;
+
+    if (label.length) {
+      this.renderText(textEl, label);
     } else {
       textEl.setText(' ');
     }
@@ -2436,6 +2453,67 @@ export class MindmapView extends ItemView {
     this.buildChildNodes(node, laid, own, palette);
 
     return laid;
+  }
+
+  private addTaskMetadata(node: MindNode, el: HTMLElement): void {
+    const metadata = node.taskMetadata;
+
+    if (!metadata) {
+      return;
+    }
+    const details = el.createDiv({
+      cls: `mindmap-task-metadata${
+        metadata.priority || metadata.dueDate ? '' : ' is-empty'
+      }`,
+    });
+    const claimPointer = (event: Event): void => event.stopPropagation();
+    const priority = details.createEl('button', {
+      cls: `mindmap-task-priority${metadata.priority ? '' : ' is-unset'}`,
+      text: metadata.priority ? priorityMark(metadata.priority) : '+',
+      attr: {
+        'data-priority': metadata.priority ?? 'unset',
+        'aria-label': metadata.priority
+          ? `Change ${metadata.priority} priority`
+          : 'Set priority',
+      },
+    });
+    const dueDate = details.createDiv({
+      cls: `mindmap-task-due-date${metadata.dueDate ? '' : ' is-unset'}`,
+      attr: {
+        'aria-label': metadata.dueDate
+          ? `Change due date, ${metadata.dueDate}`
+          : 'Set due date',
+      },
+    });
+
+    setIcon(
+      dueDate.createSpan(),
+      metadata.dueDate ? 'calendar-days' : 'calendar-plus',
+    );
+    if (metadata.dueDate) {
+      dueDate.createSpan({ text: metadata.dueDate });
+    }
+    const dateInput = dueDate.createEl('input', {
+      cls: 'mindmap-task-date-trigger',
+      type: 'date',
+      attr: {
+        'aria-label': metadata.dueDate
+          ? `Change due date, ${metadata.dueDate}`
+          : 'Set due date',
+      },
+    });
+
+    dateInput.value = metadata.dueDate ?? '';
+    priority.addEventListener('pointerdown', claimPointer);
+    priority.addEventListener('click', (event) => {
+      event.stopPropagation();
+      this.showPriorityMenu(null, node, priority);
+    });
+    dateInput.addEventListener('pointerdown', claimPointer);
+    dateInput.addEventListener('click', claimPointer);
+    dateInput.addEventListener('change', () => {
+      void this.setTaskMetadata(node, { dueDate: dateInput.value || null });
+    });
   }
 
   /** Node text with its links clickable, following them on the map. */
@@ -3176,8 +3254,12 @@ export class MindmapView extends ItemView {
   }
 
   private showNodeMenu(node: MindNode, el: HTMLElement, e: MouseEvent): void {
-    const menu = new Menu();
-    const add = (title: string, icon: string, onClick: () => void): void => {
+    const menu = new Menu().setUseNativeMenu(false);
+    const add = (
+      title: string,
+      icon: string,
+      onClick: (event: MouseEvent | KeyboardEvent) => void,
+    ): void => {
       menu.addItem((item) =>
         item.setTitle(title).setIcon(icon).onClick(onClick),
       );
@@ -3265,6 +3347,26 @@ export class MindmapView extends ItemView {
         }
       });
       if (node.type === 'list') {
+        if (node.checked !== null) {
+          menu.addItem((item) =>
+            item
+              .setTitle('Priority')
+              .setIcon('circle-dot')
+              .onClick(() => this.showPriorityMenu(menu, node, el)),
+          );
+          add(
+            node.taskMetadata?.dueDate ? 'Change due date' : 'Set due date',
+            'calendar-days',
+            () => this.openTaskDatePicker(node, el),
+          );
+          if (node.taskMetadata?.dueDate) {
+            add(
+              'Clear due date',
+              'calendar-x',
+              () => void this.setTaskMetadata(node, { dueDate: null }),
+            );
+          }
+        }
         add(
           node.checked === null ? 'Add checkbox' : 'Remove checkbox',
           'check-square',
@@ -3283,6 +3385,126 @@ export class MindmapView extends ItemView {
       });
     }
     menu.showAtMouseEvent(e);
+    this.attachPrioritySubmenu(menu, node);
+  }
+
+  private attachPrioritySubmenu(menu: Menu, node: MindNode): void {
+    if (node.checked === null || !this.canvasEl) {
+      return;
+    }
+    const menus = this.canvasEl.doc.querySelectorAll('.menu');
+    const parent = menus[menus.length - 1];
+    const item = [...(parent?.querySelectorAll('.menu-item') ?? [])].find(
+      (candidate) =>
+        candidate.querySelector('.menu-item-title')?.textContent === 'Priority',
+    ) as HTMLElement | undefined;
+
+    if (!item) {
+      return;
+    }
+    item.addClass('mindmap-menu-has-submenu');
+    const open = (): void => this.showPriorityMenu(menu, node, item);
+
+    item.addEventListener('mouseenter', open);
+    item.addEventListener('focus', open);
+  }
+
+  private showPriorityMenu(
+    parent: Menu | null,
+    node: MindNode,
+    anchor: HTMLElement,
+  ): void {
+    this.priorityMenu?.hide();
+    const menu = new Menu().setUseNativeMenu(false);
+    const priorities: [string, TaskPriority | null][] = [
+      ['❗ Highest', 'highest'],
+      ['▲ High', 'high'],
+      ['● Medium', 'medium'],
+      ['▼ Low', 'low'],
+      ['Clear priority', null],
+    ];
+
+    priorities.forEach(([title, priority]) =>
+      menu.addItem((item) =>
+        item
+          .setTitle(title)
+          .setChecked(node.taskMetadata?.priority === priority)
+          .onClick(() => {
+            parent?.hide();
+            void this.setTaskMetadata(node, { priority });
+          }),
+      ),
+    );
+    const box = anchor.getBoundingClientRect();
+    const point = { x: box.right, y: box.top };
+
+    this.priorityMenu = menu;
+    menu.showAtPosition(point, this.canvasEl.doc);
+  }
+
+  private openTaskDatePicker(node: MindNode, anchor: HTMLElement): void {
+    this.taskDatePicker?.remove();
+    const picker = this.canvasEl.doc.body.createEl('input');
+    const nodeBox =
+      anchor.closest('.mindmap-node')?.getBoundingClientRect() ??
+      anchor.getBoundingClientRect();
+
+    picker.type = 'date';
+    picker.value = node.taskMetadata?.dueDate ?? '';
+    picker.setAttribute('aria-label', 'Due date');
+    picker.addClass('mindmap-task-date-picker');
+    const left = Math.min(nodeBox.left, this.canvasEl.win.innerWidth - 180);
+    const top = Math.min(
+      nodeBox.bottom + 8,
+      this.canvasEl.win.innerHeight - 40,
+    );
+
+    picker.style.left = `${Math.max(8, left)}px`;
+    picker.style.top = `${Math.max(8, top)}px`;
+    const close = (): void => {
+      picker.remove();
+      this.taskDatePicker = null;
+    };
+
+    picker.addEventListener('change', () => {
+      const dueDate = picker.value;
+
+      close();
+      void this.setTaskMetadata(node, { dueDate: dueDate || null });
+    });
+    picker.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        close();
+      }
+    });
+    picker.addEventListener('pointerdown', (event) => event.stopPropagation());
+    picker.addEventListener('click', (event) => event.stopPropagation());
+    this.taskDatePicker = picker;
+    picker.focus();
+    try {
+      picker.showPicker();
+    } catch {
+      // Some Electron versions do not expose the native picker. The visible
+      // date input remains directly editable in those versions.
+    }
+  }
+
+  private async setTaskMetadata(
+    node: MindNode,
+    change: Partial<Pick<TaskMetadata, 'priority' | 'dueDate'>>,
+  ): Promise<void> {
+    const metadata = node.taskMetadata ?? {
+      title: node.text,
+      priority: null,
+      dueDate: null,
+    };
+
+    await this.applyToNodes([node], (lines, [target]) =>
+      setTaskMetadataOp(lines, target!, {
+        priority: 'priority' in change ? change.priority! : metadata.priority,
+        dueDate: 'dueDate' in change ? change.dueDate! : metadata.dueDate,
+      }),
+    );
   }
 
   private bookmarkFor(node: MindNode): NodeBookmark | null {
@@ -3690,8 +3912,9 @@ export class MindmapView extends ItemView {
     });
 
     let label = node.text;
+    const displayed = node.taskMetadata?.title ?? node.text;
 
-    input.textContent = node.text;
+    input.textContent = displayed;
     // Exactly the label's place, so the node's contents do not shift.
     textEl.after(input);
     textEl.hide();
@@ -3723,7 +3946,13 @@ export class MindmapView extends ItemView {
           return setTextOp(lines, target, value);
         }).then((ok) => {
           if (ok) {
-            label = value;
+            label = formatTaskMetadata(
+              value,
+              node.taskMetadata ?? {
+                priority: null,
+                dueDate: null,
+              },
+            );
           }
         });
       },

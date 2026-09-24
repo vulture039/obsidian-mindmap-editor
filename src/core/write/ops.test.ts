@@ -11,6 +11,7 @@ import {
   reorderSiblingOp,
   setCheckboxOp,
   setTaskTreeCheckboxOp,
+  setTaskMetadataOp,
   syncTaskParentsOp,
   setTextOp,
   toggleTaskOp,
@@ -113,6 +114,38 @@ describe('setTextOp', () => {
     const { root, lines } = setup('  - [ ] old');
 
     expect(setTextOp(lines, root.children[0]!, 'new')[0]).toBe('  - [ ] new');
+  });
+
+  it('keeps task metadata while renaming its visible title', () => {
+    const { root, lines } = setup('- [ ] old ❗ 📅 2026-10-01');
+
+    expect(setTextOp(lines, root.children[0]!, 'new')[0]).toBe(
+      '- [ ] new ❗ 📅 2026-10-01',
+    );
+  });
+});
+
+describe('setTaskMetadataOp', () => {
+  it('writes priority and due date after the task title', () => {
+    const { root, lines } = setup('- [ ] task');
+
+    expect(
+      setTaskMetadataOp(lines, root.children[0]!, {
+        priority: 'high',
+        dueDate: '2026-10-01',
+      }),
+    ).toEqual(['- [ ] task ▲ 📅 2026-10-01']);
+  });
+
+  it('clears one value while retaining the other', () => {
+    const { root, lines } = setup('- [ ] task ❗ 📅 2026-10-01');
+
+    expect(
+      setTaskMetadataOp(lines, root.children[0]!, {
+        priority: null,
+        dueDate: '2026-10-01',
+      }),
+    ).toEqual(['- [ ] task 📅 2026-10-01']);
   });
 });
 

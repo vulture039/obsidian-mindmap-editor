@@ -228,6 +228,174 @@
   overflow-wrap: anywhere;
 }
 
+.mindmap-task-metadata {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 22px;
+  margin: 0;
+}
+
+.mindmap-task-metadata:not(.is-empty) {
+  margin-bottom: 4px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--text-muted) 35%, transparent);
+}
+
+.mindmap-task-metadata.is-empty {
+  position: absolute;
+  right: auto;
+  bottom: 100%;
+  left: 50%;
+  min-height: 0;
+  margin: 0;
+  padding-bottom: 8px;
+  transform: translateX(-50%);
+}
+
+.mindmap-task-metadata .is-unset {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.mindmap-task-metadata .is-unset:focus-visible,
+.mindmap-node:hover .mindmap-task-metadata .is-unset {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.mindmap-task-metadata button {
+  appearance: none;
+  height: 22px;
+  margin: 0;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.mindmap-menu-has-submenu::after {
+  position: absolute;
+  right: 8px;
+  content: '›';
+}
+
+.mindmap-task-date-picker {
+  position: fixed;
+  z-index: var(--layer-menu, 1000);
+  display: block;
+  width: 172px;
+  min-height: 32px;
+  padding: 4px 6px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: var(--background-primary);
+  box-shadow: var(--shadow-s);
+  color: var(--text-normal);
+}
+
+.mindmap-task-due-date {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  flex: 0 0 108px;
+  width: 108px;
+  height: 22px;
+  gap: 3px;
+  padding: 0 6px;
+  border: 1px solid color-mix(in srgb, var(--text-muted) 45%, transparent);
+  border-radius: 3px;
+  background: var(--background-primary);
+  box-shadow: none;
+  color: var(--text-normal);
+  font-size: 0.75em;
+  font-weight: 600;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.mindmap-task-due-date > input.mindmap-task-date-trigger {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  appearance: none;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.mindmap-task-due-date
+  > input.mindmap-task-date-trigger::-webkit-calendar-picker-indicator {
+  position: absolute;
+  inset: 0;
+  width: auto;
+  height: auto;
+  margin: 0;
+  cursor: pointer;
+}
+
+.mindmap-task-due-date .svg-icon {
+  width: 14px;
+  height: 14px;
+  transform: translateY(1px);
+}
+
+.mindmap-task-due-date.is-unset {
+  flex-basis: 28px;
+  width: 28px;
+  padding: 0;
+}
+
+.mindmap-task-metadata .mindmap-task-priority {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 28px;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--text-muted) 45%, transparent);
+  border-radius: 3px;
+  background: var(--background-primary);
+  box-shadow: none;
+  color: var(--text-normal);
+  font-size: 1.1em;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.mindmap-task-priority[data-priority='highest'] {
+  color: var(--color-red);
+}
+
+.mindmap-task-priority[data-priority='high'] {
+  color: var(--color-orange);
+}
+
+.mindmap-task-priority[data-priority='medium'] {
+  color: var(--interactive-accent);
+}
+
+.mindmap-task-priority[data-priority='low'] {
+  color: var(--color-blue);
+}
+
+.mindmap-task-priority.is-unset {
+  padding-bottom: 2px;
+}
+
+.mindmap-task-priority:hover,
+.mindmap-task-priority:focus-visible,
+.mindmap-task-due-date:hover,
+.mindmap-task-due-date:focus-visible {
+  border-color: color-mix(in srgb, var(--text-muted) 45%, transparent);
+  background: var(--background-modifier-hover);
+}
+
 .mindmap-task-progress {
   position: relative;
   box-sizing: border-box;

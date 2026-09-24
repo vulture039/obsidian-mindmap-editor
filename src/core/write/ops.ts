@@ -9,6 +9,7 @@ import {
   TASK_BOX_RE,
 } from '../parse/patterns';
 import { childTasks, descendantTasks, TaskStateUpdate } from '../tasks';
+import { formatTaskMetadata, TaskMetadata } from '../task-metadata';
 
 export interface InsertResult {
   lines: string[];
@@ -141,9 +142,34 @@ export function setTextOp(
     lines[node.line] = headingPrefix(node.level) + text;
   } else {
     const m = LIST_PREFIX_RE.exec(line);
+    const next =
+      node.checked === null
+        ? text
+        : formatTaskMetadata(
+            text,
+            node.taskMetadata ?? { priority: null, dueDate: null },
+          );
 
-    lines[node.line] = `${m?.[1] ?? '- '}${text}`;
+    lines[node.line] = `${m?.[1] ?? '- '}${next}`;
   }
+
+  return lines;
+}
+
+/** Updates task metadata without making it part of the map's editable title. */
+export function setTaskMetadataOp(
+  lines: string[],
+  node: MindNode,
+  metadata: Pick<TaskMetadata, 'priority' | 'dueDate'>,
+): string[] {
+  if (node.checked === null) {
+    throw new Error(`Mindmap: line ${node.line} is not a task item`);
+  }
+  const line = requireNodeLine(lines, node);
+  const prefix = LIST_PREFIX_RE.exec(line)?.[1] ?? '- [ ] ';
+  const title = node.taskMetadata?.title ?? node.text;
+
+  lines[node.line] = `${prefix}${formatTaskMetadata(title, metadata)}`;
 
   return lines;
 }

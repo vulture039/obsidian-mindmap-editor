@@ -184,6 +184,145 @@ try {
     !!headingNote && editor.getLine(headingLine) === '',
     await now(),
   );
+
+  await setFile('- [ ] Priority task');
+  const priorityTask = view.root.children[0];
+  const priorityTaskEl = view.laidByLine.get(priorityTask.line)?.el;
+
+  view.showNodeMenu(
+    priorityTask,
+    priorityTaskEl,
+    new MouseEvent('contextmenu', { clientX: 100, clientY: 100 }),
+  );
+  const priorityMenuItem = await until(() =>
+    [...view.containerEl.doc.querySelectorAll('.menu-item')].find(
+      (item) =>
+        item.querySelector('.menu-item-title')?.textContent === 'Priority',
+    ),
+  );
+
+  click(priorityMenuItem, 'mouseenter');
+  const highPriority = await until(() =>
+    [...view.containerEl.doc.querySelectorAll('.menu-item')].find(
+      (item) =>
+        item.querySelector('.menu-item-title')?.textContent === '▲ High',
+    ),
+  );
+  const beforePriority = await now();
+
+  click(highPriority);
+  await written(beforePriority);
+  await drawn();
+  const priorityMetadata = label('Priority task')
+    ?.closest('.mindmap-node')
+    ?.querySelector('.mindmap-task-metadata');
+
+  check(
+    'priority picker writes and displays a task priority',
+    (await now()) === '- [ ] Priority task ▲' &&
+      priorityMetadata?.textContent === '▲',
+    `${await now()}\n${priorityMetadata?.outerHTML ?? ''}`,
+  );
+
+  click(priorityMetadata?.querySelector('.mindmap-task-priority'));
+  const lowPriority = await until(() =>
+    [...view.containerEl.doc.querySelectorAll('.menu-item')].find(
+      (item) => item.querySelector('.menu-item-title')?.textContent === '▼ Low',
+    ),
+  );
+  const beforeDirectPriority = await now();
+
+  click(lowPriority);
+  await written(beforeDirectPriority);
+  check(
+    'clickable priority updates the task directly',
+    (await now()) === '- [ ] Priority task ▼',
+    await now(),
+  );
+
+  await setFile('- [ ] Due task');
+  const dueTask = view.root.children[0];
+  const dueTaskEl = view.laidByLine.get(dueTask.line)?.el;
+
+  view.showNodeMenu(
+    dueTask,
+    dueTaskEl,
+    new MouseEvent('contextmenu', { clientX: 100, clientY: 100 }),
+  );
+  const dueMenuItem = await until(() =>
+    [...view.containerEl.doc.querySelectorAll('.menu-item')].find(
+      (item) =>
+        item.querySelector('.menu-item-title')?.textContent === 'Set due date',
+    ),
+  );
+
+  click(dueMenuItem);
+  const dueInput = await until(() =>
+    [...view.containerEl.doc.querySelectorAll('.mindmap-task-date-picker')].at(
+      -1,
+    ),
+  );
+
+  type(dueInput, '2026-10-01');
+  const beforeDueDate = await now();
+
+  dueInput.dispatchEvent(new Event('change', { bubbles: true }));
+  await written(beforeDueDate);
+  await drawn();
+  const dueMetadata = label('Due task')
+    ?.closest('.mindmap-node')
+    ?.querySelector('.mindmap-task-metadata');
+  const dueFile = await now();
+  const dueDateShown =
+    dueMetadata?.querySelector('.mindmap-task-due-date')?.textContent ===
+    '2026-10-01';
+  const dueIconShown = !!dueMetadata?.querySelector('.lucide-calendar-days');
+  const dueBadge = dueMetadata?.querySelector('.mindmap-task-due-date');
+  const priorityBadge = dueMetadata?.querySelector('.mindmap-task-priority');
+  const dueStyle = dueBadge && getComputedStyle(dueBadge);
+  const priorityStyle = priorityBadge && getComputedStyle(priorityBadge);
+
+  check(
+    'calendar date picker writes and displays a due date',
+    dueFile === '- [ ] Due task 📅 2026-10-01' && dueDateShown && dueIconShown,
+    `${JSON.stringify({ dueFile, dueDateShown, dueIconShown })}\n${
+      dueMetadata?.outerHTML ?? ''
+    }`,
+  );
+  check(
+    'task metadata controls stay compact and equally high',
+    dueStyle?.height === '22px' &&
+      priorityStyle?.height === '22px' &&
+      dueStyle.width === '108px' &&
+      dueStyle.backgroundColor === priorityStyle.backgroundColor &&
+      dueStyle.boxShadow === priorityStyle.boxShadow,
+    JSON.stringify({
+      due: dueStyle && { width: dueStyle.width, height: dueStyle.height },
+      priority: priorityStyle && {
+        width: priorityStyle.width,
+        height: priorityStyle.height,
+      },
+      backgrounds: {
+        due: dueStyle?.backgroundColor,
+        priority: priorityStyle?.backgroundColor,
+      },
+    }),
+  );
+
+  const inlineDueInput = dueMetadata?.querySelector(
+    '.mindmap-task-date-trigger',
+  );
+
+  type(inlineDueInput, '2026-10-02');
+  const beforeInlineDueDate = await now();
+
+  inlineDueInput.dispatchEvent(new Event('change', { bubbles: true }));
+  await written(beforeInlineDueDate);
+  check(
+    'clickable due date updates the task directly',
+    (await now()) === '- [ ] Due task 📅 2026-10-02',
+    await now(),
+  );
 } finally {
   view.hideCompleted = wasHideCompleted;
   view.showBodyText = wasShowingBody;

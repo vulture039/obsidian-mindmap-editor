@@ -228,6 +228,36 @@
   overflow-wrap: anywhere;
 }
 
+.mindmap-task-progress {
+  position: relative;
+  box-sizing: border-box;
+  height: 14px;
+  margin: 5px 2px 0;
+  overflow: hidden;
+  border: 1px solid var(--text-faint);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-normal) 12%, transparent);
+}
+
+.mindmap-task-progress-bar {
+  width: var(--task-progress);
+  height: 100%;
+  border-radius: inherit;
+  background: var(--interactive-accent);
+  transition: width 120ms ease;
+}
+
+.mindmap-task-progress-label {
+  position: absolute;
+  inset: 0;
+  color: var(--text-normal);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 14px;
+  text-align: center;
+  text-shadow: 0 0 2px var(--background-primary);
+}
+
 /* Hover feedback in the node's own branch color, so it cannot be mistaken for
    the accent ring that means "selected". Not while dragging: the drop-target
    and invalid-target cues own the nodes then. */
@@ -263,6 +293,15 @@
   /* Not the node's grab: this text answers to a double-click of its own. A
      text caret would promise typing right here, which is the editor's job. */
   cursor: pointer;
+}
+
+.mindmap-node.is-task .mindmap-node-body {
+  margin-inline: 2px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  padding: 4px 6px;
+  background: var(--background-primary);
+  color: var(--text-normal);
 }
 
 /* One element per source line, so a double-click knows which line it hit.
@@ -487,7 +526,6 @@
 }
 
 .mindmap-node.is-done .mindmap-node-text {
-  color: color-mix(in oklab, var(--level-text) 82%, var(--background-primary));
   text-decoration: line-through;
 }
 

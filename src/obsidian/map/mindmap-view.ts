@@ -50,6 +50,11 @@ import {
 import { renderNodeText } from './node-text';
 import { canDrop } from '../../core/render/drag';
 import { singleLineValue } from '../../core/write/edit-value';
+import {
+  hasIncompleteTask,
+  taskParentUpdates,
+  taskProgress,
+} from '../../core/tasks';
 import { DRAGGING_SELECTOR, setupNodeDrag } from './drag';
 import { EditorPane } from '../markdown/editor-pane';
 import { blockOf, clearPreviewLine } from '../markdown/preview-line';
@@ -69,13 +74,15 @@ import {
 import {
   addChildOp,
   addSiblingOp,
+  addTaskNoteOp,
   deleteNodeOp,
   deleteNodesOp,
   InsertResult,
   moveNodesOp,
   reorderSiblingOp,
-  setCheckboxOp,
+  setTaskTreeCheckboxOp,
   setTextOp,
+  syncTaskParentsOp,
   toggleTaskOp,
 } from '../../core/write/ops';
 import {
@@ -201,6 +208,7 @@ export class MindmapView extends ItemView {
   private isInlineEditing = false;
   private isDragging = false;
   private renderQueued = false;
+  private syncingTasks = false;
   private renderSeq = 0;
   /** Render generation collecting async Markdown before its first layout. */
   private layoutBuildSeq: number | null = null;
@@ -211,6 +219,7 @@ export class MindmapView extends ItemView {
   /** Last built tree, so an edit can re-lay it out without rebuilding it. */
   private laidRoot: LaidNode | null = null;
   private hideCompletedActionEl: HTMLElement | null = null;
+  private focusTasksActionEl: HTMLElement | null = null;
   private bodyTextActionEl: HTMLElement | null = null;
   private linkActionEl: HTMLElement | null = null;
   private autoOpenActionEl: HTMLElement | null = null;
@@ -264,6 +273,8 @@ export class MindmapView extends ItemView {
    */
   private hideCompleted: boolean;
   private showBodyText: boolean;
+  /** This pane's read-only filter; it never changes the Markdown. */
+  private focusIncompleteTasks = false;
 
   /** Whether collapsed branches and the editor's folds track each other. */
   private get syncFolds(): boolean {
@@ -720,7 +731,7 @@ export class MindmapView extends ItemView {
   ): void {
     el.toggleClass('is-done', cb.checked);
     void this.applyToNodes([node], (lines, [target]) =>
-      setCheckboxOp(lines, target!, cb.checked),
+      setTaskTreeCheckboxOp(lines, target!, cb.checked),
     );
   }
 
@@ -1120,6 +1131,13 @@ export class MindmapView extends ItemView {
     void this.render();
   }
 
+  private toggleTaskFocus(): void {
+    this.focusIncompleteTasks = !this.focusIncompleteTasks;
+    this.app.workspace.requestSaveLayout();
+    this.syncToggleActions();
+    void this.render();
+  }
+
   /** Flips whether this map draws a node's own text; the `¶` button. */
   toggleBodyText(): void {
     this.showBodyText = !this.showBodyText;
@@ -1174,6 +1192,10 @@ export class MindmapView extends ItemView {
         : 'Open this map automatically with the note',
     );
     this.hideCompletedActionEl?.toggleClass('is-active', this.hideCompleted);
+    this.focusTasksActionEl?.toggleClass(
+      'is-active',
+      this.focusIncompleteTasks,
+    );
     this.bodyTextActionEl?.toggleClass('is-active', text);
     // Nothing to fold while the map draws no text, and the map only folds
     // what it draws.
@@ -1186,6 +1208,11 @@ export class MindmapView extends ItemView {
       'check-check',
       'Hide/show completed tasks',
       () => this.setHideCompleted(!this.hideCompleted),
+    );
+    this.focusTasksActionEl = this.addAction(
+      'list-filter',
+      'Focus on incomplete tasks',
+      () => this.toggleTaskFocus(),
     );
     this.bodyTextActionEl = this.addAction(
       'pilcrow',
@@ -1468,6 +1495,7 @@ export class MindmapView extends ItemView {
     return {
       file: this.file?.path ?? null,
       hideCompleted: this.hideCompleted,
+      focusIncompleteTasks: this.focusIncompleteTasks,
       showBodyText: this.showBodyText,
       zoom: position?.zoom ?? this.viewport?.value ?? this.savedZoom,
       viewport: position,
@@ -1509,6 +1537,9 @@ export class MindmapView extends ItemView {
 
     if (typeof shown.hideCompleted === 'boolean') {
       this.hideCompleted = shown.hideCompleted;
+    }
+    if (typeof shown.focusIncompleteTasks === 'boolean') {
+      this.focusIncompleteTasks = shown.focusIncompleteTasks;
     }
     if (typeof shown.showBodyText === 'boolean') {
       this.showBodyText = shown.showBodyText;
@@ -1854,6 +1885,32 @@ export class MindmapView extends ItemView {
 
       return;
     }
+    const parsed = parseMarkdown(text, this.file.basename);
+    const taskUpdates = taskParentUpdates(parsed);
+
+    if (taskUpdates.length && !this.syncingTasks) {
+      const file = this.file;
+      let synced = false;
+
+      this.syncingTasks = true;
+      try {
+        await this.writeFile(file, (lines) => {
+          const fresh = parseMarkdown(lines.join('\n'), file.basename);
+
+          return syncTaskParentsOp(lines, taskParentUpdates(fresh));
+        });
+        synced = true;
+      } catch (err) {
+        this.reportOpError(err);
+      } finally {
+        this.syncingTasks = false;
+      }
+      if (synced) {
+        await this.render(switched);
+
+        return;
+      }
+    }
     const restoreViewport = this.viewport.isInitialized;
     const scrollLeft = this.scrollerEl.scrollLeft;
     const scrollTop = this.scrollerEl.scrollTop;
@@ -1872,7 +1929,7 @@ export class MindmapView extends ItemView {
     }
     this.canvasEl.empty();
     this.laidByLine.clear();
-    this.root = parseMarkdown(text, this.file.basename);
+    this.root = parsed;
     this.renderedSource = text;
     // Keyed by line, so re-derive: the editor's folds, else prune.
     if (!this.pullEditorFolds(this.root)) {
@@ -1927,10 +1984,18 @@ export class MindmapView extends ItemView {
     if (this.insertedLine !== null) {
       const laid = this.laidByLine.get(this.insertedLine);
 
-      this.insertedLine = null;
       if (laid) {
+        // A file-change render can arrive before the write that inserted the
+        // line has reached the pane. Only the frame that finds it may consume
+        // the pending edit.
+        this.insertedLine = null;
         this.selectNode(laid.node, laid.el);
-        this.startInlineEdit(laid.node, laid.el);
+        // Let the key and the render that created the element finish before
+        // its editor takes focus. Obsidian otherwise restores focus after us.
+        this.canvasEl.win.setTimeout(
+          () => this.startInlineEdit(laid.node, laid.el),
+          0,
+        );
       }
     } else if (this.selectedLine !== null) {
       for (const line of [...this.selectedLines]) {
@@ -1971,6 +2036,7 @@ export class MindmapView extends ItemView {
     const head = el.createDiv({ cls: HEAD });
 
     if (node.checked !== null) {
+      el.addClass('is-task');
       const cb = head.createEl('input', {
         cls: 'mindmap-checkbox',
         type: 'checkbox',
@@ -1988,6 +2054,27 @@ export class MindmapView extends ItemView {
       this.renderText(textEl, node.text);
     } else {
       textEl.setText(' ');
+    }
+    const progress = taskProgress(node);
+
+    if (progress) {
+      const progressEl = el.createDiv({ cls: 'mindmap-task-progress' });
+      const percent = (progress.completed / progress.total) * 100;
+
+      progressEl.setAttribute('role', 'progressbar');
+      progressEl.setAttribute('aria-valuemin', '0');
+      progressEl.setAttribute('aria-valuemax', String(progress.total));
+      progressEl.setAttribute('aria-valuenow', String(progress.completed));
+      progressEl.setAttribute(
+        'aria-label',
+        `${progress.completed} of ${progress.total} subtasks complete`,
+      );
+      progressEl.setCssProps({ '--task-progress': `${percent}%` });
+      progressEl.createDiv({ cls: 'mindmap-task-progress-bar' });
+      progressEl.createSpan({
+        cls: 'mindmap-task-progress-label',
+        text: `${progress.completed}/${progress.total}`,
+      });
     }
     this.addBodyText(node, el);
 
@@ -2338,6 +2425,9 @@ export class MindmapView extends ItemView {
     let shownDone = 0;
 
     for (const child of node.children) {
+      if (this.focusIncompleteTasks && !hasIncompleteTask(child)) {
+        continue;
+      }
       if (this.isHiddenDone(node, child)) {
         hiddenDone++;
         continue;
@@ -2721,6 +2811,21 @@ export class MindmapView extends ItemView {
         add('Move down', 'arrow-down', () => void this.reorderNode(node, 1));
       }
       if (node.type === 'list') {
+        if (node.checked !== null) {
+          add(
+            node.body.length ? 'Edit task note' : 'Add task note',
+            'sticky-note',
+            () => {
+              const line = node.body[0]?.line;
+
+              if (line === undefined) {
+                void this.addTaskNote(node);
+              } else {
+                void this.editor.editLine(line);
+              }
+            },
+          );
+        }
         add(
           node.checked === null ? 'Add checkbox' : 'Remove checkbox',
           'check-square',
@@ -2944,6 +3049,43 @@ export class MindmapView extends ItemView {
     await this.applyInsert(node, (lines, target) =>
       addChildOp(lines, target, task),
     );
+  }
+
+  /** Creates a Markdown continuation line, then hands its writing to Obsidian. */
+  private async addTaskNote(node: MindNode): Promise<void> {
+    if (!this.file) {
+      return;
+    }
+    const file = this.file;
+    let insertedLine: number | null = null;
+
+    try {
+      await this.writeFile(file, (lines) => {
+        const fresh = parseMarkdown(lines.join('\n'), file.basename);
+        const target = relocateNode(fresh, node);
+
+        if (!target) {
+          throw new Error(`Mindmap: "${node.text}" is no longer in the file`);
+        }
+        const result = addTaskNoteOp(lines, target);
+
+        insertedLine = result.insertedLine;
+
+        return result.lines;
+      });
+    } catch (err) {
+      this.reportOpError(err);
+    }
+    if (insertedLine === null) {
+      await this.render();
+
+      return;
+    }
+    this.showBodyText = true;
+    this.app.workspace.requestSaveLayout();
+    this.syncToggleActions();
+    await this.render();
+    await this.editor.editLine(insertedLine);
   }
 
   private async applyInsert(

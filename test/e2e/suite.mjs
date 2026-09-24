@@ -12,6 +12,7 @@ const desktopChecks = [
   'rendering/colors.js',
   'rendering/root.js',
   'rendering/node-text.js',
+  'rendering/tasks.js',
   'rendering/drag-rendered-node.js',
   'viewport/zoom.js',
   'viewport/viewport.js',

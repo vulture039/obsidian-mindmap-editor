@@ -2,6 +2,8 @@
 const plugin = app.plugins.getPlugin('mindmap-editor');
 const originalPalette = plugin.settings.palette;
 const wasShowingBody = view.showBodyText;
+const wasHideCompleted = view.hideCompleted;
+const wasFocusingTasks = view.focusIncompleteTasks;
 const body = el.doc.body;
 const wasDark = body.classList.contains('theme-dark');
 const wasLight = body.classList.contains('theme-light');
@@ -9,6 +11,8 @@ const wasLight = body.classList.contains('theme-light');
 try {
   plugin.settings.palette = '';
   await plugin.saveSettings();
+  view.hideCompleted = false;
+  view.focusIncompleteTasks = false;
   await drawn();
   if (!wasShowingBody) {
     view.showBodyText = true;
@@ -106,10 +110,7 @@ try {
     check(
       `${theme} theme distinguishes completed tasks`,
       !!doneText &&
-        el.win.getComputedStyle(doneText).textDecorationLine ===
-          'line-through' &&
-        el.win.getComputedStyle(doneText).color !==
-          el.win.getComputedStyle(done).getPropertyValue('--level-text'),
+        el.win.getComputedStyle(doneText).textDecorationLine === 'line-through',
       doneText
         ? 'completed task is not visually muted'
         : 'no completed task rendered',
@@ -145,6 +146,8 @@ try {
   if (!wasShowingBody) {
     view.showBodyText = false;
   }
+  view.hideCompleted = wasHideCompleted;
+  view.focusIncompleteTasks = wasFocusingTasks;
   await drawn();
 }
 

@@ -86,6 +86,37 @@ installObsidianDom();
 beforeEach(() => menus.splice(0));
 
 describe('bookmark menus', () => {
+  it('offers note creation for a task without body text', () => {
+    const root = parseMarkdown('- [ ] task', 'Note');
+    const node = root.children[0]!;
+    const addTaskNote = vi.fn();
+    const view = Object.create(MindmapView.prototype) as MindmapView;
+
+    Object.assign(view, {
+      root,
+      file: null,
+      collapsedBranches: new Set(),
+      foldedText: new Set(),
+      addTaskNote,
+    });
+    const show = Reflect.get(view, 'showNodeMenu') as (
+      this: MindmapView,
+      node: MindNode,
+      el: HTMLElement,
+      event: MouseEvent,
+    ) => void;
+
+    show.call(
+      view,
+      node,
+      document.createElement('div'),
+      new MouseEvent('contextmenu'),
+    );
+    menus[0]?.items.find((item) => item.title === 'Add task note')?.click?.();
+
+    expect(addTaskNote).toHaveBeenCalledWith(node);
+  });
+
   it('adds a bookmark from the node menu', async () => {
     const root = parseMarkdown('- target', 'Note');
     const node = root.children[0]!;

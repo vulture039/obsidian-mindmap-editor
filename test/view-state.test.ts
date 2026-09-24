@@ -72,6 +72,20 @@ afterEach(() => {
 });
 
 describe('view-state restoration', () => {
+  it('serializes and restores the pane task filter', async () => {
+    const { view, viewport } = open();
+
+    Object.assign(view, { focusIncompleteTasks: true });
+    expect(view.getState().focusIncompleteTasks).toBe(true);
+    Object.assign(view, {
+      focusIncompleteTasks: false,
+      app: { vault: { getAbstractFileByPath: vi.fn(() => null) } },
+    });
+    await view.setState({ focusIncompleteTasks: true }, { history: false });
+    expect(Reflect.get(view, 'focusIncompleteTasks')).toBe(true);
+    viewport.destroy();
+  });
+
   it('keeps the canvas hidden until a saved position can be applied', async () => {
     const { view, viewport, scroller } = open();
     const position = { zoom: 1.4, left: 2300, top: 2400 };

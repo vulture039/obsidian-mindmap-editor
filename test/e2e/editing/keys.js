@@ -49,6 +49,25 @@ for (const [key, mods] of [
   await closeEditor();
 }
 
+// Creation keys hand the keyboard straight to the blank node they add.
+for (const [key, relation] of [
+  ['Enter', 'sibling'],
+  ['Tab', 'child'],
+]) {
+  await restore();
+  click(label('plain item'));
+  await until(() => el.querySelector('.mindmap-node.is-selected'));
+  await press(key);
+  const input = await until(() => editing());
+
+  check(
+    `${key} opens the new ${relation} for naming`,
+    !!input && input.doc.activeElement === input,
+    input ? 'the editor did not take focus' : 'no editor opened',
+  );
+  await closeEditor();
+}
+
 // And the keys the map is meant to have, with nothing being edited.
 {
   await restore();

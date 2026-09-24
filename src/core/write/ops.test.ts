@@ -3,12 +3,15 @@ import { MindNode, parseMarkdown } from '../parse/parser';
 import {
   addChildOp,
   addSiblingOp,
+  addTaskNoteOp,
   deleteNodeOp,
   deleteNodesOp,
   moveNodeOp,
   moveNodesOp,
   reorderSiblingOp,
   setCheckboxOp,
+  setTaskTreeCheckboxOp,
+  syncTaskParentsOp,
   setTextOp,
   toggleTaskOp,
 } from './ops';
@@ -33,6 +36,69 @@ describe('setCheckboxOp', () => {
     const { root, lines } = setup('- a');
 
     expect(() => setCheckboxOp(lines, root.children[0]!, true)).toThrow();
+  });
+});
+
+describe('setTaskTreeCheckboxOp', () => {
+  it('checks and unchecks every descendant task with its parent', () => {
+    const { root, lines } = setup(
+      '- [ ] parent\n\t- [ ] child\n\t\t- [x] grandchild\n\t- plain',
+    );
+    const parent = root.children[0]!;
+
+    expect(setTaskTreeCheckboxOp(lines, parent, true)).toEqual([
+      '- [x] parent',
+      '\t- [x] child',
+      '\t\t- [x] grandchild',
+      '\t- plain',
+    ]);
+    expect(setTaskTreeCheckboxOp(lines, parent, false)).toEqual([
+      '- [ ] parent',
+      '\t- [ ] child',
+      '\t\t- [ ] grandchild',
+      '\t- plain',
+    ]);
+  });
+
+  it('checks an ancestor only after all sibling tasks are done', () => {
+    const { root, lines } = setup(
+      '- [ ] parent\n\t- [x] first\n\t- [ ] second',
+    );
+    const parent = root.children[0]!;
+    const second = parent.children[1]!;
+
+    expect(setTaskTreeCheckboxOp(lines, second, true)).toEqual([
+      '- [x] parent',
+      '\t- [x] first',
+      '\t- [x] second',
+    ]);
+  });
+
+  it('syncs through a non-task structural node', () => {
+    const { root, lines } = setup(
+      '- [x] parent\n\t- group\n\t\t- [x] nested\n\t- [x] sibling',
+    );
+    const parent = root.children[0]!;
+    const nested = parent.children[0]!.children[0]!;
+
+    expect(setTaskTreeCheckboxOp(lines, nested, false)[0]).toBe('- [ ] parent');
+  });
+});
+
+describe('syncTaskParentsOp', () => {
+  it('applies parent updates from deepest to shallowest', () => {
+    const { root, lines } = setup(
+      '- [x] parent\n\t- [x] child\n\t\t- [ ] grandchild',
+    );
+    const child = root.children[0]!.children[0]!;
+    const parent = root.children[0]!;
+
+    expect(
+      syncTaskParentsOp(lines, [
+        { node: child, checked: false },
+        { node: parent, checked: false },
+      ]),
+    ).toEqual(['- [ ] parent', '\t- [ ] child', '\t\t- [ ] grandchild']);
   });
 });
 
@@ -108,6 +174,23 @@ describe('addChildOp', () => {
     const { lines: out, insertedLine } = addChildOp(lines, root.children[0]!);
 
     expect(out[insertedLine]).toBe('\t- ');
+  });
+});
+
+describe('addTaskNoteOp', () => {
+  it('inserts an indented continuation line before child tasks', () => {
+    const { root, lines } = setup('- [ ] task\n  - [ ] child');
+
+    expect(addTaskNoteOp(lines, root.children[0]!)).toEqual({
+      lines: ['- [ ] task', '  ', '  - [ ] child'],
+      insertedLine: 1,
+    });
+  });
+
+  it('refuses a note on a plain list item', () => {
+    const { root, lines } = setup('- plain');
+
+    expect(() => addTaskNoteOp(lines, root.children[0]!)).toThrow();
   });
 });
 

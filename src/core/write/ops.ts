@@ -3,10 +3,12 @@ import {
   CHECKBOX_RE,
   HEADING_SHIFT_RE,
   INDENTED_LIST_RE,
+  LIST_RE,
   LIST_PREFIX_RE,
   MARKER_PREFIX_RE,
   TASK_BOX_RE,
 } from '../parse/patterns';
+import { childTasks, descendantTasks, TaskStateUpdate } from '../tasks';
 
 export interface InsertResult {
   lines: string[];
@@ -81,6 +83,49 @@ export function setCheckboxOp(
     throw new Error(`Mindmap: line ${node.line} is not a task item`);
   }
   lines[node.line] = line.replace(CHECKBOX_RE, `$1${checked ? 'x' : ' '}$2`);
+
+  return lines;
+}
+
+/**
+ * Syncs a task branch in both directions: the chosen state flows down, then
+ * each task ancestor reflects whether all of its nearest task children are done.
+ */
+export function setTaskTreeCheckboxOp(
+  lines: string[],
+  node: MindNode,
+  checked: boolean,
+): string[] {
+  const down = [node, ...descendantTasks(node)];
+
+  down.forEach((task) => setCheckboxOp(lines, task, checked));
+
+  for (let parent = node.parent; parent; parent = parent.parent) {
+    if (parent.checked === null) {
+      continue;
+    }
+    const children = childTasks(parent);
+    const done =
+      children.length > 0 &&
+      children.every((task) => {
+        const line = requireNodeLine(lines, task);
+        const match = LIST_RE.exec(line);
+
+        return match?.[3]?.toLowerCase() === 'x';
+      });
+
+    setCheckboxOp(lines, parent, done);
+  }
+
+  return lines;
+}
+
+/** Applies parent states calculated from a fresh parse of these same lines. */
+export function syncTaskParentsOp(
+  lines: string[],
+  updates: TaskStateUpdate[],
+): string[] {
+  updates.forEach(({ node, checked }) => setCheckboxOp(lines, node, checked));
 
   return lines;
 }
@@ -204,6 +249,19 @@ export function addChildOp(
   lines.splice(at, 0, listPrefix(indent, marker, isTask));
 
   return { lines, insertedLine: at };
+}
+
+/** Adds an indented continuation line for a list item's note. */
+export function addTaskNoteOp(lines: string[], node: MindNode): InsertResult {
+  requireNodeLine(lines, node);
+  if (node.type !== 'list' || node.checked === null) {
+    throw new Error(`Mindmap: line ${node.line} is not a task item`);
+  }
+  const insertedLine = node.line + 1;
+
+  lines.splice(insertedLine, 0, node.indent + detectIndentUnit(lines));
+
+  return { lines, insertedLine };
 }
 
 /** Adds or removes the task checkbox on a list item, keeping its text. */

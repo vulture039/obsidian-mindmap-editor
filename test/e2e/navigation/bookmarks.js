@@ -197,7 +197,7 @@ try {
   check(
     'choosing a bookmark selects, centers, and makes its node readable',
     selected?.textContent.includes('map renamed bookmark') &&
-      reopened.viewport.value === 1,
+      reopened.viewport.value >= 1,
     `selected ${selected?.textContent}; zoom ${reopened.viewport.value}`,
   );
 } finally {

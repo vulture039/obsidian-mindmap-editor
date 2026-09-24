@@ -280,7 +280,15 @@ export function addChildOp(
 /** Adds a continuation line for a node's note. */
 export function addTaskNoteOp(lines: string[], node: MindNode): InsertResult {
   requireNodeLine(lines, node);
-  const insertedLine = node.line + 1;
+  let insertedLine = node.line + 1;
+
+  if (node.type === 'root' && lines[0] === '---') {
+    const frontmatterEnd = lines.findIndex(
+      (line, index) => index > 0 && (line === '---' || line === '...'),
+    );
+
+    insertedLine = frontmatterEnd > 0 ? frontmatterEnd + 1 : 0;
+  }
   const indent =
     node.type === 'list' ? node.indent + detectIndentUnit(lines) : '';
 

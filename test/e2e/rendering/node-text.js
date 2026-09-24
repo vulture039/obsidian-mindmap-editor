@@ -349,26 +349,41 @@ if (!reading) {
       !!restoredLine,
       restoredLine?.innerHTML,
     );
-    await press('Enter');
-    await until(() => editor.lineCount() === mapFocusedLines + 1);
-    check(
-      'Enter from the map adds one indented body line',
-      editor.lineCount() === mapFocusedLines + 1 &&
-        editor.getLine(at + 2) === mapFocusedIndent &&
-        el.querySelectorAll('.mindmap-node').length === nodesBeforeEnter,
-      editor.getValue(),
-    );
-    editor.focus();
-    selectionObserver.disconnect();
-    check(
-      'Shift+Enter never focuses the following node',
-      selectedDuringEnter.every((line) => line === '0'),
-      selectedDuringEnter.join(', '),
-    );
     check(
       'showing the editing mirror never writes from the map',
       mapWrites === 0,
       `${mapWrites} map writes`,
+    );
+    selectionObserver.disconnect();
+    await press('Enter');
+    await until(
+      () =>
+        editor.lineCount() === mapFocusedLines + 1 &&
+        el.querySelectorAll('.mindmap-node').length === nodesBeforeEnter + 1,
+    );
+    check(
+      'Enter after leaving body editing adds a node',
+      editor.lineCount() === mapFocusedLines + 1 &&
+        editor.getLine(at + 2) !== mapFocusedIndent &&
+        el.querySelectorAll('.mindmap-node').length === nodesBeforeEnter + 1,
+      editor.getValue(),
+    );
+    editor.undo();
+    await until(
+      () =>
+        editor.lineCount() === mapFocusedLines &&
+        el.querySelectorAll('.mindmap-node').length === nodesBeforeEnter,
+    );
+    click(drawnAt(at + 1), 'dblclick');
+    await until(
+      () =>
+        editor.hasFocus() &&
+        !!drawnAt(at + 1)?.querySelector('.mindmap-mirrored-caret'),
+    );
+    check(
+      'Shift+Enter never focuses the following node',
+      selectedDuringEnter.every((line) => line === '0'),
+      selectedDuringEnter.join(', '),
     );
     app.workspace.setActiveLeaf(md, { focus: true });
     editor.focus();

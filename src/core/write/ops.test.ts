@@ -237,6 +237,15 @@ describe('addTaskNoteOp', () => {
       insertedLine: 1,
     });
   });
+
+  it('adds a note to the file root after frontmatter', () => {
+    const { root, lines } = setup('---\ntitle: Note\n---\n# Heading');
+
+    expect(addTaskNoteOp(lines, root)).toEqual({
+      lines: ['---', 'title: Note', '---', '', '# Heading'],
+      insertedLine: 3,
+    });
+  });
 });
 
 describe('deleteNodeOp', () => {

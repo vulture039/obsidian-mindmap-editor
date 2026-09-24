@@ -417,6 +417,7 @@ export class MindmapView extends ItemView {
       const input = this.canvasEl.querySelector(`.${EDIT_INPUT}`);
       const active = this.canvasEl.doc.activeElement;
       const markdown = this.file && findFocusedEditingView(this.app, this.file);
+      const bodyEditor = this.mirrorEditorView;
 
       if (key === 'Enter' && event.isComposing) {
         return true;
@@ -432,7 +433,11 @@ export class MindmapView extends ItemView {
       // visible mirror is also enough: focus reporting can lag the keydown.
       if (
         this.mirroredCursor?.el.isConnected ||
-        (markdown &&
+        (bodyEditor !== null &&
+          bodyEditor.file?.path === this.file?.path &&
+          bodyEditor.editor.hasFocus()) ||
+        (!this.containerEl.contains(active) &&
+          markdown &&
           markdown.file?.path === this.file?.path &&
           markdown.getMode() === 'source' &&
           markdown.editor.hasFocus())
@@ -515,6 +520,16 @@ export class MindmapView extends ItemView {
       if (laid) {
         this.startInlineEdit(node, laid.el);
       }
+
+      return false;
+    });
+    this.onKey(['Shift'], 'F2', () => {
+      const node = this.selectedNode();
+
+      if (!node) {
+        return true;
+      }
+      void this.editNodeNote(node);
 
       return false;
     });
@@ -876,14 +891,20 @@ export class MindmapView extends ItemView {
    * broken or stale mirror can therefore only affect this temporary display.
    */
   private mirrorEditorCursor(): void {
+    if (
+      !this.mirrorEditorView &&
+      this.containerEl.contains(this.containerEl.doc.activeElement)
+    ) {
+      this.clearMirroredCursor();
+
+      return;
+    }
     const view = this.file && findFocusedEditingView(this.app, this.file);
 
     if (!view?.file || view.file.path !== this.file?.path) {
-      // The map keeps Enter as a body continuation after focus returns from a
-      // source pane, but the read-only caret itself belongs only to that pane.
-      this.clearMirroredCursor(
-        !!(this.file && findEditingView(this.app, this.file, this.leaf)),
-      );
+      // Focus can briefly disappear while Obsidian moves it into its editor.
+      // The explicit map-selection and Escape paths end the editing session.
+      this.clearMirroredCursor();
 
       return;
     }
@@ -1540,14 +1561,7 @@ export class MindmapView extends ItemView {
     this.persistViewport.cancel();
     this.taskDatePicker?.remove();
     this.taskDatePicker = null;
-    this.clearMirrorEditorKeys();
-    if (
-      this.mirrorEditorView &&
-      MIRROR_EDITOR_OWNERS.get(this.mirrorEditorView) === this
-    ) {
-      MIRROR_EDITOR_OWNERS.delete(this.mirrorEditorView);
-    }
-    this.mirrorEditorView = null;
+    this.endBodyEdit();
     if (this.revealTimer !== null) {
       this.containerEl.win.clearTimeout(this.revealTimer);
     }
@@ -3045,6 +3059,9 @@ export class MindmapView extends ItemView {
     // Here rather than from the editor's own event: with the map holding
     // focus that event may never come, leaving the last mark standing.
     this.markCursorLine(line ?? node.line);
+    // markCursorLine can briefly rediscover the pane that just lost focus, so
+    // release its keyboard only after the selection marker has been updated.
+    this.endBodyEdit();
     // Mobile has one visible leaf: showing Markdown here would replace the
     // map merely because a node was selected, with no map pane to return to.
     if (this.plugin.isMobile) {
@@ -3212,6 +3229,18 @@ export class MindmapView extends ItemView {
     this.mirrorEditorKeys = null;
   }
 
+  /** Releases the Markdown-side keyboard once its editing caret is gone. */
+  private endBodyEdit(): void {
+    const view = this.mirrorEditorView;
+
+    this.clearMirroredCursor();
+    this.clearMirrorEditorKeys();
+    if (view && MIRROR_EDITOR_OWNERS.get(view) === this) {
+      MIRROR_EDITOR_OWNERS.delete(view);
+    }
+    this.mirrorEditorView = null;
+  }
+
   /** Hands Escape from this map's source editor back to the map. */
   private returnFromBodyEdit(target?: EventTarget | null): boolean {
     const view = this.mirrorEditorView;
@@ -3229,7 +3258,7 @@ export class MindmapView extends ItemView {
     ) {
       return false;
     }
-    this.clearMirroredCursor();
+    this.endBodyEdit();
     this.returningFromBodyEdit = true;
     this.app.workspace.setActiveLeaf(this.leaf, { focus: true });
     this.scrollerEl.focus({ preventScroll: true });
@@ -3336,6 +3365,9 @@ export class MindmapView extends ItemView {
         () => void this.addChildNode(node, true),
       );
     }
+    add(node.body.length ? 'Edit note' : 'Add note', 'sticky-note', () => {
+      void this.editNodeNote(node);
+    });
     if (node.type !== 'root') {
       if (this.file) {
         const bookmark = this.bookmarkFor(node);
@@ -3381,15 +3413,6 @@ export class MindmapView extends ItemView {
       if (this.reorderTarget(node, 1)) {
         add('Move down', 'arrow-down', () => void this.reorderNode(node, 1));
       }
-      add(node.body.length ? 'Edit note' : 'Add note', 'sticky-note', () => {
-        const line = node.body[0]?.line;
-
-        if (line === undefined) {
-          void this.addTaskNote(node);
-        } else {
-          void this.editBodyLine(line);
-        }
-      });
       if (node.type === 'list') {
         if (node.checked !== null) {
           menu.addItem((item) =>
@@ -3760,6 +3783,17 @@ export class MindmapView extends ItemView {
     await this.applyInsert(node, (lines, target) =>
       addChildOp(lines, target, task),
     );
+  }
+
+  /** Opens a node's note, creating its first body line when needed. */
+  private async editNodeNote(node: MindNode): Promise<void> {
+    const line = node.body[0]?.line;
+
+    if (line === undefined) {
+      await this.addTaskNote(node);
+    } else {
+      await this.editBodyLine(line);
+    }
   }
 
   /** Creates a Markdown continuation line, then hands its writing to Obsidian. */

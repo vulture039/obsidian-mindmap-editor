@@ -34,6 +34,30 @@ check(
   'the note has no text of its own on the map',
 );
 
+{
+  click(rootEl());
+  await until(() => document.activeElement === view.scrollerEl);
+  await settle();
+  focusMap();
+  await press('F2', { shiftKey: true });
+  const bodyEditor = await until(() =>
+    rootEl()?.querySelector('.mindmap-mirrored-caret'),
+  );
+
+  check(
+    "Shift+F2 edits the note's own text",
+    !!bodyEditor && editor.hasFocus() && editor.getCursor().line === 0,
+    bodyEditor ? 'the Markdown editor did not take focus' : 'no editor opened',
+  );
+  click(rootEl());
+  await press('ArrowRight');
+  check(
+    'selecting a node ends note editing and restores arrow navigation',
+    view.selectedLine === view.root.children[0]?.line,
+    `selected line ${view.selectedLine}`,
+  );
+}
+
 // Its branch folds, and so does its text - on the map, since neither has a
 // line in the file for the editor to fold.
 {

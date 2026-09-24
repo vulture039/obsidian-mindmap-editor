@@ -72,7 +72,8 @@ try {
     text: 'stale',
   });
 
-  await view.addTaskNote(noteNode);
+  view.selectNode(noteNode, noteLabel.closest('.mindmap-node'));
+  await press('F2', { shiftKey: true });
   const withNote = await until(async () => {
     const text = await now();
 

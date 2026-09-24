@@ -38,6 +38,7 @@ Active while the mind map pane is focused.
 | `Enter`                 | Add a sibling (a child on the root)                                                                                    |
 | `Tab`                   | Add a child                                                                                                            |
 | `F2`                    | Rename the node                                                                                                        |
+| `Shift + F2`            | Add or edit the node's note                                                                                            |
 | `Space`                 | Toggle the selected task's checkbox                                                                                    |
 | `Ctrl/Cmd + B`          | Add or remove a bookmark for the selected node                                                                         |
 | `Delete` / `Backspace`  | Delete the selected node(s) and their subtrees                                                                         |

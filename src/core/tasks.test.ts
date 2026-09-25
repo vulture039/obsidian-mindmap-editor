@@ -124,7 +124,7 @@ describe('taskEditUpdates', () => {
     ).toEqual([['parent', true]]);
   });
 
-  it('finds a checkbox edit made with an in-place rename', () => {
+  it('does not guess that a renamed task is the same checkbox', () => {
     const before = parseMarkdown(
       '- [ ] parent\n\t- [ ] first\n\t- [x] second',
       'Note',
@@ -134,11 +134,13 @@ describe('taskEditUpdates', () => {
       'Note',
     );
 
-    expect(
-      taskEditUpdates(before, after).map(({ node, checked }) => [
-        node.text,
-        checked,
-      ]),
-    ).toEqual([['parent', true]]);
+    expect(taskEditUpdates(before, after)).toEqual([]);
+  });
+
+  it('does not rewrite descendants after a same-line structural replacement', () => {
+    const before = parseMarkdown('- [ ] old parent\n\t- [ ] old child', 'Note');
+    const after = parseMarkdown('- [x] new parent\n\t- [ ] new child', 'Note');
+
+    expect(taskEditUpdates(before, after)).toEqual([]);
   });
 });

@@ -22,18 +22,6 @@ function sameTaskShape(node: MindNode, other: MindNode | undefined): boolean {
   );
 }
 
-function nodesByPath(root: MindNode): Map<string, MindNode> {
-  const nodes = new Map<string, MindNode>();
-  const visit = (node: MindNode, path: number[]): void => {
-    nodes.set(path.join('.'), node);
-    node.children.forEach((child, index) => visit(child, [...path, index]));
-  };
-
-  visit(root, []);
-
-  return nodes;
-}
-
 /** Progress from direct child tasks; deeper work belongs to its own parent. */
 export function taskProgress(node: MindNode): TaskProgress | null {
   const tasks = node.children.filter((child) => child.checked !== null);
@@ -65,25 +53,20 @@ export function taskEditUpdates(
   previous: MindNode,
   current: MindNode,
 ): TaskStateUpdate[] {
-  const beforeByPath = nodesByPath(previous);
   const changed: MindNode[] = [];
-  const visit = (node: MindNode, path: number[]): void => {
+  const visit = (node: MindNode): void => {
     const relocated = relocateNode(previous, node);
-    const samePosition = beforeByPath.get(path.join('.'));
-    const renamedInPlace =
-      !relocated &&
-      samePosition?.line === node.line &&
-      samePosition?.text !== node.text &&
-      sameTaskShape(node, samePosition);
-    const old = relocated ?? (renamedInPlace ? samePosition : undefined);
 
-    if (sameTaskShape(node, old) && node.checked !== old?.checked) {
+    if (
+      sameTaskShape(node, relocated ?? undefined) &&
+      node.checked !== relocated?.checked
+    ) {
       changed.push(node);
     }
-    node.children.forEach((child, index) => visit(child, [...path, index]));
+    node.children.forEach(visit);
   };
 
-  visit(current, []);
+  visit(current);
   if (!changed.length) {
     return [];
   }

@@ -61,6 +61,17 @@ try {
     5000,
   );
   await settle();
+  if (!second) {
+    throw new Error(
+      `No popout map: ${JSON.stringify(
+        maps().map((leaf) => ({
+          file: leaf.view.currentFile?.path,
+          new: !before.has(leaf),
+          sameWindow: leaf.getContainer() === popped.getContainer(),
+        })),
+      )}`,
+    );
+  }
 
   check(
     "the map for a note in a popout opens in the note's own window",
@@ -124,22 +135,34 @@ try {
   await settle();
   const body = [
     ...map.contentEl.querySelectorAll('.mindmap-node-body-line'),
-  ][0];
+  ].find((line) => line.textContent.includes('A description under a heading'));
 
   clickIn(body);
-  const win = popped.view.containerEl.win;
+  const mark = '.markdown-preview-view .mindmap-line-highlight';
 
   check(
-    "the reading pane's line mark goes up in that window's registry",
-    (await until(() => win.CSS.highlights.has('mindmap-line'), 5000)) !== null,
-    win === window
-      ? 'the pane never left the main window'
-      : `main window: ${CSS.highlights.has('mindmap-line')}`,
+    "the reading pane's line mark stays in the popout",
+    (await until(() => popped.view.containerEl.querySelector(mark), 5000)) !==
+      null && !document.querySelector(mark),
+    `popout: ${!!popped.view.containerEl.querySelector(mark)}; main: ${!!document.querySelector(mark)}`,
   );
 } finally {
+  const popoutWindow = popped?.getContainer().win;
+
   second?.detach();
   popped?.detach();
+  popoutWindow?.close();
   await until(() => maps().length === 1);
+  await until(() => !popoutWindow || popoutWindow.closed, 5000);
+  await app.workspace.revealLeaf(ours);
+  focusMap();
+  await until(
+    () =>
+      view.contentEl.offsetHeight > 0 &&
+      !view.renderQueued &&
+      view.revealTimer === null,
+    5000,
+  );
 }
 
 return { results };

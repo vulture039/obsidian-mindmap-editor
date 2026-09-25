@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { MapViewport } from '../src/obsidian/map/viewport';
 import { readViewportState } from '../src/core/render/viewport-state';
 import { installObsidianDom } from './stubs/obsidian-dom';
@@ -42,6 +42,23 @@ describe('remembered viewport', () => {
     expect(second.viewport.snapshot()).toEqual(state);
     expect(second.canvas.style.transform).toBe('scale(1.4)');
     second.viewport.destroy();
+  });
+
+  it('centers a node by scrolling only the map viewport', () => {
+    const { viewport, scroller, canvas } = open();
+    const node = canvas.appendChild(document.createElement('div'));
+
+    vi.spyOn(scroller, 'getBoundingClientRect').mockReturnValue(
+      new DOMRect(100, 100, 400, 300),
+    );
+    vi.spyOn(node, 'getBoundingClientRect').mockReturnValue(
+      new DOMRect(350, 280, 100, 40),
+    );
+    viewport.centerElement(node);
+
+    expect(scroller.scrollLeft).toBe(2148);
+    expect(scroller.scrollTop).toBe(2098);
+    viewport.destroy();
   });
 
   it.each([

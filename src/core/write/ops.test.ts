@@ -3,12 +3,16 @@ import { MindNode, parseMarkdown } from '../parse/parser';
 import {
   addChildOp,
   addSiblingOp,
+  addTaskNoteOp,
   deleteNodeOp,
   deleteNodesOp,
   moveNodeOp,
   moveNodesOp,
   reorderSiblingOp,
   setCheckboxOp,
+  setTaskTreeCheckboxOp,
+  setTaskMetadataOp,
+  syncTaskParentsOp,
   setTextOp,
   toggleTaskOp,
 } from './ops';
@@ -36,6 +40,69 @@ describe('setCheckboxOp', () => {
   });
 });
 
+describe('setTaskTreeCheckboxOp', () => {
+  it('checks and unchecks every descendant task with its parent', () => {
+    const { root, lines } = setup(
+      '- [ ] parent\n\t- [ ] child\n\t\t- [x] grandchild\n\t- plain',
+    );
+    const parent = root.children[0]!;
+
+    expect(setTaskTreeCheckboxOp(lines, parent, true)).toEqual([
+      '- [x] parent',
+      '\t- [x] child',
+      '\t\t- [x] grandchild',
+      '\t- plain',
+    ]);
+    expect(setTaskTreeCheckboxOp(lines, parent, false)).toEqual([
+      '- [ ] parent',
+      '\t- [ ] child',
+      '\t\t- [ ] grandchild',
+      '\t- plain',
+    ]);
+  });
+
+  it('checks an ancestor only after all sibling tasks are done', () => {
+    const { root, lines } = setup(
+      '- [ ] parent\n\t- [x] first\n\t- [ ] second',
+    );
+    const parent = root.children[0]!;
+    const second = parent.children[1]!;
+
+    expect(setTaskTreeCheckboxOp(lines, second, true)).toEqual([
+      '- [x] parent',
+      '\t- [x] first',
+      '\t- [x] second',
+    ]);
+  });
+
+  it('syncs through a non-task structural node', () => {
+    const { root, lines } = setup(
+      '- [x] parent\n\t- group\n\t\t- [x] nested\n\t- [x] sibling',
+    );
+    const parent = root.children[0]!;
+    const nested = parent.children[0]!.children[0]!;
+
+    expect(setTaskTreeCheckboxOp(lines, nested, false)[0]).toBe('- [ ] parent');
+  });
+});
+
+describe('syncTaskParentsOp', () => {
+  it('applies parent updates from deepest to shallowest', () => {
+    const { root, lines } = setup(
+      '- [x] parent\n\t- [x] child\n\t\t- [ ] grandchild',
+    );
+    const child = root.children[0]!.children[0]!;
+    const parent = root.children[0]!;
+
+    expect(
+      syncTaskParentsOp(lines, [
+        { node: child, checked: false },
+        { node: parent, checked: false },
+      ]),
+    ).toEqual(['- [ ] parent', '\t- [ ] child', '\t\t- [ ] grandchild']);
+  });
+});
+
 describe('setTextOp', () => {
   it('renames a heading and keeps its level', () => {
     const { root, lines } = setup('## Old');
@@ -47,6 +114,38 @@ describe('setTextOp', () => {
     const { root, lines } = setup('  - [ ] old');
 
     expect(setTextOp(lines, root.children[0]!, 'new')[0]).toBe('  - [ ] new');
+  });
+
+  it('keeps task metadata while renaming its visible title', () => {
+    const { root, lines } = setup('- [ ] old ❗ 📅 2026-10-01');
+
+    expect(setTextOp(lines, root.children[0]!, 'new')[0]).toBe(
+      '- [ ] new ❗ 📅 2026-10-01',
+    );
+  });
+});
+
+describe('setTaskMetadataOp', () => {
+  it('writes priority and due date after the task title', () => {
+    const { root, lines } = setup('- [ ] task');
+
+    expect(
+      setTaskMetadataOp(lines, root.children[0]!, {
+        priority: 'high',
+        dueDate: '2026-10-01',
+      }),
+    ).toEqual(['- [ ] task ▲ 📅 2026-10-01']);
+  });
+
+  it('clears one value while retaining the other', () => {
+    const { root, lines } = setup('- [ ] task ❗ 📅 2026-10-01');
+
+    expect(
+      setTaskMetadataOp(lines, root.children[0]!, {
+        priority: null,
+        dueDate: '2026-10-01',
+      }),
+    ).toEqual(['- [ ] task 📅 2026-10-01']);
   });
 });
 
@@ -108,6 +207,44 @@ describe('addChildOp', () => {
     const { lines: out, insertedLine } = addChildOp(lines, root.children[0]!);
 
     expect(out[insertedLine]).toBe('\t- ');
+  });
+});
+
+describe('addTaskNoteOp', () => {
+  it('inserts an indented continuation line before child tasks', () => {
+    const { root, lines } = setup('- [ ] task\n  - [ ] child');
+
+    expect(addTaskNoteOp(lines, root.children[0]!)).toEqual({
+      lines: ['- [ ] task', '  ', '  - [ ] child'],
+      insertedLine: 1,
+    });
+  });
+
+  it('adds an indented note to a plain list item', () => {
+    const { root, lines } = setup('- plain');
+
+    expect(addTaskNoteOp(lines, root.children[0]!)).toEqual({
+      lines: ['- plain', '\t'],
+      insertedLine: 1,
+    });
+  });
+
+  it('adds an unindented note to a heading', () => {
+    const { root, lines } = setup('# Heading');
+
+    expect(addTaskNoteOp(lines, root.children[0]!)).toEqual({
+      lines: ['# Heading', ''],
+      insertedLine: 1,
+    });
+  });
+
+  it('adds a note to the file root after frontmatter', () => {
+    const { root, lines } = setup('---\ntitle: Note\n---\n# Heading');
+
+    expect(addTaskNoteOp(lines, root)).toEqual({
+      lines: ['---', 'title: Note', '---', '', '# Heading'],
+      insertedLine: 3,
+    });
   });
 });
 

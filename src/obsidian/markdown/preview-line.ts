@@ -7,14 +7,13 @@ export interface PreviewBlock {
   lines: number;
 }
 
-/** The registered highlight, and the class that quiets the block flash. */
+/** The registered highlight. */
 const HIGHLIGHT = 'mindmap-line';
-const QUIET = 'mindmap-quiet-flash';
 /** Long enough to outlast the flash, for when its element is never seen off. */
 const FLASH_MS = 5000;
 
 let fade: number | null = null;
-let watch: MutationObserver | null = null;
+let markedElement: HTMLElement | null = null;
 /** Which window the mark went up in: the registry below belongs to one. */
 let marked: Window | null = null;
 
@@ -77,9 +76,8 @@ export function markPreviewLine(
   }
   const { runs, whole } = ownRuns(flashed);
   const lined = runs.length === block.lines && !(whole && runs.length < 2);
-  // A run per line, or the block is not made of lines at all - a code block,
-  // a table - and the line has to be found in it by what it says.
-  const range = lined ? runs[line - block.first] : saying(flashed, view, line);
+  const range =
+    saying(flashed, view, line) ?? (lined ? runs[line - block.first] : null);
 
   if (!range) {
     return false;
@@ -89,22 +87,119 @@ export function markPreviewLine(
   return true;
 }
 
+/** Highlights a source line's content, leaving its structural indent alone. */
+export function markSourceLine(view: MarkdownView, line: number): boolean {
+  if (line < 0 || line > view.editor.lastLine()) {
+    return false;
+  }
+  const text = view.editor.getLine(line);
+  const first = /^\s*/.exec(text)?.[0].length ?? 0;
+
+  if (first === text.length) {
+    return false;
+  }
+  const editor = view.editor as typeof view.editor & {
+    cm?: { domAtPos: (position: number) => { node: Node; offset: number } };
+  };
+
+  try {
+    const from = editor.cm?.domAtPos(editor.posToOffset({ line, ch: first }));
+    const to = editor.cm?.domAtPos(
+      editor.posToOffset({ line, ch: text.length }),
+    );
+
+    if (!from || !to) {
+      return false;
+    }
+    let range = view.containerEl.doc.createRange();
+
+    range.setStart(from.node, from.offset);
+    range.setEnd(to.node, to.offset);
+    if (range.toString() !== text.slice(first)) {
+      const active =
+        view.containerEl.querySelector<HTMLElement>('.cm-activeLine');
+
+      range = active ? textRange(active, first, text.length) : range;
+      if (range.toString() !== text.slice(first)) {
+        return false;
+      }
+    }
+    const win = view.containerEl.win;
+    const Highlight = (
+      win as unknown as {
+        Highlight?: new (...ranges: Range[]) => Highlight;
+      }
+    ).Highlight;
+
+    if (!Highlight) {
+      return false;
+    }
+    clearPreviewLine();
+    marked = win;
+    registry(win).set(HIGHLIGHT, new Highlight(range));
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** A character range within an element's rendered text. */
+function textRange(root: HTMLElement, from: number, to: number): Range {
+  const range = root.doc.createRange();
+  const walker = root.doc.createTreeWalker(
+    root,
+    root.doc.defaultView!.NodeFilter.SHOW_TEXT,
+  );
+  let offset = 0;
+  let node = walker.nextNode();
+
+  while (node) {
+    const end = offset + (node.textContent?.length ?? 0);
+
+    if (from >= offset && from <= end) {
+      range.setStart(node, from - offset);
+      break;
+    }
+    offset = end;
+    node = walker.nextNode();
+  }
+  while (node) {
+    const end = offset + (node.textContent?.length ?? 0);
+
+    if (to >= offset && to <= end) {
+      range.setEnd(node, to - offset);
+
+      return range;
+    }
+    offset = end;
+    node = walker.nextNode();
+  }
+  range.collapse(true);
+
+  return range;
+}
+
 /** Puts the mark up, and takes it down when the flash it stands in for goes. */
 function mark(view: MarkdownView, flashed: Element, range: Range): void {
   const win = view.containerEl.win;
 
   clearPreviewLine();
   marked = win;
-  registry(win).set(HIGHLIGHT, new Highlight(range));
-  view.containerEl.addClass(QUIET);
-  // Both marks go out together: the class is all that quiets the flash, and
-  // Obsidian keeps it on for a good second longer than one expects.
-  watch = new MutationObserver(() => {
-    if (!flashed.hasClass('is-flashing')) {
-      clearPreviewLine();
-    }
-  });
-  watch.observe(flashed, { attributeFilter: ['class'] });
+  try {
+    const highlight = view.containerEl.doc.body.createSpan();
+
+    highlight.addClass('mindmap-line-highlight');
+    highlight.append(range.extractContents());
+    range.insertNode(highlight);
+    markedElement = highlight;
+  } catch {
+    markedElement = null;
+  }
+  // The native flash reflows an indented continuation line while it is
+  // active. The range above is the highlight we keep, so end that transient
+  // state immediately and leave the rendered block in its normal layout.
+  flashed.removeClass('is-flashing');
   fade = view.containerEl.win.setTimeout(clearPreviewLine, FLASH_MS);
 }
 
@@ -148,7 +243,18 @@ function flashedBlock(view: MarkdownView): Element | null {
 }
 
 /** Takes the mark off, wherever it was left. */
-export function clearPreviewLine(): void {
+export function clearPreviewLine(root?: ParentNode): void {
+  root
+    ?.querySelectorAll('.markdown-preview-view .mindmap-line-highlight')
+    .forEach((element) => {
+      const parent = element.parentNode;
+
+      element.replaceWith(...element.childNodes);
+      parent?.normalize();
+    });
+  root
+    ?.querySelectorAll('.markdown-source-view .mindmap-line-highlight')
+    .forEach((element) => element.classList.remove('mindmap-line-highlight'));
   const win = marked;
 
   // Nothing is up unless a window was marked: it goes in before anything else.
@@ -156,11 +262,13 @@ export function clearPreviewLine(): void {
     return;
   }
   registry(win).delete(HIGHLIGHT);
-  win.document
-    .querySelectorAll(`.${QUIET}`)
-    .forEach((el) => el.removeClass(QUIET));
-  watch?.disconnect();
-  watch = null;
+  if (markedElement?.isConnected) {
+    const parent = markedElement.parentNode;
+
+    markedElement.replaceWith(...markedElement.childNodes);
+    parent?.normalize();
+  }
+  markedElement = null;
   if (fade !== null) {
     win.clearTimeout(fade);
     fade = null;
@@ -276,11 +384,7 @@ function ownRuns(block: Element): { runs: Range[]; whole: boolean } {
   return { runs, whole };
 }
 
-/**
- * Where the run's text really starts. The newline that followed the `<br>` in
- * the source is still in the text node, collapsed to nothing on screen; a mark
- * that took it in would start with a blank.
- */
+/** Skips indentation so only the line's content receives the highlight. */
 function leadingSpace(node: Node): number {
   const text = node.textContent ?? '';
 

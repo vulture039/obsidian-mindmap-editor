@@ -3,10 +3,13 @@ import {
   CHECKBOX_RE,
   HEADING_SHIFT_RE,
   INDENTED_LIST_RE,
+  LIST_RE,
   LIST_PREFIX_RE,
   MARKER_PREFIX_RE,
   TASK_BOX_RE,
 } from '../parse/patterns';
+import { childTasks, descendantTasks, TaskStateUpdate } from '../tasks';
+import { formatTaskMetadata, TaskMetadata } from '../task-metadata';
 
 export interface InsertResult {
   lines: string[];
@@ -85,6 +88,49 @@ export function setCheckboxOp(
   return lines;
 }
 
+/**
+ * Syncs a task branch in both directions: the chosen state flows down, then
+ * each task ancestor reflects whether all of its nearest task children are done.
+ */
+export function setTaskTreeCheckboxOp(
+  lines: string[],
+  node: MindNode,
+  checked: boolean,
+): string[] {
+  const down = [node, ...descendantTasks(node)];
+
+  down.forEach((task) => setCheckboxOp(lines, task, checked));
+
+  for (let parent = node.parent; parent; parent = parent.parent) {
+    if (parent.checked === null) {
+      continue;
+    }
+    const children = childTasks(parent);
+    const done =
+      children.length > 0 &&
+      children.every((task) => {
+        const line = requireNodeLine(lines, task);
+        const match = LIST_RE.exec(line);
+
+        return match?.[3]?.toLowerCase() === 'x';
+      });
+
+    setCheckboxOp(lines, parent, done);
+  }
+
+  return lines;
+}
+
+/** Applies parent states calculated from a fresh parse of these same lines. */
+export function syncTaskParentsOp(
+  lines: string[],
+  updates: TaskStateUpdate[],
+): string[] {
+  updates.forEach(({ node, checked }) => setCheckboxOp(lines, node, checked));
+
+  return lines;
+}
+
 export function setTextOp(
   lines: string[],
   node: MindNode,
@@ -96,9 +142,34 @@ export function setTextOp(
     lines[node.line] = headingPrefix(node.level) + text;
   } else {
     const m = LIST_PREFIX_RE.exec(line);
+    const next =
+      node.checked === null
+        ? text
+        : formatTaskMetadata(
+            text,
+            node.taskMetadata ?? { priority: null, dueDate: null },
+          );
 
-    lines[node.line] = `${m?.[1] ?? '- '}${text}`;
+    lines[node.line] = `${m?.[1] ?? '- '}${next}`;
   }
+
+  return lines;
+}
+
+/** Updates task metadata without making it part of the map's editable title. */
+export function setTaskMetadataOp(
+  lines: string[],
+  node: MindNode,
+  metadata: Pick<TaskMetadata, 'priority' | 'dueDate'>,
+): string[] {
+  if (node.checked === null) {
+    throw new Error(`Mindmap: line ${node.line} is not a task item`);
+  }
+  const line = requireNodeLine(lines, node);
+  const prefix = LIST_PREFIX_RE.exec(line)?.[1] ?? '- [ ] ';
+  const title = node.taskMetadata?.title ?? node.text;
+
+  lines[node.line] = `${prefix}${formatTaskMetadata(title, metadata)}`;
 
   return lines;
 }
@@ -204,6 +275,26 @@ export function addChildOp(
   lines.splice(at, 0, listPrefix(indent, marker, isTask));
 
   return { lines, insertedLine: at };
+}
+
+/** Adds a continuation line for a node's note. */
+export function addTaskNoteOp(lines: string[], node: MindNode): InsertResult {
+  requireNodeLine(lines, node);
+  let insertedLine = node.line + 1;
+
+  if (node.type === 'root' && lines[0] === '---') {
+    const frontmatterEnd = lines.findIndex(
+      (line, index) => index > 0 && (line === '---' || line === '...'),
+    );
+
+    insertedLine = frontmatterEnd > 0 ? frontmatterEnd + 1 : 0;
+  }
+  const indent =
+    node.type === 'list' ? node.indent + detectIndentUnit(lines) : '';
+
+  lines.splice(insertedLine, 0, indent);
+
+  return { lines, insertedLine };
 }
 
 /** Adds or removes the task checkbox on a list item, keeping its text. */

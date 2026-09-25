@@ -115,6 +115,30 @@ describe('view-state restoration', () => {
     viewport.destroy();
   });
 
+  it('keeps the map visible while restoring selection after Markdown closes', () => {
+    const { view, viewport, scroller } = open();
+    const node = document.createElement('div');
+    const centerElement = vi.spyOn(viewport, 'centerElement');
+    const closed = Reflect.get(view, 'handleLinkedSourceClose') as () => void;
+
+    Object.assign(view, {
+      selectedLine: 12,
+      laidByLine: new Map([[12, { el: node }]]),
+      selectedNodeReveal: null,
+      selectedNodeRevealTimer: null,
+      linkedSourceLeaf: {},
+      editor: { linkedLeaf: vi.fn(() => null) },
+      app: { workspace: { getLeavesOfType: vi.fn(() => []) } },
+      plugin: { settings: { closeLinkedMapWithSource: false } },
+    });
+    scroller.addClass('is-positioning');
+    closed.call(view);
+    expect(scroller.classList.contains('is-positioning')).toBe(false);
+    vi.advanceTimersByTime(16 * 7);
+    expect(centerElement).toHaveBeenCalledWith(node);
+    viewport.destroy();
+  });
+
   it.each([null, 32])(
     'restores a saved position for an unbookmarked opening (cursor %s)',
     async (cursor) => {

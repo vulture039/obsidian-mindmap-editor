@@ -8,7 +8,11 @@ import {
   TFolder,
   WorkspaceLeaf,
 } from 'obsidian';
-import { MindmapView, VIEW_TYPE_MINDMAP } from './obsidian/map/mindmap-view';
+import {
+  MINDMAP_ICON,
+  MindmapView,
+  VIEW_TYPE_MINDMAP,
+} from './obsidian/map/mindmap-view';
 import { FoldKind } from './core/folds';
 import { DEFAULT_SETTINGS, MindmapSettings } from './core/settings';
 import { findMarkdownView } from './obsidian/markdown/file-io';
@@ -67,7 +71,7 @@ export default class MindmapPlugin extends Plugin {
       VIEW_TYPE_MINDMAP,
       (leaf: WorkspaceLeaf) => new MindmapView(leaf, this),
     );
-    this.addRibbonIcon('git-fork', 'Open mind map', () => {
+    this.addRibbonIcon(MINDMAP_ICON, 'Open mind map', () => {
       void this.openMindmap();
     });
     this.addCommand({
@@ -373,7 +377,7 @@ export default class MindmapPlugin extends Plugin {
         menu.addItem((item) =>
           item
             .setTitle('Open mind map linked to this note')
-            .setIcon('git-fork')
+            .setIcon(MINDMAP_ICON)
             .onClick(() => void this.openMindmap(file, true, leaf)),
         );
       }),
@@ -440,7 +444,9 @@ export default class MindmapPlugin extends Plugin {
     const group = (leaf as WorkspaceLeaf & { group?: string }).group;
 
     return (
-      !!group && group === (tab as WorkspaceLeaf & { group?: string }).group
+      sameWindow(leaf, tab) &&
+      !!group &&
+      group === (tab as WorkspaceLeaf & { group?: string }).group
     );
   }
 

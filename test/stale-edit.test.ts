@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { MindNode, parseMarkdown } from '../src/core/parse/parser';
-import { relocateNode } from '../src/core/write/relocate';
+import { relocateNode, relocateTaskNode } from '../src/core/write/relocate';
 
 /**
  * The map holds off re-parsing while it is being used, so what it hands to a
@@ -62,5 +62,25 @@ describe('a node found again in a file that moved', () => {
     );
 
     expect(found?.parent?.text).toBe('H2');
+  });
+});
+
+describe('a task found again after its metadata changes', () => {
+  it('keeps targeting the task by its unchanged title', () => {
+    const before = parseMarkdown('- [ ] task ▲', 'Note').children[0]!;
+    const after = parseMarkdown('- [ ] task ▲ 📅 2026-12-31', 'Note');
+
+    expect(relocateTaskNode(after, before)?.taskMetadata).toEqual({
+      title: 'task',
+      priority: 'high',
+      dueDate: '2026-12-31',
+    });
+  });
+
+  it('still refuses indistinguishable moved tasks', () => {
+    const before = parseMarkdown('- [ ] task ▲', 'Note').children[0]!;
+    const after = parseMarkdown('intro\n- [ ] task ▼\n- [ ] task ●', 'Note');
+
+    expect(relocateTaskNode(after, before)).toBeNull();
   });
 });

@@ -17,7 +17,7 @@ No new file format, no markup to add.
 
 - **Markdown-native maps** - Headings and lists form the map; edits write back to the same note.
 - **Direct editing** - Add, rename, delete, multi-select, and drag nodes with undo/redo support.
-- **Tasks and folds** - Toggle checkboxes, collapse branches, and optionally hide completed tasks.
+- **Tasks and folds** - Add task notes, track and sync subtasks, collapse branches, and optionally hide completed tasks.
 - **Rich node text** - Show body text with inline Markdown, links, and image previews.
 - **Map/editor sync** - Selection, cursor position, folds, and wikilinks stay in sync.
 - **Flexible views** - Zoom, pan, fit, and reopen each map at its saved position.
@@ -38,11 +38,12 @@ Active while the mind map pane is focused.
 | `Enter`                 | Add a sibling (a child on the root)                                                                                    |
 | `Tab`                   | Add a child                                                                                                            |
 | `F2`                    | Rename the node                                                                                                        |
+| `Shift + F2`            | Add or edit the node's note                                                                                            |
 | `Space`                 | Toggle the selected task's checkbox                                                                                    |
 | `Ctrl/Cmd + B`          | Add or remove a bookmark for the selected node                                                                         |
 | `Delete` / `Backspace`  | Delete the selected node(s) and their subtrees                                                                         |
 | `Ctrl/Cmd + Z` / `+ ⇧Z` | Undo / redo, through the Markdown pane's history - or one step of the map's own when the note is only open for reading |
-| `Esc`                   | End an edit, else clear the selection                                                                                  |
+| `Esc`                   | End an edit, then clear the body-line and node selections                                                              |
 
 Back/forward use Obsidian's own Navigate back / forward command:
 `Ctrl + Alt + ←/→` (`Cmd + Option + ←/→` on macOS).

@@ -87,7 +87,7 @@ await send('Emulation.setFocusEmulationEnabled', { enabled: true });
 // Normalize one reusable fixture pair instead of accumulating a split per
 // check. Unrelated panes in the developer's workspace are left alone.
 if (basename(file) !== 'mobile.js') {
-  await send('Runtime.evaluate', {
+  const setup = await send('Runtime.evaluate', {
     expression: `(async () => {
       const path = 'Fixtures.md';
       const file = app.vault.getAbstractFileByPath(path);
@@ -115,23 +115,45 @@ if (basename(file) !== 'mobile.js') {
             leaf.view.currentFile?.path === path &&
             leaf.getContainer() === md.getContainer(),
         );
+      const fixtureMap = map;
+      const mapsBefore = new Set(
+        app.workspace.getLeavesOfType('mindmap-editor'),
+      );
 
-      map?.setGroup(null);
       await plugin.openMindmap(file, false, md);
-      map = app.workspace
-        .getLeavesOfType('mindmap-editor')
-        .find(
+      const maps = app.workspace.getLeavesOfType('mindmap-editor');
+
+      map =
+        maps.find(
           (leaf) =>
             leaf.view.currentFile?.path === path &&
             leaf.getContainer() === md.getContainer(),
-        );
+        ) ??
+        maps.find(
+          (leaf) =>
+            !mapsBefore.has(leaf) &&
+            leaf.getContainer() === md.getContainer(),
+        ) ??
+        fixtureMap;
       if (!map) return;
       map.setGroup(null);
+      if (map.view.currentFile?.path !== path) {
+        await map.view.setFile(file);
+      }
       await app.workspace.revealLeaf(map);
       window.__mindmapE2EFixture = { md, map };
     })()`,
     awaitPromise: true,
   });
+  const thrown = setup.result?.exceptionDetails;
+
+  if (thrown) {
+    console.error(
+      thrown.exception?.description ?? JSON.stringify(thrown, null, 2),
+    );
+    ws.close();
+    process.exit(1);
+  }
 }
 
 // Real keystrokes, on request from the page. Obsidian's keymap sees a key
@@ -184,10 +206,12 @@ await send('Runtime.evaluate', {
     const file = app.vault.getAbstractFileByPath(path);
     const fixture = window.__mindmapE2EFixture;
     const isolated = ${isolatedWindow};
+    const isolatedWindow = isolated ? fixture?.map.getContainer().win : null;
 
     if (isolated) {
       fixture?.map.detach();
       fixture?.md.detach();
+      isolatedWindow?.close();
     } else {
       fixture?.map.setGroup(null);
     }
@@ -196,6 +220,9 @@ await send('Runtime.evaluate', {
       await app.workspace.revealLeaf(fixture.md);
     }
     for (let i = 0; !isolated && i < 40 && fixture?.map.view.currentFile?.path !== path; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    for (let i = 0; isolatedWindow && !isolatedWindow.closed && i < 100; i++) {
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
     delete window.__mindmapE2EFixture;

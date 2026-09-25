@@ -2,16 +2,17 @@
 import { spawnSync } from 'node:child_process';
 
 const desktopChecks = [
-  // Popout must start before checks that create and close many split panes.
+  // Popout must start before checks that create and close split panes.
   'workspace/popout.js',
-  'workspace/panes.js',
+  'workspace/selected-pane.js',
   'viewport/initial-viewport.js',
   'editing/fidelity.js',
   'editing/keys.js',
+  'rendering/node-text.js',
+  'rendering/tasks.js',
   'navigation/bookmarks.js',
   'rendering/colors.js',
   'rendering/root.js',
-  'rendering/node-text.js',
   'rendering/drag-rendered-node.js',
   'viewport/zoom.js',
   'viewport/viewport.js',
@@ -20,6 +21,8 @@ const desktopChecks = [
   'viewport/initial-framing.js',
   'viewport/command-cursor.js',
   'viewport/active-linked-viewport.js',
+  // This owns a temporary window; close it only after every main-window check.
+  'workspace/panes.js',
 ].map((name) => new URL(name, import.meta.url).pathname);
 const checks = process.argv.length > 2 ? process.argv.slice(2) : desktopChecks;
 let failed = false;

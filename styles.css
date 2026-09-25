@@ -62,7 +62,6 @@
 .mindmap-canvas {
   position: absolute;
   transform-origin: top left;
-  will-change: transform;
 }
 
 /* Frozen completed frame shown while the next async layout is measured. */
@@ -228,6 +227,207 @@
   overflow-wrap: anywhere;
 }
 
+.mindmap-task-metadata {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 22px;
+  margin: 0;
+}
+
+.mindmap-task-metadata:not(.is-empty) {
+  margin-bottom: 4px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--text-muted) 35%, transparent);
+}
+
+.mindmap-task-metadata.is-empty {
+  position: absolute;
+  right: auto;
+  bottom: 100%;
+  left: 50%;
+  min-height: 0;
+  margin: 0;
+  padding-bottom: 8px;
+  transform: translateX(-50%);
+}
+
+.mindmap-task-metadata .is-unset {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.mindmap-task-metadata .is-unset:focus-visible,
+.mindmap-node:hover .mindmap-task-metadata .is-unset {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.mindmap-task-metadata button {
+  appearance: none;
+  height: 22px;
+  margin: 0;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.mindmap-menu-has-submenu::after {
+  position: absolute;
+  right: 8px;
+  content: '›';
+}
+
+.mindmap-task-date-picker {
+  position: fixed;
+  z-index: var(--layer-menu, 1000);
+  display: block;
+  width: 172px;
+  min-height: 32px;
+  padding: 4px 6px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: var(--background-primary);
+  box-shadow: var(--shadow-s);
+  color: var(--text-normal);
+}
+
+.mindmap-task-due-date {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  flex: 0 0 108px;
+  width: 108px;
+  height: 22px;
+  gap: 3px;
+  padding: 0 6px;
+  border: 1px solid color-mix(in srgb, var(--text-muted) 45%, transparent);
+  border-radius: 3px;
+  background: var(--background-primary);
+  box-shadow: none;
+  color: var(--text-normal);
+  font-size: 0.75em;
+  font-weight: 600;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.mindmap-task-due-date > input.mindmap-task-date-trigger {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  appearance: none;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.mindmap-task-due-date
+  > input.mindmap-task-date-trigger::-webkit-calendar-picker-indicator {
+  position: absolute;
+  inset: 0;
+  width: auto;
+  height: auto;
+  margin: 0;
+  cursor: pointer;
+}
+
+.mindmap-task-due-date .svg-icon {
+  width: 14px;
+  height: 14px;
+  transform: translateY(1px);
+}
+
+.mindmap-task-due-date.is-unset {
+  flex-basis: 28px;
+  width: 28px;
+  padding: 0;
+}
+
+.mindmap-task-metadata .mindmap-task-priority {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 28px;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--text-muted) 45%, transparent);
+  border-radius: 3px;
+  background: var(--background-primary);
+  box-shadow: none;
+  color: var(--text-normal);
+  font-size: 1.1em;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.mindmap-task-priority[data-priority='highest'] {
+  color: var(--color-red);
+}
+
+.mindmap-task-priority[data-priority='high'] {
+  color: var(--color-orange);
+}
+
+.mindmap-task-priority[data-priority='medium'] {
+  color: var(--interactive-accent);
+}
+
+.mindmap-task-priority[data-priority='low'] {
+  color: var(--color-blue);
+}
+
+.mindmap-task-priority.is-unset {
+  padding-bottom: 2px;
+}
+
+.mindmap-task-priority:hover,
+.mindmap-task-priority:focus-visible,
+.mindmap-task-due-date:hover,
+.mindmap-task-due-date:focus-visible {
+  border-color: color-mix(in srgb, var(--text-muted) 45%, transparent);
+  background: var(--background-modifier-hover);
+}
+
+.mindmap-task-progress {
+  position: relative;
+  box-sizing: border-box;
+  height: 14px;
+  margin: 5px 2px 0;
+  overflow: hidden;
+
+  /* Near-white in dark themes and near-black in light ones: enough outline
+     on an unfilled node without turning the bar into a separate control. */
+  border: 1px solid color-mix(in srgb, var(--text-normal) 65%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-normal) 12%, transparent);
+}
+
+.mindmap-task-progress-bar {
+  width: var(--task-progress);
+  height: 100%;
+  border-radius: inherit;
+  background: var(--interactive-accent);
+  transition: width 120ms ease;
+}
+
+.mindmap-task-progress-label {
+  position: absolute;
+  inset: 0;
+  color: var(--text-normal);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 14px;
+  text-align: center;
+  text-shadow: 0 0 2px var(--background-primary);
+}
+
 /* Hover feedback in the node's own branch color, so it cannot be mistaken for
    the accent ring that means "selected". Not while dragging: the drop-target
    and invalid-target cues own the nodes then. */
@@ -250,12 +450,15 @@
 
 .mindmap-node-body {
   margin-top: 4px;
+  margin-inline: 2px;
 
-  /* The node's own color at half strength: enough to find the divider on a
-     tinted heading fill, still quieter than the border it echoes. */
-  border-top: 1px solid color-mix(in srgb, var(--branch-color) 50%, transparent);
-  padding-top: 4px;
-  color: var(--level-text);
+  /* Some depth rungs have no tint, so a background-derived border disappears
+     there. Text color keeps the field equally legible on every rung. */
+  border: 1px solid color-mix(in srgb, var(--text-normal) 42%, transparent);
+  border-radius: 4px;
+  padding: 4px 6px;
+  background: var(--background-primary);
+  color: var(--text-normal);
   font-size: var(--font-ui-smaller);
   line-height: 1.4;
   text-align: left;
@@ -269,6 +472,8 @@
    pre-wrap keeps indentation inside the text (a nested code block), which is
    also what gets written back. An empty line is a paragraph break. */
 .mindmap-node-body-line {
+  /* An empty source line still needs a row for its mirrored caret. */
+  min-height: 1.4em;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -279,6 +484,36 @@
 .mindmap-node-body-line > p {
   display: inline;
   margin: 0;
+}
+
+/* A source line is one map row even when MarkdownRenderer recognizes a block
+   construct inside it. Keep quote/list/code wrappers from adding Reading
+   View's vertical margins or their own block height. */
+.mindmap-node .mindmap-node-body-line blockquote,
+.mindmap-node .mindmap-node-body-line ul,
+.mindmap-node .mindmap-node-body-line ol,
+.mindmap-node .mindmap-node-body-line pre {
+  display: inline;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  line-height: inherit;
+  white-space: pre-wrap;
+}
+
+.mindmap-node .mindmap-node-body-line blockquote > p {
+  display: inline;
+  margin: 0;
+}
+
+.mindmap-node .mindmap-node-body-line blockquote::before,
+.mindmap-node .mindmap-node-body-line blockquote::after {
+  content: none;
+}
+
+.mindmap-node .mindmap-node-body-line blockquote::before {
+  display: inline;
+  content: '> ';
 }
 
 /* Image embeds in a node's own text use the same resource URL as Reading
@@ -321,6 +556,33 @@
   border-radius: 3px;
   background: color-mix(in srgb, var(--interactive-accent) 20%, transparent);
   color: var(--text-normal);
+}
+
+/* The keyboard remains in Obsidian's editor; this caret only mirrors where
+   its next character will appear, so the map never owns or writes the text. */
+.mindmap-node-body-line.is-mirror-editing {
+  color: var(--text-normal);
+}
+
+.mindmap-mirrored-caret {
+  display: inline-block;
+  height: 1em;
+  margin-inline: -1px 0;
+  border-inline-start: 2px solid var(--interactive-accent);
+  vertical-align: -0.15em;
+  animation: mindmap-mirrored-caret 1s steps(1) infinite;
+}
+
+@keyframes mindmap-mirrored-caret {
+  50% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mindmap-mirrored-caret {
+    animation: none;
+  }
 }
 
 /* Collapse handle: grey chrome, so the branch colors stay the nodes'. The
@@ -487,7 +749,6 @@
 }
 
 .mindmap-node.is-done .mindmap-node-text {
-  color: color-mix(in oklab, var(--level-text) 82%, var(--background-primary));
   text-decoration: line-through;
 }
 
@@ -562,12 +823,6 @@
   user-select: text;
 }
 
-/* Obsidian flashes a line by tinting it, and a code span paints over the tint:
-   all that showed was the indent. Every rule that paints one reads this. */
-.is-flashing {
-  --code-background: transparent;
-}
-
 /* A reading pane's mark, narrowed to the line the map has selected. The block
    flash underneath it would light the lines either side, so it stands down for
    as long as ours is up. */
@@ -577,10 +832,7 @@
   background-color: rgb(255 208 0 / 40%);
 }
 
-/* Obsidian's flash is forced, so no rule outweighs it - but the color it
-   paints with is a variable, and that we can empty. */
-.mindmap-quiet-flash .is-flashing {
-  --text-highlight-bg: transparent;
-
-  animation: none;
+.mindmap-line-highlight {
+  border-radius: 3px;
+  background-color: rgb(255 208 0 / 40%);
 }

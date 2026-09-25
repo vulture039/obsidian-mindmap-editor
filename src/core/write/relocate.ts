@@ -26,6 +26,42 @@ export function relocateNode(root: MindNode, node: MindNode): MindNode | null {
   );
 }
 
+/** Finds a task whose title is unchanged while its terminal metadata moved on. */
+export function relocateTaskNode(
+  root: MindNode,
+  node: MindNode,
+): MindNode | null {
+  if (node.checked === null) {
+    return null;
+  }
+  const found: MindNode[] = [];
+  const title = node.taskMetadata?.title ?? node.text;
+  const visit = (candidate: MindNode): void => {
+    const candidateTitle = candidate.taskMetadata?.title ?? candidate.text;
+
+    if (
+      candidate.checked !== null &&
+      candidate.type === node.type &&
+      candidateTitle === title &&
+      candidate.level === node.level &&
+      candidate.indent === node.indent
+    ) {
+      found.push(candidate);
+    }
+    candidate.children.forEach(visit);
+  };
+
+  visit(root);
+
+  return pick(
+    found,
+    node,
+    node.line,
+    (candidate) => candidate,
+    (candidate) => candidate.line,
+  );
+}
+
 /**
  * Which candidate the write belongs to. Where several say the same thing, what
  * is under them decides before the old line does: a twin that has moved onto

@@ -95,6 +95,22 @@ describe('parseMarkdown - checkboxes', () => {
 
     expect(root.children[0]!.text).toBe('buy milk');
   });
+
+  it('reads terminal priority and due-date metadata only from task items', () => {
+    const root = parseMarkdown(
+      '- [ ] task ❗ 📅 2026-10-01\n- plain ▲ 📅 2026-10-01',
+      'Note',
+    );
+    const [task, plain] = root.children;
+
+    expect(task!.text).toBe('task ❗ 📅 2026-10-01');
+    expect(task!.taskMetadata).toEqual({
+      title: 'task',
+      priority: 'highest',
+      dueDate: '2026-10-01',
+    });
+    expect(plain!.taskMetadata).toBeNull();
+  });
 });
 
 describe('parseMarkdown - endLine', () => {

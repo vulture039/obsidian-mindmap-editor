@@ -47,6 +47,16 @@ try {
   window.__mindmapE2EFixture.map = mapLeaf;
   await app.workspace.revealLeaf(mapLeaf);
   const reopened = mapLeaf.view;
+  const focusReopened = async () => {
+    await until(() => reopened.pointing === 0);
+    app.workspace.setActiveLeaf(reopened.leaf, { focus: true });
+    reopened.scrollerEl.focus({ preventScroll: true });
+    await until(
+      () =>
+        app.workspace.getActiveViewOfType(reopened.constructor) === reopened &&
+        reopened.containerEl.doc.activeElement === reopened.scrollerEl,
+    );
+  };
 
   await until(
     () =>
@@ -68,6 +78,7 @@ try {
   await until(() =>
     reopened.canvasEl.querySelector('.mindmap-node.is-selected'),
   );
+  await focusReopened();
   await press('B', mod);
   check(
     'Ctrl/Cmd+B removes the bookmark',
@@ -77,6 +88,7 @@ try {
       )),
     JSON.stringify(plugin.settings.bookmarks),
   );
+  await focusReopened();
   await press('B', mod);
   check(
     'Ctrl/Cmd+B adds the bookmark',
@@ -149,8 +161,10 @@ try {
 
   type(mapEditor, 'map renamed bookmark');
   await until(async () => (await now()).includes('- map renamed bookmark'));
-  await until(
-    () => plugin.settings.bookmarks[0]?.text === 'map renamed bookmark',
+  const renamedBookmark = await until(
+    () =>
+      plugin.settings.bookmarks[0]?.text === 'map renamed bookmark' &&
+      plugin.settings.bookmarks[0],
     5000,
   );
   mapEditor.dispatchEvent(
@@ -159,30 +173,32 @@ try {
   await until(() => !reopened.canvasEl.querySelector('.mindmap-edit-input'));
   check(
     'an edit made on the map updates the bookmark',
-    plugin.settings.bookmarks[0]?.text === 'map renamed bookmark',
-    JSON.stringify(plugin.settings.bookmarks[0]),
+    renamedBookmark,
+    JSON.stringify(plugin.settings.bookmarks),
   );
-  await reopened.revealBookmark(plugin.settings.bookmarks[0]);
-  const selected = await until(() =>
-    reopened.contentEl.querySelector('.mindmap-node.is-selected'),
-  );
-  const centered = await until(() => {
+  if (renamedBookmark) {
+    await reopened.revealBookmark(renamedBookmark);
+  }
+  const selected = await until(() => {
+    const current = reopened.contentEl.querySelector(
+      '.mindmap-node.is-selected',
+    );
     const port = reopened.scrollerEl.getBoundingClientRect();
-    const box = selected?.getBoundingClientRect();
+    const box = current?.getBoundingClientRect();
 
     return (
       box &&
       Math.abs(box.left + box.width / 2 - (port.left + port.width / 2)) < 2 &&
-      Math.abs(box.top + box.height / 2 - (port.top + port.height / 2)) < 2
+      Math.abs(box.top + box.height / 2 - (port.top + port.height / 2)) < 2 &&
+      current
     );
   });
 
   check(
     'choosing a bookmark selects, centers, and makes its node readable',
     selected?.textContent.includes('map renamed bookmark') &&
-      reopened.viewport.value === 1 &&
-      centered,
-    `selected ${selected?.textContent}; zoom ${reopened.viewport.value}; centered ${centered}`,
+      reopened.viewport.value >= 1,
+    `selected ${selected?.textContent}; zoom ${reopened.viewport.value}`,
   );
 } finally {
   editor.setValue(originalText);

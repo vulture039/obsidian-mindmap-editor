@@ -1,4 +1,5 @@
 import { FENCE_RE, HEADING_RE, LIST_RE } from './patterns';
+import { TaskMetadata, parseTaskMetadata } from '../task-metadata';
 
 export type NodeType = 'root' | 'heading' | 'list';
 
@@ -29,6 +30,8 @@ export interface MindNode {
   marker: string;
   /** true/false for task items, null for plain nodes. */
   checked: boolean | null;
+  /** Recognized terminal metadata for task items; null for every other node. */
+  taskMetadata: TaskMetadata | null;
   children: MindNode[];
   parent: MindNode | null;
 }
@@ -58,6 +61,7 @@ export function parseMarkdown(text: string, rootText: string): MindNode {
     indent: '',
     marker: '',
     checked: null,
+    taskMetadata: null,
     children: [],
     parent: null,
   };
@@ -107,6 +111,7 @@ export function parseMarkdown(text: string, rootText: string): MindNode {
         indent: '',
         marker: '',
         checked: null,
+        taskMetadata: null,
         children: [],
         parent,
       };
@@ -132,6 +137,7 @@ export function parseMarkdown(text: string, rootText: string): MindNode {
       const parent = listStack.length
         ? (listStack[listStack.length - 1]?.node ?? root)
         : (headingStack[headingStack.length - 1] ?? root);
+      const checked = listMatch[3] === undefined ? null : listMatch[3] !== ' ';
       const node: MindNode = {
         type: 'list',
         text: (listMatch[4] ?? '').trim(),
@@ -141,7 +147,11 @@ export function parseMarkdown(text: string, rootText: string): MindNode {
         level: listStack.length,
         indent,
         marker: listMatch[2] ?? '-',
-        checked: listMatch[3] === undefined ? null : listMatch[3] !== ' ',
+        checked,
+        taskMetadata:
+          checked === null
+            ? null
+            : parseTaskMetadata((listMatch[4] ?? '').trim()),
         children: [],
         parent,
       };

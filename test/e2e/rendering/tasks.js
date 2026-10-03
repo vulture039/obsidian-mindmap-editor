@@ -8,6 +8,32 @@ const wasShowingBody = view.showBodyText;
 
 try {
   view.hideCompleted = false;
+  await setFile('- [ ] Decorated task with [[Target]]');
+  const decoratedTask = view.root.children[0];
+  const decoratedTaskEl = view.laidByLine.get(decoratedTask.line)?.el;
+
+  view.selectNode(decoratedTask, decoratedTaskEl);
+  const decoratedHighlight = await until(() => {
+    if (editor.getCursor().line !== decoratedTask.line) {
+      return null;
+    }
+    const at = editor.cm?.domAtPos(
+      editor.posToOffset({ line: decoratedTask.line, ch: 0 }),
+    )?.node;
+    const line =
+      at?.instanceOf(Element) && at.matches('.cm-line')
+        ? at
+        : at?.parentElement?.closest('.cm-line');
+
+    return line?.hasClass('mindmap-line-highlight') ? line : null;
+  });
+
+  check(
+    'a decorated task falls back to whole-line source highlighting',
+    !!decoratedHighlight && !CSS.highlights.has('mindmap-line'),
+    decoratedHighlight?.outerHTML,
+  );
+
   await setFile(
     ['- Parent', '\t- [x] Done', '\t- [ ] Open', '- [ ] Note task'].join('\n'),
   );

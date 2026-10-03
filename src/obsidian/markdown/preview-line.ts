@@ -14,7 +14,8 @@ const FLASH_MS = 5000;
 
 let fade: number | null = null;
 let markedElement: HTMLElement | null = null;
-/** Which window the mark went up in: the registry below belongs to one. */
+let markedSourceElement: HTMLElement | null = null;
+/** Which window owns the mark and its cleanup timer. */
 let marked: Window | null = null;
 
 /**
@@ -87,7 +88,7 @@ export function markPreviewLine(
   return true;
 }
 
-/** Highlights a source line's content, leaving its structural indent alone. */
+/** Highlights source content, falling back when Live Preview replaces it. */
 export function markSourceLine(view: MarkdownView, line: number): boolean {
   if (line < 0 || line > view.editor.lastLine()) {
     return false;
@@ -120,9 +121,6 @@ export function markSourceLine(view: MarkdownView, line: number): boolean {
         view.containerEl.querySelector<HTMLElement>('.cm-activeLine');
 
       range = active ? textRange(active, first, text.length) : range;
-      if (range.toString() !== text.slice(first)) {
-        return false;
-      }
     }
     const win = view.containerEl.win;
     const Highlight = (
@@ -131,12 +129,25 @@ export function markSourceLine(view: MarkdownView, line: number): boolean {
       }
     ).Highlight;
 
-    if (!Highlight) {
-      return false;
-    }
     clearPreviewLine();
     marked = win;
-    registry(win).set(HIGHLIGHT, new Highlight(range));
+    if (range.toString() === text.slice(first) && Highlight) {
+      registry(win).set(HIGHLIGHT, new Highlight(range));
+
+      return true;
+    }
+    const element =
+      from.node.instanceOf(Element) && from.node.matches('.cm-line')
+        ? from.node
+        : from.node.parentElement?.closest<HTMLElement>('.cm-line');
+
+    if (!element) {
+      marked = null;
+
+      return false;
+    }
+    markedSourceElement = element as HTMLElement;
+    markedSourceElement.addClass('mindmap-line-highlight');
 
     return true;
   } catch {
@@ -262,6 +273,8 @@ export function clearPreviewLine(root?: ParentNode): void {
     return;
   }
   registry(win).delete(HIGHLIGHT);
+  markedSourceElement?.removeClass('mindmap-line-highlight');
+  markedSourceElement = null;
   if (markedElement?.isConnected) {
     const parent = markedElement.parentNode;
 

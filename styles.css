@@ -823,15 +823,14 @@
   user-select: text;
 }
 
-/* A reading pane's mark, narrowed to the line the map has selected. The block
-   flash underneath it would light the lines either side, so it stands down for
-   as long as ours is up. */
+/* A source pane's precise mark, excluding the line's structural indentation. */
 ::highlight(mindmap-line) {
   /* Obsidian's own flash colour, spelled out: a highlight pseudo-element does
      not inherit the theme's custom properties, so var() here paints nothing. */
   background-color: rgb(255 208 0 / 40%);
 }
 
+/* Fallback for decorated source lines, and the mark used in reading view. */
 .mindmap-line-highlight {
   border-radius: 3px;
   background-color: rgb(255 208 0 / 40%);

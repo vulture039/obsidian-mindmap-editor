@@ -13,6 +13,8 @@ const desktopChecks = [
   'navigation/bookmarks.js',
   'rendering/colors.js',
   'rendering/root.js',
+  'rendering/collapse-unselected.js',
+  'rendering/node-actions.js',
   'rendering/drag-rendered-node.js',
   'viewport/zoom.js',
   'viewport/viewport.js',

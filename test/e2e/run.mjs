@@ -15,6 +15,7 @@ import { basename } from 'node:path';
 /** What Chromium wants for the keys these checks press. */
 const KEY_CODES = {
   Enter: 13,
+  F2: 113,
   Escape: 27,
   Backspace: 8,
   Delete: 46,

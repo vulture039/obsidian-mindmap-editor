@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { parseMarkdown } from './parse/parser';
 import {
   branchTargets,
+  branchesOutsidePath,
   collapsedFromFolds,
   foldsKey,
   mergeFolds,
@@ -45,6 +46,28 @@ describe('branchTargets / textTargets', () => {
 
     expect(branchTargets(root)).toEqual([-1]);
     expect(textTargets(root)).toEqual([]);
+  });
+});
+
+describe('branchesOutsidePath', () => {
+  it('collapses every branch except the selected leaf path', () => {
+    const root = parseMarkdown(
+      '# A\n- a\n  - a1\n- b\n  - b1\n# B\n- c\n  - c1',
+      'Note',
+    );
+    const selected = root.children[0]!.children[0]!.children[0]!;
+
+    expect([...branchesOutsidePath(selected)]).toEqual([3, 5, 6]);
+  });
+
+  it('expands the selected branch but collapses branches below it', () => {
+    const root = parseMarkdown(
+      '# A\n- a\n  - a1\n    - deep\n- b\n  - b1',
+      'Note',
+    );
+    const selected = root.children[0]!.children[0]!;
+
+    expect([...branchesOutsidePath(selected)]).toEqual([2, 4]);
   });
 });
 

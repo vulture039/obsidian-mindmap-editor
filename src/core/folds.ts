@@ -17,6 +17,21 @@ export function branchTargets(root: MindNode): number[] {
   return targets(root, (n) => n.children.length > 0);
 }
 
+/** Branches outside `selected`'s path, leaving that path fully visible. */
+export function branchesOutsidePath(selected: MindNode): Set<number> {
+  const path = new Set<number>();
+  let root = selected;
+
+  for (let node: MindNode | null = selected; node; node = node.parent) {
+    path.add(node.line);
+    root = node;
+  }
+
+  return new Set(
+    branchTargets(root).filter((line) => line >= 0 && !path.has(line)),
+  );
+}
+
 /** Lines of the nodes a text fold hides the own text of. */
 export function textTargets(root: MindNode): number[] {
   return targets(root, (n) => n.body.length > 0);

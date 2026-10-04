@@ -99,6 +99,8 @@ try {
   });
 
   view.selectNode(noteNode, noteLabel.closest('.mindmap-node'));
+  await settle();
+  focusMap();
   await press('F2', { shiftKey: true });
   const withNote = await until(async () => {
     const text = await now();
@@ -249,6 +251,7 @@ try {
   );
 
   await setFile('- [ ] Priority task');
+  await settle();
   const priorityTask = view.root.children[0];
   const priorityTaskEl = view.laidByLine.get(priorityTask.line)?.el;
 
@@ -265,15 +268,53 @@ try {
   );
 
   click(priorityMenuItem, 'mouseenter');
-  const highPriority = await until(() =>
-    [...view.containerEl.doc.querySelectorAll('.menu-item')].find(
-      (item) =>
-        item.querySelector('.menu-item-title')?.textContent === '▲ High',
-    ),
+  const priorityChoice = (text) =>
+    [
+      ...view.containerEl.doc.querySelectorAll(
+        '.mindmap-task-priority-picker button',
+      ),
+    ].find((item) => item.textContent === text);
+  const highPriority = await until(() => priorityChoice('▲ High'));
+  const priorityParentMenu = priorityMenuItem.closest('.menu');
+  const prioritySubmenu = highPriority.closest('.mindmap-task-priority-picker');
+  const priorityItemBox = priorityMenuItem.getBoundingClientRect();
+  const prioritySubmenuBox = prioritySubmenu.getBoundingClientRect();
+  const prioritySubmenuSide =
+    prioritySubmenuBox.right <= priorityItemBox.left ? 'left' : 'right';
+
+  priorityMenuItem.dispatchEvent(
+    new MouseEvent('mouseleave', { relatedTarget: prioritySubmenu }),
   );
+  click(prioritySubmenu, 'mouseenter');
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  check(
+    'moving into the priority submenu keeps it open',
+    view.containerEl.doc.body.contains(highPriority),
+  );
+  prioritySubmenu.dispatchEvent(new MouseEvent('mouseleave'));
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  check(
+    'leaving the priority submenu closes it',
+    !view.containerEl.doc.body.contains(highPriority),
+  );
+  click(priorityMenuItem, 'mouseenter');
+  const priorityAfterLeave = await until(() => priorityChoice('▲ High'));
+  const renameItem = [
+    ...priorityParentMenu.querySelectorAll('.menu-item'),
+  ].find(
+    (item) => item.querySelector('.menu-item-title')?.textContent === 'Rename',
+  );
+
+  click(renameItem, 'mouseenter');
+  check(
+    'leaving priority for another action closes its submenu',
+    !view.containerEl.doc.body.contains(priorityAfterLeave),
+  );
+  click(priorityMenuItem, 'mouseenter');
+  const reopenedHighPriority = await until(() => priorityChoice('▲ High'));
   const beforePriority = await now();
 
-  click(highPriority);
+  click(reopenedHighPriority);
   await written(beforePriority);
   await drawn();
   const priorityMetadata = label('Priority task')
@@ -288,11 +329,7 @@ try {
   );
 
   click(priorityMetadata?.querySelector('.mindmap-task-priority'));
-  const lowPriority = await until(() =>
-    [...view.containerEl.doc.querySelectorAll('.menu-item')].find(
-      (item) => item.querySelector('.menu-item-title')?.textContent === '▼ Low',
-    ),
-  );
+  const lowPriority = await until(() => priorityChoice('▼ Low'));
   const beforeDirectPriority = await now();
 
   click(lowPriority);
@@ -319,27 +356,87 @@ try {
     ),
   );
 
-  click(dueMenuItem);
-  const dueInput = await until(() =>
+  click(dueMenuItem, 'mouseenter');
+  let dueCalendar = await until(() =>
+    [...view.containerEl.doc.querySelectorAll('.mindmap-task-date-picker')].at(
+      -1,
+    ),
+  );
+  const dueParentMenu = dueMenuItem.closest('.menu');
+  const duePriorityItem = [
+    ...dueParentMenu.querySelectorAll('.menu-item'),
+  ].find(
+    (item) =>
+      item.querySelector('.menu-item-title')?.textContent === 'Priority',
+  );
+
+  click(duePriorityItem, 'mouseenter');
+  const duePriorityChoice = await until(() => priorityChoice('▲ High'));
+  check(
+    'priority and due-date hover controls replace each other',
+    !view.containerEl.doc.body.contains(dueCalendar) && !!duePriorityChoice,
+  );
+  click(dueMenuItem, 'mouseenter');
+  dueCalendar = await until(() =>
+    [...view.containerEl.doc.querySelectorAll('.mindmap-task-date-picker')].at(
+      -1,
+    ),
+  );
+  check(
+    'returning to due date closes the priority submenu',
+    !view.containerEl.doc.body.contains(duePriorityChoice),
+  );
+  const dueMenuBox = dueMenuItem.getBoundingClientRect();
+  const dueCalendarBox = dueCalendar.getBoundingClientRect();
+  const dueCalendarSide =
+    dueCalendarBox.right <= dueMenuBox.left ? 'left' : 'right';
+  const dueCalendarAdjacent =
+    dueCalendarSide === 'left'
+      ? dueMenuBox.left - dueCalendarBox.right <= 5
+      : dueCalendarBox.left - dueMenuBox.right <= 5;
+
+  check(
+    'the due date menu shows its calendar beside the item',
+    dueCalendarAdjacent && Math.abs(dueCalendarBox.top - dueMenuBox.top) < 2,
+    JSON.stringify({
+      menu: dueMenuBox.toJSON(),
+      calendar: dueCalendarBox.toJSON(),
+    }),
+  );
+  check(
+    'priority and due date open on the same side',
+    prioritySubmenuSide === dueCalendarSide &&
+      priorityMenuItem.classList.contains('opens-left') ===
+        (prioritySubmenuSide === 'left') &&
+      dueMenuItem.classList.contains('opens-left') ===
+        (dueCalendarSide === 'left'),
+    `${prioritySubmenuSide}, ${dueCalendarSide}`,
+  );
+  dueMenuItem.dispatchEvent(
+    new MouseEvent('mouseleave', { relatedTarget: dueCalendar }),
+  );
+  click(dueCalendar, 'mouseenter');
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  check(
+    'moving into the calendar keeps it open',
+    view.containerEl.doc.body.contains(dueCalendar),
+  );
+  dueCalendar.dispatchEvent(new MouseEvent('mouseleave'));
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  check(
+    'leaving the calendar closes it',
+    !view.containerEl.doc.body.contains(dueCalendar),
+  );
+  click(dueMenuItem, 'mouseenter');
+  dueCalendar = await until(() =>
     [...view.containerEl.doc.querySelectorAll('.mindmap-task-date-picker')].at(
       -1,
     ),
   );
 
-  view.selectNode(dueTask, dueTaskEl);
-  dueInput.focus();
-  await press('Delete');
-  check(
-    'date input keeps Delete from deleting its task',
-    (await now()).includes('- [ ] Due task') &&
-      !!label('Due task')?.closest('.mindmap-node'),
-    await now(),
-  );
-
-  type(dueInput, '2026-10-01');
   const beforeDueDate = await now();
 
-  dueInput.dispatchEvent(new Event('change', { bubbles: true }));
+  click(dueCalendar.querySelector('[data-date="2026-10-01"]'));
   await written(beforeDueDate);
   await drawn();
   const dueMetadata = label('Due task')
@@ -382,18 +479,111 @@ try {
     }),
   );
 
-  const inlineDueInput = dueMetadata?.querySelector(
-    '.mindmap-task-date-trigger',
+  const centeredMetadata = label('Due task')
+    .closest('.mindmap-node')
+    .querySelector('.mindmap-task-metadata');
+  const priorityControl = centeredMetadata.querySelector(
+    '.mindmap-task-priority',
+  );
+  const dateControl = centeredMetadata.querySelector('.mindmap-task-due-date');
+  const priorityRect = priorityControl.getBoundingClientRect();
+  const flagRect = priorityControl
+    .querySelector('.svg-icon')
+    .getBoundingClientRect();
+  const dateRect = dateControl.getBoundingClientRect();
+  const calendarRect = dateControl
+    .querySelector('.svg-icon')
+    .getBoundingClientRect();
+  check(
+    'inline task icons match checkbox size and align within their controls',
+    Math.abs(
+      flagRect.width -
+        centeredMetadata
+          .closest('.mindmap-node')
+          .querySelector('.mindmap-checkbox')
+          .getBoundingClientRect().width,
+    ) < 0.5 &&
+      Math.abs(calendarRect.width - flagRect.width) < 0.5 &&
+      Math.abs(
+        calendarRect.left - dateRect.left - flagRect.left + priorityRect.left,
+      ) < 0.5 &&
+      Math.abs(
+        flagRect.left +
+          flagRect.width / 2 -
+          priorityRect.left -
+          priorityRect.width / 2,
+      ) < 0.5 &&
+      Math.abs(
+        flagRect.top +
+          flagRect.height / 2 -
+          priorityRect.top -
+          priorityRect.height / 2,
+      ) < 0.5 &&
+      Math.abs(
+        calendarRect.top +
+          calendarRect.height / 2 -
+          dateRect.top -
+          dateRect.height / 2,
+      ) < 0.5,
+    JSON.stringify({
+      priority: priorityRect.toJSON(),
+      flag: flagRect.toJSON(),
+      date: dateRect.toJSON(),
+      calendar: calendarRect.toJSON(),
+    }),
   );
 
-  type(inlineDueInput, '2026-10-02');
   const beforeInlineDueDate = await now();
+  const currentDueMetadata = label('Due task')
+    ?.closest('.mindmap-node')
+    ?.querySelector('.mindmap-task-metadata');
 
-  inlineDueInput.dispatchEvent(new Event('change', { bubbles: true }));
+  click(currentDueMetadata?.querySelector('.mindmap-task-due-date'));
+  const inlineCalendar = await until(() =>
+    view.containerEl.doc.querySelector('.mindmap-task-date-picker'),
+  );
+  click(inlineCalendar.querySelector('[data-date="2026-10-02"]'));
   await written(beforeInlineDueDate);
   check(
     'clickable due date updates the task directly',
     (await now()) === '- [ ] Due task 📅 2026-10-02',
+    await now(),
+  );
+
+  const changedDueTask = view.root.children[0];
+  const changedDueTaskEl = view.laidByLine.get(changedDueTask.line)?.el;
+
+  view.showNodeMenu(
+    changedDueTask,
+    changedDueTaskEl,
+    new MouseEvent('contextmenu', { clientX: 100, clientY: 100 }),
+  );
+  const dueMenus = view.containerEl.doc.querySelectorAll('.menu');
+  const changedDueMenu = dueMenus[dueMenus.length - 1];
+  const changedDueTitles = [
+    ...changedDueMenu.querySelectorAll('.menu-item-title'),
+  ].map((item) => item.textContent);
+  const changeDueItem = [...changedDueMenu.querySelectorAll('.menu-item')].find(
+    (item) =>
+      item.querySelector('.menu-item-title')?.textContent === 'Change due date',
+  );
+
+  check(
+    'the due date menu delegates clearing to its calendar',
+    !!changeDueItem && !changedDueTitles.includes('Clear due date'),
+    changedDueTitles.join(', '),
+  );
+  click(changeDueItem, 'mouseenter');
+  const clearDueCalendar = view.containerEl.doc.querySelector(
+    '.mindmap-task-date-picker',
+  );
+  const beforeClearDueDate = await now();
+
+  click(clearDueCalendar.querySelector('.mindmap-calendar-clear'));
+  await written(beforeClearDueDate);
+  check(
+    'clearing the change-date input removes the due date',
+    (await now()) === '- [ ] Due task',
     await now(),
   );
 
@@ -410,6 +600,58 @@ try {
     editor.getLine(0) === '- [ ] Concurrent metadata task ▼ 📅 2026-12-31',
     editor.getLine(0),
   );
+  await drawn();
+  await settle();
+  for (const [side, x] of [
+    ['right', 100],
+    ['left', view.canvasEl.win.innerWidth - 10],
+  ]) {
+    const submenuNode = view.root.children[0];
+    view.showNodeMenu(
+      submenuNode,
+      view.laidByLine.get(submenuNode.line).el,
+      new MouseEvent('contextmenu', { clientX: x, clientY: 100 }),
+    );
+    const parent = [...view.canvasEl.doc.querySelectorAll('.menu')].at(-1);
+    const rows = [...parent.querySelectorAll('.menu-item')].filter((item) =>
+      ['Priority', 'Change due date', 'Rename', 'Remove checkbox'].includes(
+        item.querySelector('.menu-item-title')?.textContent,
+      ),
+    );
+    const columns = rows.map((item) => ({
+      icon: item.querySelector('.menu-item-icon').getBoundingClientRect().left,
+      title: item.querySelector('.menu-item-title').getBoundingClientRect()
+        .left,
+    }));
+    check(
+      `${side}-opening task menus align all icon and label columns`,
+      columns.length === 4 &&
+        columns.every(
+          (column) =>
+            Math.abs(column.icon - columns[0].icon) < 1 &&
+            Math.abs(column.title - columns[0].title) < 1,
+        ),
+      JSON.stringify(columns),
+    );
+    const item = rows.find(
+      (row) =>
+        row.querySelector('.menu-item-title')?.textContent === 'Priority',
+    );
+    click(item, 'mouseenter');
+    const submenu = await until(() => view.priorityMenu);
+    const box = item.getBoundingClientRect();
+    const submenuBox = submenu.getBoundingClientRect();
+    const arrow = getComputedStyle(item, '::after');
+    const left = side === 'left';
+    check(
+      `${side}-opening task menus place arrows beside their submenus`,
+      item.classList.contains('opens-left') === left &&
+        parseFloat(left ? arrow.left : arrow.right) === 8 &&
+        (left ? submenuBox.right <= box.left : submenuBox.left >= box.right),
+    );
+    await press('Escape');
+    await press('Escape');
+  }
 } finally {
   view.hideCompleted = wasHideCompleted;
   view.showBodyText = wasShowingBody;

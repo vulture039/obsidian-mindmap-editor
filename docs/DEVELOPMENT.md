@@ -141,8 +141,6 @@ judgement about how it looks. In `Fixtures.md`:
   text comes out as composed
 - Drag a node onto another - it becomes its child; drag to a sibling's edge - it
   lands there
-- In mobile emulation, select a node - it stays selected on the visible map
-  instead of replacing the map with its Markdown file
 - Ctrl/Cmd-click same-type siblings, then drag one - all selected subtrees move
   in their original order; Delete/Backspace removes all of them in one undo step
 - Click `[[Linked]]` - map and editor both move to that note, and Obsidian's
@@ -164,7 +162,6 @@ frame, which is what keeps the nodes readable at 800px.
 
 ## Issues
 
-- Branch as `feat/issue-<issue-no>` and fix it there
 - Open a pull request on GitHub and merge it
 - Put `Closes #<issue-no>` in a commit message or in the PR description
 

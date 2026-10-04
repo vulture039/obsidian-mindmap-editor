@@ -153,8 +153,6 @@ describe('bookmark menus', () => {
 
     expect(titles).toContain('Priority');
     expect(titles).toContain('Set due date');
-    menus[0]?.items.find((item) => item.title === 'Priority')?.click?.();
-    expect(menus[1]?.items.map((item) => item.title)).toContain('▲ High');
     menus.splice(0);
     show.call(
       view,

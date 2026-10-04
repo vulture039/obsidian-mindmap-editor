@@ -1,5 +1,7 @@
 # Mind map editor
 
+[![Obsidian downloads](https://img.shields.io/badge/dynamic/json?logo=obsidian&color=483699&label=downloads&query=%24%5B%22mindmap-editor%22%5D.downloads&url=https%3A%2F%2Fraw.githubusercontent.com%2Fobsidianmd%2Fobsidian-releases%2Fmaster%2Fcommunity-plugin-stats.json)](https://obsidian.md/plugins?id=mindmap-editor)
+
 Edit your outline as a mind map, synced to Markdown.
 No new file format, no markup to add.
 
@@ -23,6 +25,7 @@ No new file format, no markup to add.
 - **Flexible views** - Zoom, pan, fit, and reopen each map at its saved position.
 - **Link and Auto-open** - Link a map to a Markdown tab, or reopen it automatically with a note.
 - **Node bookmarks** - Save important nodes and jump back from the map header. The plugin follows identifiable edits made in Obsidian even while the map is closed.
+- **Node action bar** - Hover a node to add children or siblings, switch lists and tasks, and edit task metadata; right-click or `…` opens the full menu.
 - **Visual hierarchy** - Depth, headings, and neighboring branch colors remain easy to distinguish.
 
 ## Keyboard shortcuts
@@ -59,6 +62,7 @@ None of these come with a hotkey; bind the ones you want in Settings → Hotkeys
 | `Fit mind map to viewport`                          | Fits the whole map in the viewport and centers it     |
 | `Toggle focus between mind map and Markdown editor` | Jumps between the two panes                           |
 | `Collapse all branches` / `Expand all branches`     | The `⌄⌃` header button, one direction at a time       |
+| `Collapse unselected branches`                      | Keeps the selected node and its parent path visible   |
 | `Fold all node text` / `Unfold all node text`       | The `≡` header button, likewise                       |
 | `Show or hide node text on the map`                 | The `¶` header button                                 |
 | `Refresh the mind map from the Markdown`            | The `⟳` header button: rebuilds the map from its file |

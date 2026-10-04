@@ -33,6 +33,11 @@ to the .md file.
   belongs in Pitfalls, not in the file.
 - **README entries are one to three lines** - it is a feature list, not a manual.
 
+## Branches
+
+- **Issue branches are named `feat/issue-<issue-no>`** - create or switch to that branch before changing code
+  for an issue.
+
 ## Commit messages
 
 - **Prefix the subject with a type** - `feat:`/`fix:`/`docs:`/`chore:`/`refactor:`/`test:` (Conventional
@@ -44,31 +49,22 @@ to the .md file.
 
 ## Layout
 
-Two questions, in order. Does the file import the `obsidian` package -
-`main.ts` → `obsidian/` → `core/`, one way. Then: which way is it facing.
-`core/` reads Markdown, writes Markdown, or places what came out of it;
-`obsidian/` faces this plugin's pane or Obsidian's own. Where a concern has a
-part on each side, the two share a basename (`core/folds.ts` maps the ranges,
-`obsidian/markdown/folds.ts` reads and writes them).
+Dependencies flow one way: `main.ts` → `obsidian/` → `core/`. Put Markdown parsing, writing, and layout in
+`core/`; put plugin-pane and Obsidian integration in `obsidian/`. Cross-layer concerns share a basename, such
+as `core/folds.ts` and `obsidian/markdown/folds.ts`.
 
 ## Pitfalls (guards against past bugs)
 
-Only what one file cannot say on its own: rules that span files, or that a
-reader would have to reproduce a bug to learn. Anything a comment beside the
-code already carries belongs there, not here.
+Keep only cross-file rules and non-obvious failure modes here; local detail belongs beside the code.
 
 ### The map is a projection, and that has consequences
 
-- **Renders are deferred while editing or dragging** - a rebuild would take the editor's element with it.
-  `renderQueued` holds the render; `isBusy()` is the net, clearing a flag whose DOM is gone so a missing blur
-  or pointerup cannot freeze the map.
-- **So the map's line numbers are always from its last render** - and a render is debounced behind typing in
-  the Markdown pane. Every write therefore goes through `core/relocate.ts` first: find the node (and the run)
-  again in a parse of the lines being written, by what it says rather than where it was. Nothing is guessed -
-  two matches with the lines moved is a refusal.
+- **Defer renders while editing or dragging** - `renderQueued` holds them; `isBusy()` clears stale interaction
+  flags whose DOM has disappeared.
+- **Rendered line numbers may be stale** - every write first uses `core/relocate.ts`; ambiguous moved matches
+  must be rejected rather than guessed.
 - **An open edit reflows the map, it does not re-render it** - `applyLayout` re-measures what is on the canvas.
-- **What is typed on the map goes to the file as it is typed** - a debounce behind the keys, never mid-IME.
-  There is nothing to confirm, so nothing is held back.
+- **Map typing writes as it is typed** - debounce after keys and never write mid-IME.
 - **Node ops must survive a stale tree** - `lineMatchesNode` is the last check, after relocation, not instead.
 
 ### Writing to the file
@@ -78,64 +74,50 @@ code already carries belongs there, not here.
 
 ### Folds
 
-- **Two folds, one of which the editor cannot hold** - `collapsedBranches` and `foldedText` are separate sets
-  written by separate handles. Obsidian folds a line and everything under it, so `core/folds.ts` is where they
-  meet it: a fold on a node with children is a branch fold, on one without them a text fold, and the text fold
-  of a node that has children stays on the map. Keep that in `foldedKind`/`mergeFolds`; the view must not ask
-  "does it have children" to place a fold.
-- **Only `from` in a fold range can be trusted** - reading view puts a count where the editor puts an end line,
-  so `foldsKey` and `collapsedFromFolds` both key on `from` alone. Measured on one file: the editor answers
-  `47:65, 56:64` where reading view answers `47:48, 56:57` for the very same two folds.
+- **Branch and text folds are separate** - keep `collapsedBranches` and `foldedText` distinct. Resolve their
+  lossy mapping to Obsidian folds only in `core/folds.ts` through `foldedKind`/`mergeFolds`.
+- **Only fold range `from` is stable** - reading and editing panes report different `to` values, so
+  `foldsKey` and `collapsedFromFolds` key on `from` alone.
 - **A reading pane takes no fold state** - `applyFoldInfo` does nothing there, so `foldPreviewHeadings` clicks
-  the handles its headings carry instead, a pass at a time: one that is folded away has not been rendered, so
-  its own handle is not there to click until the one above it opens.
+  heading handles a pass at a time.
 - **Fold sync has no event** - the view re-reads `getFoldInfo` after what can fold and compares `foldsKey`.
-  That check may only re-render, never adopt: the editor moves its folds the moment an edit lands, while `root`
-  is still the parse from before it. Adoption belongs in `render()`, right after the re-parse.
-- **`lastEditorFoldsKey` holds what the editor has, not what we asked for** - read back after a write, so the
-  map neither mistakes its own fold for the user's nor re-expands one Obsidian silently refused.
+  That check may only re-render; adoption belongs in `render()` after re-parsing.
+- **`lastEditorFoldsKey` records what the editor accepted** - read it back after a write because Obsidian may
+  reject a requested fold.
 
 ### The keyboard and the editor are Obsidian's
 
-- **Obsidian's keymap sees a key before the page does** - so every key the map claims is registered through
-  `onKey`, which hands it back while an editor is on the map. Without that, a Backspace typed into a node's
-  name reached the map and deleted the node under it. The editor's own keys come through a document
-  capture listener gated on it holding the focus.
+- **Obsidian's keymap sees keys first** - register every map key through `onKey`; editor keys use a document
+  capture listener gated on editor focus.
 - **Enter must ignore IME composition** - a CJK IME's confirming Enter is a real keydown with `isComposing`.
 - **Undo is the editor's** - every write goes through it, so `Mod+Z` on the map steps that same history. With no
   editing pane the write goes to the file and nothing remembers it, so the map keeps that one step itself.
 - **Wikilinks navigate via `leaf.setViewState` + `result.history`** - it joins the leaf history, so Obsidian's
-  own back/forward works; a custom mouse handler can be swallowed before the DOM ever sees it.
-- **A map's tab is no place to open a note** - a search result clicked with the map in front took it. The leaf
-  declines (`declineOpens`), not the view: `navigation` is also what the back/forward commands read.
-- **Use Obsidian's pane states** - a map follows its linked tab, or the active file when unlinked. Do not add a
-  second follow or pin state; keep Link and Auto-open aligned with `docs/DEVELOPMENT.md`.
+  own back/forward works.
+- **A map leaf declines note opens** - set `declineOpens` on the leaf, not the view.
+- **Use Obsidian's pane states** - a map follows its linked tab or, when unlinked, the active file. Do not add a
+  second follow or pin state.
 - **Auto-open and Link remain distinct** - following, unlinking, or closing a pane must not change Auto-open.
   Only explicit operations and the Remember linked maps setting connect them.
-- **Place maps by intent** - linked maps sit beside their note, roaming maps beside maps in the same window,
-  and mobile opens a tab. Reuse the matching pane rather than adding splits for repeated requests.
+- **Place maps by intent** - linked maps sit beside their note, roaming maps beside same-window maps, and
+  mobile opens a tab. Reuse a matching pane before adding a split.
 
 ### A popout is a window of its own
 
-- **Nothing global is the map's** - `document`, `CSS.highlights` and `setTimeout` all belong to one window, and
-  a popout has its own of each. Reach them through the element at hand (`el.doc`, `el.win`), and where a
-  listener has to hear every editor there is, put one on every window and on `window-open` too - a caret moves
-  and a fold handle is clicked in the editor's document, not in ours.
-- **The same note can be open in two windows** - so every pane lookup takes the pane it is asked from and
-  prefers the nearest match: `file-io`'s `near`, which is the linked tab if there is one and the map's own leaf
-  otherwise. Without it the first pane the workspace lists wins, and a map in a popout drives the editor in the
-  main window.
+- **Nothing global belongs to every window** - use `el.doc`/`el.win` for `document`, `CSS.highlights`, and
+  timers. Cross-editor listeners attach to every window and to `window-open`.
+- **The same note may be open in two windows** - pane lookups take a nearby leaf and prefer the nearest match;
+  use `file-io`'s `near` convention.
 
 ### Drawing
 
-- **Collapse handles stay outside nodes** - place them after layout so they do not affect node width, and stop
-  their pointerdown before the canvas starts panning. Edges begin beyond the handle, clamped by `EDGE_MIN_RUN`.
+- **Collapse handles stay outside nodes** - place them after layout, stop pointerdown before canvas panning,
+  and begin edges beyond them with `EDGE_MIN_RUN`.
 - **Depth alone sets the visual rung** - columns align each level; fill, outline, and size change together;
   children never look louder than parents. Beyond the last rung, alternate the two quietest styles.
 - **Edges separate at the parent** - keep both cubic control points near the joint and use the arriving
   level's width throughout the edge.
-- **Opening an edit must not move the map** - the editor is styled like what it replaces, down to blank-line
-  height and wrapping, and its buttons float over the node rather than taking a row.
+- **Opening an edit must not move the map** - match the replaced text's size and wrapping; float its buttons.
 - **hideCompleted removes checked nodes entirely** - they are absent from `laidByLine`, so selection and
   navigation walk visible nodes only.
 - **Split direction: vertical = side by side, horizontal = stacked** - opposite of intuition; never use axis

@@ -23,6 +23,7 @@ import { FENCE_RE } from '../../core/parse/patterns';
 import { relocateNode, relocateTaskNode } from '../../core/write/relocate';
 import {
   branchTargets,
+  branchesOutsidePath,
   collapsedFromFolds,
   FoldKind,
   FoldRange,
@@ -103,6 +104,7 @@ export const MINDMAP_ICON = 'workflow';
 const VIEWPORT_SETTLE_INTERVAL_MS = 16;
 const VIEWPORT_STABLE_SAMPLES = 6;
 const ORDERED_LABEL = /^\d+[.)](?:\s+|$)/;
+const TASK_SUBMENU_WIDTH = 244;
 
 /**
  * Gap (px) between a node's right edge and its collapse handle. Short, because
@@ -244,8 +246,11 @@ export class MindmapView extends ItemView {
   private laidRoot: LaidNode | null = null;
   private hideCompletedActionEl: HTMLElement | null = null;
   private bodyTextActionEl: HTMLElement | null = null;
-  private priorityMenu: Menu | null = null;
-  private taskDatePicker: HTMLInputElement | null = null;
+  private priorityMenu: HTMLElement | null = null;
+  private taskDatePicker: HTMLElement | null = null;
+  private taskSubmenuCloseTimer: number | null = null;
+  private taskPickerAnchor: HTMLElement | null = null;
+  private taskPickerScope: Scope | null = null;
   private linkActionEl: HTMLElement | null = null;
   private autoOpenActionEl: HTMLElement | null = null;
   private viewport!: MapViewport;
@@ -422,8 +427,18 @@ export class MindmapView extends ItemView {
       if (key === 'Enter' && event.isComposing) {
         return true;
       }
+      if (key === 'Escape' && (this.priorityMenu || this.taskDatePicker)) {
+        this.removeTaskPickers();
+
+        return false;
+      }
       if (
-        active?.matches('.mindmap-task-date-trigger, .mindmap-task-date-picker')
+        this.priorityMenu ||
+        this.taskDatePicker ||
+        active?.closest(
+          '.mindmap-task-date-picker, .mindmap-task-priority-picker, .mindmap-node-actions, .mindmap-task-metadata',
+        ) ||
+        this.taskPickerAnchor?.contains(active)
       ) {
         return true;
       }
@@ -1042,6 +1057,17 @@ export class MindmapView extends ItemView {
     if (line !== null) {
       this.selectedLines.add(line);
     }
+    this.syncNodeActions();
+  }
+
+  /** Keeps the selected node's action bar available on touch devices. */
+  private syncNodeActions(): void {
+    this.canvasEl
+      ?.querySelectorAll('.mindmap-node.is-actions-visible')
+      .forEach((el) => el.removeClass('is-actions-visible'));
+    if (this.selectedLine !== null && this.selectedLines.size === 1) {
+      this.laidByLine.get(this.selectedLine)?.el.addClass('is-actions-visible');
+    }
   }
 
   private selectedNode(): MindNode | null {
@@ -1288,6 +1314,28 @@ export class MindmapView extends ItemView {
     void this.render();
   }
 
+  /** Keeps the selected node's ancestry open and collapses every other branch. */
+  collapseOutsideSelection(): void {
+    const selected = this.selectedNode();
+
+    if (!selected) {
+      new Notice('Mind map: select one node to focus on.');
+
+      return;
+    }
+    const line = selected.line;
+
+    this.collapsedBranches = branchesOutsidePath(selected);
+    this.syncCollapseToEditor();
+    void this.render().then(() => {
+      if (this.selectedLine === line) {
+        this.laidByLine
+          .get(line)
+          ?.el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      }
+    });
+  }
+
   /** Lights up a bulk-fold button while everything it folds is folded. */
   private updateFoldActions(): void {
     for (const [kind, el] of this.foldAllActionEls) {
@@ -1528,6 +1576,7 @@ export class MindmapView extends ItemView {
     const surfaceEl = this.scrollerEl.createDiv({ cls: 'mindmap-surface' });
 
     this.canvasEl = surfaceEl.createDiv({ cls: 'mindmap-canvas' });
+    this.canvasEl.toggleClass('is-mobile', this.plugin.isMobile);
     this.viewport = new MapViewport(
       this.scrollerEl,
       surfaceEl,
@@ -1559,8 +1608,7 @@ export class MindmapView extends ItemView {
   async onClose(): Promise<void> {
     this.saveViewport();
     this.persistViewport.cancel();
-    this.taskDatePicker?.remove();
-    this.taskDatePicker = null;
+    this.removeTaskPickers();
     this.endBodyEdit();
     if (this.revealTimer !== null) {
       this.containerEl.win.clearTimeout(this.revealTimer);
@@ -1577,6 +1625,39 @@ export class MindmapView extends ItemView {
    * on background drag, and remember the split direction.
    */
   private registerWorkspaceEvents(): void {
+    this.registerDomEvent(
+      this.canvasEl.doc,
+      'pointerdown',
+      (event) => {
+        const target = event.target as HTMLElement | null;
+
+        if (
+          target?.closest(
+            '.mindmap-task-date-picker, .mindmap-task-priority-picker',
+          ) ||
+          this.taskPickerAnchor?.contains(target)
+        ) {
+          return;
+        }
+        this.removeTaskPickers();
+      },
+      true,
+    );
+    this.registerDomEvent(
+      this.canvasEl.doc,
+      'keydown',
+      (event) => {
+        if (
+          event.key === 'Escape' &&
+          (this.priorityMenu || this.taskDatePicker)
+        ) {
+          this.removeTaskPickers();
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      },
+      true,
+    );
     this.linkedSourceLeaf = this.editor.linkedLeaf();
     this.registerEvent(
       this.app.vault.on('modify', (file) => {
@@ -2320,8 +2401,7 @@ export class MindmapView extends ItemView {
       this.canvasEl.addClass('is-render-staging');
     }
     this.clearMirroredCursor();
-    this.taskDatePicker?.remove();
-    this.taskDatePicker = null;
+    this.removeTaskPickers();
     this.canvasEl.empty();
     this.laidByLine.clear();
     this.root = parsed;
@@ -2408,6 +2488,7 @@ export class MindmapView extends ItemView {
         this.selectedLine = this.selectedLines.values().next().value ?? null;
       }
     }
+    this.syncNodeActions();
   }
 
   private buildNode(node: MindNode, palette: string[]): LaidNode {
@@ -2475,6 +2556,7 @@ export class MindmapView extends ItemView {
       });
     }
     this.addBodyText(node, el);
+    this.addNodeActions(node, el);
 
     el.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -2500,21 +2582,106 @@ export class MindmapView extends ItemView {
     return laid;
   }
 
+  /** Frequent single-node actions; the full set remains in the context menu. */
+  private addNodeActions(node: MindNode, el: HTMLElement): void {
+    const actions = el.createDiv({
+      cls: 'mindmap-node-actions',
+      attr: { role: 'toolbar', 'aria-label': 'Node actions' },
+    });
+    const add = (
+      label: string,
+      icon: string,
+      run: (event: MouseEvent) => void,
+    ): HTMLButtonElement => {
+      const button = actions.createEl('button', {
+        cls: 'mindmap-node-action',
+        attr: { type: 'button', 'aria-label': label, title: label },
+      });
+
+      setIcon(button, icon);
+      button.addEventListener('pointerdown', (event) =>
+        event.stopPropagation(),
+      );
+      button.addEventListener('dblclick', (event) => event.stopPropagation());
+      button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        run(event);
+      });
+
+      return button;
+    };
+
+    el.addEventListener('pointerenter', () =>
+      el.addClass('is-actions-hovered'),
+    );
+    el.addEventListener('pointerleave', (event) => {
+      if (el.contains(event.relatedTarget as Node | null)) {
+        return;
+      }
+      el.removeClass('is-actions-hovered');
+    });
+    add('Add child', 'plus', () => void this.addChildNode(node));
+    if (node.type !== 'root') {
+      add(
+        'Add sibling',
+        'corner-down-right',
+        () => void this.addSiblingNode(node),
+      );
+    }
+    if (node.type === 'list') {
+      add(
+        node.checked === null ? 'Add checkbox' : 'Remove checkbox',
+        node.checked === null ? 'check-square' : 'list',
+        () =>
+          void this.applyToNodes([node], (lines, [target]) =>
+            toggleTaskOp(lines, target!),
+          ),
+      );
+    } else {
+      add(
+        node.body.length ? 'Edit note' : 'Add note',
+        'sticky-note',
+        () => void this.editNodeNote(node),
+      );
+    }
+    if (node.taskMetadata) {
+      actions.addClasses(['mindmap-task-metadata', 'is-empty']);
+      this.addTaskControls(node, node.taskMetadata, actions);
+    }
+    add('More actions', 'ellipsis', (event) =>
+      this.showNodeMenu(node, el, event),
+    );
+  }
+
   private addTaskMetadata(node: MindNode, el: HTMLElement): void {
     const metadata = node.taskMetadata;
 
-    if (!metadata) {
+    if (!metadata || (!metadata.priority && !metadata.dueDate)) {
       return;
     }
-    const details = el.createDiv({
-      cls: `mindmap-task-metadata${
-        metadata.priority || metadata.dueDate ? '' : ' is-empty'
-      }`,
-    });
+    const details = el.createDiv({ cls: 'mindmap-task-metadata' });
+
+    this.addTaskControls(node, metadata, details);
+  }
+
+  /** Shared controls for inline task metadata and the contextual action bar. */
+  private addTaskControls(
+    node: MindNode,
+    metadata: TaskMetadata,
+    details: HTMLElement,
+  ): void {
+    const actionClass = details.hasClass('mindmap-node-actions')
+      ? ' mindmap-node-action'
+      : '';
     const claimPointer = (event: Event): void => event.stopPropagation();
+    let priorityText: string | undefined;
+
+    if (metadata.priority && !actionClass) {
+      priorityText = priorityMark(metadata.priority);
+    }
     const priority = details.createEl('button', {
-      cls: `mindmap-task-priority${metadata.priority ? '' : ' is-unset'}`,
-      text: metadata.priority ? priorityMark(metadata.priority) : '+',
+      cls: `mindmap-task-priority${metadata.priority ? '' : ' is-unset'}${actionClass}`,
+      text: priorityText,
       attr: {
         'data-priority': metadata.priority ?? 'unset',
         'aria-label': metadata.priority
@@ -2522,42 +2689,48 @@ export class MindmapView extends ItemView {
           : 'Set priority',
       },
     });
-    const dueDate = details.createDiv({
-      cls: `mindmap-task-due-date${metadata.dueDate ? '' : ' is-unset'}`,
-      attr: {
-        'aria-label': metadata.dueDate
-          ? `Change due date, ${metadata.dueDate}`
-          : 'Set due date',
-      },
-    });
 
-    setIcon(
-      dueDate.createSpan(),
-      metadata.dueDate ? 'calendar-days' : 'calendar-plus',
-    );
-    if (metadata.dueDate) {
-      dueDate.createSpan({ text: metadata.dueDate });
+    if (actionClass || !metadata.priority) {
+      setIcon(priority, 'flag');
     }
-    const dateInput = dueDate.createEl('input', {
-      cls: 'mindmap-task-date-trigger',
-      type: 'date',
-      attr: {
-        'aria-label': metadata.dueDate
-          ? `Change due date, ${metadata.dueDate}`
-          : 'Set due date',
-      },
-    });
 
-    dateInput.value = metadata.dueDate ?? '';
     priority.addEventListener('pointerdown', claimPointer);
     priority.addEventListener('click', (event) => {
       event.stopPropagation();
       this.showPriorityMenu(null, node, priority);
     });
-    dateInput.addEventListener('pointerdown', claimPointer);
-    dateInput.addEventListener('click', claimPointer);
-    dateInput.addEventListener('change', () => {
-      void this.setTaskMetadata(node, { dueDate: dateInput.value || null });
+    const dueDateLabel = metadata.dueDate
+      ? `Change due date, ${metadata.dueDate}`
+      : 'Set due date';
+
+    if (actionClass) {
+      const dueDate = details.createEl('button', {
+        cls: `mindmap-task-due-date is-unset${actionClass}`,
+        attr: { type: 'button', 'aria-label': dueDateLabel },
+      });
+
+      setIcon(dueDate, 'calendar-days');
+      dueDate.addEventListener('pointerdown', claimPointer);
+      dueDate.addEventListener('click', (event) => {
+        event.stopPropagation();
+        this.openTaskDatePicker(node, dueDate);
+      });
+
+      return;
+    }
+    const dueDate = details.createEl('button', {
+      cls: `mindmap-task-due-date${metadata.dueDate ? '' : ' is-unset'}`,
+      attr: { type: 'button', 'aria-label': dueDateLabel },
+    });
+
+    setIcon(dueDate.createSpan(), 'calendar-days');
+    if (metadata.dueDate) {
+      dueDate.createSpan({ text: metadata.dueDate });
+    }
+    dueDate.addEventListener('pointerdown', claimPointer);
+    dueDate.addEventListener('click', (event) => {
+      claimPointer(event);
+      this.openTaskDatePicker(node, dueDate);
     });
   }
 
@@ -3047,6 +3220,7 @@ export class MindmapView extends ItemView {
           this.selectedLine = node.line;
           el.addClass('is-selected');
         }
+        this.syncNodeActions();
         this.scrollerEl.focus({ preventScroll: true });
 
         return;
@@ -3092,6 +3266,9 @@ export class MindmapView extends ItemView {
     this.canvasEl
       .querySelectorAll('.mindmap-node.is-selected')
       .forEach((el) => el.removeClass('is-selected'));
+    this.canvasEl
+      .querySelectorAll('.mindmap-node.is-actions-visible')
+      .forEach((el) => el.removeClass('is-actions-visible'));
   }
 
   /**
@@ -3418,21 +3595,17 @@ export class MindmapView extends ItemView {
           menu.addItem((item) =>
             item
               .setTitle('Priority')
-              .setIcon('circle-dot')
+              .setIcon('flag')
               .onClick(() => this.showPriorityMenu(menu, node, el)),
           );
-          add(
-            node.taskMetadata?.dueDate ? 'Change due date' : 'Set due date',
-            'calendar-days',
-            () => this.openTaskDatePicker(node, el),
+          menu.addItem((item) =>
+            item
+              .setTitle(
+                node.taskMetadata?.dueDate ? 'Change due date' : 'Set due date',
+              )
+              .setIcon('calendar-days')
+              .onClick(() => this.openTaskDatePicker(node, el, menu)),
           );
-          if (node.taskMetadata?.dueDate) {
-            add(
-              'Clear due date',
-              'calendar-x',
-              () => void this.setTaskMetadata(node, { dueDate: null }),
-            );
-          }
         }
         add(
           node.checked === null ? 'Add checkbox' : 'Remove checkbox',
@@ -3453,6 +3626,27 @@ export class MindmapView extends ItemView {
     }
     menu.showAtMouseEvent(e);
     this.attachPrioritySubmenu(menu, node);
+    this.attachDueDatePicker(menu, node);
+    this.attachTaskSubmenuKeys(menu);
+    this.attachTaskSubmenuDismissal(node);
+    if (!this.canvasEl || node.checked === null) {
+      return;
+    }
+    const menus = this.canvasEl.doc.querySelectorAll<HTMLElement>('.menu');
+    const parent = menus[menus.length - 1];
+
+    if (parent) {
+      parent.toggleClass(
+        'mindmap-menu-opens-left',
+        !!parent.querySelector('.mindmap-menu-has-submenu.opens-left'),
+      );
+      const box = parent.getBoundingClientRect();
+      const overflow = box.right - this.canvasEl.win.innerWidth + 4;
+
+      if (overflow > 0) {
+        parent.style.left = `${Math.max(4, box.left - overflow)}px`;
+      }
+    }
   }
 
   private attachPrioritySubmenu(menu: Menu, node: MindNode): void {
@@ -3470,10 +3664,142 @@ export class MindmapView extends ItemView {
       return;
     }
     item.addClass('mindmap-menu-has-submenu');
-    const open = (): void => this.showPriorityMenu(menu, node, item);
+    item.toggleClass('opens-left', this.taskSubmenuOpensLeft(item));
+    const open = (): void => {
+      this.cancelTaskSubmenuClose();
+      this.removeTaskDatePicker();
+      this.showPriorityMenu(menu, node, item);
+    };
 
     item.addEventListener('mouseenter', open);
+    item.addEventListener('mouseleave', () => this.scheduleTaskSubmenuClose());
     item.addEventListener('focus', open);
+    item.addEventListener('pointerdown', (event) => event.stopPropagation(), {
+      capture: true,
+    });
+    item.addEventListener(
+      'click',
+      (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        open();
+        this.priorityMenu
+          ?.querySelector('button')
+          ?.focus({ preventScroll: true });
+      },
+      { capture: true },
+    );
+  }
+
+  private attachDueDatePicker(menu: Menu, node: MindNode): void {
+    if (node.checked === null || !this.canvasEl) {
+      return;
+    }
+    const title = node.taskMetadata?.dueDate
+      ? 'Change due date'
+      : 'Set due date';
+    const item = [...this.canvasEl.doc.querySelectorAll('.menu-item')].find(
+      (candidate) =>
+        candidate.querySelector('.menu-item-title')?.textContent === title,
+    ) as HTMLElement | undefined;
+
+    if (!item) {
+      return;
+    }
+    item.addClass('mindmap-menu-has-submenu');
+    item.toggleClass('opens-left', this.taskSubmenuOpensLeft(item));
+    const open = (): void => {
+      this.cancelTaskSubmenuClose();
+      this.priorityMenu?.remove();
+      this.priorityMenu = null;
+      this.openTaskDatePicker(node, item, menu);
+    };
+    const claim = (event: Event): void => {
+      event.preventDefault();
+      event.stopPropagation();
+    };
+
+    item.addEventListener('mouseenter', open);
+    item.addEventListener('mouseleave', () => this.scheduleTaskSubmenuClose());
+    item.addEventListener('focus', open);
+    item.addEventListener('pointerdown', claim, { capture: true });
+    item.addEventListener(
+      'click',
+      (event) => {
+        claim(event);
+        open();
+        this.taskDatePicker
+          ?.querySelector<HTMLButtonElement>('.is-selected, [data-date]')
+          ?.focus({ preventScroll: true });
+      },
+      { capture: true },
+    );
+  }
+
+  private attachTaskSubmenuKeys(menu: Menu): void {
+    // Menu's Enter handler always hides it, even when an item opens a submenu.
+    const scope = (
+      menu as Menu & {
+        scope?: Scope & {
+          keys: (ReturnType<Scope['register']> & {
+            func: Parameters<Scope['register']>[2];
+          })[];
+        };
+      }
+    ).scope;
+
+    if (!scope) {
+      return;
+    }
+
+    for (const key of ['Enter', 'ArrowRight']) {
+      const original = scope.keys.find(
+        (handler) => handler.key === key && !handler.modifiers,
+      );
+
+      if (!original) {
+        continue;
+      }
+      scope.unregister(original);
+      scope.register([], key, (event, context) => {
+        const selected = this.canvasEl.doc.querySelector<HTMLElement>(
+          '.menu-item.selected.mindmap-menu-has-submenu',
+        );
+
+        if (selected) {
+          selected.click();
+
+          return false;
+        }
+
+        return original.func(event, context) as boolean | undefined;
+      });
+    }
+  }
+
+  private attachTaskSubmenuDismissal(node: MindNode): void {
+    if (node.checked === null || !this.canvasEl) {
+      return;
+    }
+    const menus = this.canvasEl.doc.querySelectorAll('.menu');
+    const parent = menus[menus.length - 1];
+    const dueTitle = node.taskMetadata?.dueDate
+      ? 'Change due date'
+      : 'Set due date';
+
+    parent?.querySelectorAll('.menu-item').forEach((item) => {
+      const title = item.querySelector('.menu-item-title')?.textContent;
+
+      if (title === 'Priority' || title === dueTitle) {
+        return;
+      }
+      const close = (): void => {
+        this.removeTaskPickers();
+      };
+
+      item.addEventListener('mouseenter', close);
+      item.addEventListener('focus', close);
+    });
   }
 
   private showPriorityMenu(
@@ -3481,8 +3807,12 @@ export class MindmapView extends ItemView {
     node: MindNode,
     anchor: HTMLElement,
   ): void {
-    this.priorityMenu?.hide();
-    const menu = new Menu().setUseNativeMenu(false);
+    this.removeTaskPickers();
+    this.taskPickerAnchor = anchor;
+    const picker = this.canvasEl.doc.body.createDiv({
+      cls: 'mindmap-task-priority-picker',
+      attr: { role: 'menu', 'aria-label': 'Priority' },
+    });
     const priorities: [string, TaskPriority | null][] = [
       ['❗ Highest', 'highest'],
       ['▲ High', 'high'],
@@ -3491,69 +3821,283 @@ export class MindmapView extends ItemView {
       ['Clear priority', null],
     ];
 
-    priorities.forEach(([title, priority]) =>
-      menu.addItem((item) =>
-        item
-          .setTitle(title)
-          .setChecked(node.taskMetadata?.priority === priority)
-          .onClick(() => {
-            parent?.hide();
-            void this.setTaskMetadata(node, { priority });
-          }),
-      ),
-    );
-    const box = anchor.getBoundingClientRect();
-    const point = { x: box.right, y: box.top };
+    priorities.forEach(([title, priority]) => {
+      const button = picker.createEl('button', {
+        text: title,
+        attr: { type: 'button', role: 'menuitem' },
+      });
 
-    this.priorityMenu = menu;
-    menu.showAtPosition(point, this.canvasEl.doc);
+      button.toggleClass(
+        'is-selected',
+        node.taskMetadata?.priority === priority,
+      );
+      button.addEventListener('click', () => {
+        this.removeTaskPickers();
+        parent?.hide();
+        void this.setTaskMetadata(node, { priority });
+      });
+    });
+    const box = anchor.getBoundingClientRect();
+    const pickerBox = picker.getBoundingClientRect();
+    const left = this.taskSubmenuOpensLeft(anchor)
+      ? box.left - pickerBox.width - 4
+      : box.right + 4;
+
+    picker.style.left = `${Math.max(4, Math.min(left, this.canvasEl.win.innerWidth - pickerBox.width - 4))}px`;
+    picker.style.top = `${Math.max(4, Math.min(box.top, this.canvasEl.win.innerHeight - pickerBox.height - 4))}px`;
+    picker.addEventListener('mouseenter', () => this.cancelTaskSubmenuClose());
+    picker.addEventListener('mouseleave', () =>
+      this.scheduleTaskSubmenuClose(),
+    );
+    this.priorityMenu = picker;
+    this.registerTaskPickerKeys(picker);
+    if (!parent) {
+      picker.querySelector('button')?.focus({ preventScroll: true });
+    }
   }
 
-  private openTaskDatePicker(node: MindNode, anchor: HTMLElement): void {
-    this.taskDatePicker?.remove();
-    const picker = this.canvasEl.doc.body.createEl('input');
-    const nodeBox =
-      anchor.closest('.mindmap-node')?.getBoundingClientRect() ??
-      anchor.getBoundingClientRect();
+  private openTaskDatePicker(
+    node: MindNode,
+    anchor: HTMLElement,
+    parent?: Menu,
+  ): void {
+    this.removeTaskPickers();
+    this.taskPickerAnchor = anchor;
+    const picker = this.canvasEl.doc.body.createDiv({
+      cls: 'mindmap-task-date-picker',
+      attr: { role: 'dialog', 'aria-label': 'Due date' },
+    });
+    const box = anchor.getBoundingClientRect();
+    const initial = node.taskMetadata?.dueDate?.split('-').map(Number);
+    let month = initial
+      ? new Date(initial[0]!, initial[1]! - 1, 1)
+      : new Date();
 
-    picker.type = 'date';
-    picker.value = node.taskMetadata?.dueDate ?? '';
-    picker.setAttribute('aria-label', 'Due date');
-    picker.addClass('mindmap-task-date-picker');
-    const left = Math.min(nodeBox.left, this.canvasEl.win.innerWidth - 180);
-    const top = Math.min(
-      nodeBox.bottom + 8,
-      this.canvasEl.win.innerHeight - 40,
-    );
-
-    picker.style.left = `${Math.max(8, left)}px`;
-    picker.style.top = `${Math.max(8, top)}px`;
+    month = new Date(month.getFullYear(), month.getMonth(), 1);
     const close = (): void => {
-      picker.remove();
-      this.taskDatePicker = null;
+      this.removeTaskPickers();
+      parent?.hide();
+    };
+    const choose = (dueDate: string | null): void => {
+      close();
+      void this.setTaskMetadata(node, { dueDate });
+    };
+    const render = (): void => {
+      picker.empty();
+      const header = picker.createDiv({ cls: 'mindmap-calendar-header' });
+      const previous = header.createEl('button', {
+        attr: { type: 'button', 'aria-label': 'Previous month' },
+      });
+
+      setIcon(previous, 'chevron-left');
+      header.createSpan({
+        cls: 'mindmap-calendar-month',
+        text: month.toLocaleDateString(undefined, {
+          year: 'numeric',
+          month: 'long',
+        }),
+      });
+      const next = header.createEl('button', {
+        attr: { type: 'button', 'aria-label': 'Next month' },
+      });
+
+      setIcon(next, 'chevron-right');
+      previous.addEventListener('click', () => {
+        month = new Date(month.getFullYear(), month.getMonth() - 1, 1);
+        render();
+        picker
+          .querySelector<HTMLButtonElement>('[aria-label="Previous month"]')
+          ?.focus({ preventScroll: true });
+      });
+      next.addEventListener('click', () => {
+        month = new Date(month.getFullYear(), month.getMonth() + 1, 1);
+        render();
+        picker
+          .querySelector<HTMLButtonElement>('[aria-label="Next month"]')
+          ?.focus({ preventScroll: true });
+      });
+      const grid = picker.createDiv({ cls: 'mindmap-calendar-grid' });
+
+      ['S', 'M', 'T', 'W', 'T', 'F', 'S'].forEach((day) =>
+        grid.createSpan({ cls: 'mindmap-calendar-weekday', text: day }),
+      );
+      for (let blank = 0; blank < month.getDay(); blank += 1) {
+        grid.createSpan();
+      }
+      const days = new Date(
+        month.getFullYear(),
+        month.getMonth() + 1,
+        0,
+      ).getDate();
+
+      for (let day = 1; day <= days; day += 1) {
+        const date = `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const button = grid.createEl('button', {
+          text: String(day),
+          attr: { type: 'button', 'data-date': date, 'aria-label': date },
+        });
+
+        button.toggleClass('is-selected', date === node.taskMetadata?.dueDate);
+        button.addEventListener('click', () => choose(date));
+      }
+      if (node.taskMetadata?.dueDate) {
+        const clear = picker.createEl('button', {
+          cls: 'mindmap-calendar-clear',
+          text: 'Clear due date',
+          attr: { type: 'button' },
+        });
+
+        clear.addEventListener('click', () => choose(null));
+      }
     };
 
-    picker.addEventListener('change', () => {
-      const dueDate = picker.value;
+    render();
+    picker.addEventListener('mouseenter', () => this.cancelTaskSubmenuClose());
+    picker.addEventListener('mouseleave', () =>
+      this.scheduleTaskSubmenuClose(),
+    );
+    this.taskDatePicker = picker;
+    this.registerTaskPickerKeys(picker);
+    const pickerBox = picker.getBoundingClientRect();
+    const left = this.taskSubmenuOpensLeft(anchor)
+      ? box.left - pickerBox.width - 4
+      : box.right + 4;
 
-      close();
-      void this.setTaskMetadata(node, { dueDate: dueDate || null });
-    });
-    picker.addEventListener('keydown', (event) => {
+    picker.style.left = `${Math.max(4, Math.min(left, this.canvasEl.win.innerWidth - pickerBox.width - 4))}px`;
+    picker.style.top = `${Math.max(4, Math.min(box.top, this.canvasEl.win.innerHeight - pickerBox.height - 4))}px`;
+    if (!parent) {
+      picker
+        .querySelector<HTMLButtonElement>('.is-selected, [data-date]')
+        ?.focus({ preventScroll: true });
+    }
+  }
+
+  private registerTaskPickerKeys(picker: HTMLElement): void {
+    // The parent menu sees keys before DOM listeners, so focus needs its own scope.
+    const scope = new Scope();
+
+    scope.register(null, null, (event) => {
       if (event.key === 'Escape') {
-        close();
+        this.removeTaskPickers();
+
+        return false;
+      }
+      this.moveTaskPickerFocus(picker, event);
+
+      return !event.defaultPrevented;
+    });
+    picker.addEventListener('focusin', () => {
+      if (this.taskPickerScope === scope) {
+        return;
+      }
+      this.releaseTaskPickerKeys();
+      this.taskPickerScope = scope;
+      this.app.keymap.pushScope(scope);
+    });
+    picker.addEventListener('focusout', (event) => {
+      if (!picker.contains(event.relatedTarget as Node | null)) {
+        this.releaseTaskPickerKeys();
       }
     });
-    picker.addEventListener('pointerdown', (event) => event.stopPropagation());
-    picker.addEventListener('click', (event) => event.stopPropagation());
-    this.taskDatePicker = picker;
-    picker.focus();
-    try {
-      picker.showPicker();
-    } catch {
-      // Some Electron versions do not expose the native picker. The visible
-      // date input remains directly editable in those versions.
+  }
+
+  private releaseTaskPickerKeys(): void {
+    if (this.taskPickerScope) {
+      this.app.keymap.popScope(this.taskPickerScope);
+      this.taskPickerScope = null;
     }
+  }
+
+  private moveTaskPickerFocus(picker: HTMLElement, event: KeyboardEvent): void {
+    const active = picker.doc.activeElement;
+    const calendarDay = active?.matches('[data-date]');
+    const selector = calendarDay ? '[data-date]' : 'button';
+    const buttons = Array.from(
+      picker.querySelectorAll<HTMLButtonElement>(selector),
+    );
+    const index = buttons.findIndex((button) => button === active);
+    let next = index;
+
+    switch (event.key) {
+      case 'ArrowDown':
+        next += calendarDay ? 7 : 1;
+        break;
+      case 'ArrowUp':
+        next -= calendarDay ? 7 : 1;
+        break;
+      case 'ArrowRight':
+        next += 1;
+        break;
+      case 'ArrowLeft':
+        next -= 1;
+        break;
+      case 'Home':
+        next = 0;
+        break;
+      case 'End':
+        next = buttons.length - 1;
+        break;
+      default:
+        return;
+    }
+    event.preventDefault();
+    buttons[Math.max(0, Math.min(next, buttons.length - 1))]?.focus({
+      preventScroll: true,
+    });
+  }
+
+  private removeTaskPickers(): void {
+    this.releaseTaskPickerKeys();
+    const active = this.canvasEl?.doc.activeElement;
+    const hadFocus =
+      this.priorityMenu?.contains(active) ||
+      this.taskDatePicker?.contains(active);
+
+    if (hadFocus) {
+      const anchor = this.taskPickerAnchor;
+      let focus = this.scrollerEl;
+
+      if (anchor?.isConnected && anchor.matches('button')) {
+        focus = anchor;
+      }
+      focus.focus({ preventScroll: true });
+    }
+    this.cancelTaskSubmenuClose();
+    this.priorityMenu?.remove();
+    this.priorityMenu = null;
+    this.removeTaskDatePicker();
+    this.taskPickerAnchor = null;
+  }
+
+  private removeTaskDatePicker(): void {
+    this.taskDatePicker?.remove();
+    this.taskDatePicker = null;
+  }
+
+  private taskSubmenuOpensLeft(anchor: HTMLElement): boolean {
+    if (anchor.hasClass('opens-left')) {
+      return true;
+    }
+    const box = anchor.getBoundingClientRect();
+
+    return (
+      box.right + 4 + TASK_SUBMENU_WIDTH > this.canvasEl.win.innerWidth &&
+      box.left >= TASK_SUBMENU_WIDTH + 4
+    );
+  }
+
+  private cancelTaskSubmenuClose(): void {
+    if (typeof this.taskSubmenuCloseTimer === 'number') {
+      this.canvasEl.win.clearTimeout(this.taskSubmenuCloseTimer);
+      this.taskSubmenuCloseTimer = null;
+    }
+  }
+
+  private scheduleTaskSubmenuClose(): void {
+    this.cancelTaskSubmenuClose();
+    this.taskSubmenuCloseTimer = this.canvasEl.win.setTimeout(() => {
+      this.removeTaskPickers();
+    }, 150);
   }
 
   private async setTaskMetadata(
@@ -4075,6 +4619,10 @@ export class MindmapView extends ItemView {
     return {
       setEditing: (editing) => {
         this.isInlineEditing = editing;
+        this.canvasEl.toggleClass('is-inline-editing', editing);
+        if (!editing) {
+          this.syncNodeActions();
+        }
       },
       reflow: () => this.reflow(),
       settle: () => {

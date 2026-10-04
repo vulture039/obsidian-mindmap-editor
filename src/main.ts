@@ -390,6 +390,13 @@ export default class MindmapPlugin extends Plugin {
    * every other press is not one you can hold down.
    */
   private addFoldCommands(): void {
+    this.addCommand({
+      id: 'collapse-outside-selection',
+      name: 'Collapse unselected branches',
+      callback: () => {
+        this.withMindmap((view) => view.collapseOutsideSelection());
+      },
+    });
     const commands: [
       id: string,
       name: string,

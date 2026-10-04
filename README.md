@@ -23,6 +23,7 @@ No new file format, no markup to add.
 - **Flexible views** - Zoom, pan, fit, and reopen each map at its saved position.
 - **Link and Auto-open** - Link a map to a Markdown tab, or reopen it automatically with a note.
 - **Node bookmarks** - Save important nodes and jump back from the map header. The plugin follows identifiable edits made in Obsidian even while the map is closed.
+- **Node action bar** - Hover a node to add children or siblings, switch lists and tasks, and edit task metadata; right-click or `…` opens the full menu.
 - **Visual hierarchy** - Depth, headings, and neighboring branch colors remain easy to distinguish.
 
 ## Keyboard shortcuts

@@ -245,11 +245,12 @@
 .mindmap-task-metadata.is-empty {
   position: absolute;
   right: auto;
-  bottom: 100%;
+  bottom: calc(100% + 7px);
   left: 50%;
   min-height: 0;
+  gap: 1px;
   margin: 0;
-  padding-bottom: 8px;
+  padding: 2px;
   transform: translateX(-50%);
 }
 
@@ -278,31 +279,121 @@
   content: '›';
 }
 
+.menu.mindmap-menu-opens-left .menu-item {
+  padding-left: calc(var(--size-4-2) * 2);
+}
+
+.mindmap-menu-has-submenu.opens-left::after {
+  right: auto;
+  left: var(--size-4-2);
+  width: var(--size-4-1);
+  text-align: center;
+  content: '‹';
+}
+
 .mindmap-task-date-picker {
   position: fixed;
   z-index: var(--layer-menu, 1000);
-  display: block;
-  width: 172px;
-  min-height: 32px;
-  padding: 4px 6px;
+  width: 224px;
+  padding: 8px;
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-s);
   background: var(--background-primary);
   box-shadow: var(--shadow-s);
-  color: var(--text-normal);
+}
+
+.mindmap-task-priority-picker {
+  position: fixed;
+  z-index: var(--layer-menu, 1000);
+  display: flex;
+  width: max-content;
+  flex-direction: column;
+  padding: 4px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: var(--background-primary);
+  box-shadow: var(--shadow-s);
+}
+
+.mindmap-task-priority-picker button {
+  display: flex;
+  justify-content: flex-start;
+  margin: 0;
+  padding: 4px 8px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  text-align: left;
+}
+
+.mindmap-calendar-header {
+  display: grid;
+  grid-template-columns: 28px 1fr 28px;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.mindmap-calendar-header button,
+.mindmap-calendar-grid button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.mindmap-calendar-header button:hover,
+.mindmap-calendar-grid button:hover {
+  background: var(--background-modifier-hover);
+}
+
+.mindmap-task-priority-picker button:hover,
+.mindmap-task-priority-picker button.is-selected {
+  background: var(--background-modifier-hover);
+}
+
+.mindmap-calendar-month {
+  text-align: center;
+  font-weight: var(--font-semibold);
+}
+
+.mindmap-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.mindmap-calendar-weekday {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  text-align: center;
+}
+
+.mindmap-calendar-grid button.is-selected {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.mindmap-calendar-clear {
+  width: 100%;
+  margin: 6px 0 0;
 }
 
 .mindmap-task-due-date {
   position: relative;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   box-sizing: border-box;
   flex: 0 0 108px;
   width: 108px;
   height: 22px;
-  gap: 3px;
-  padding: 0 6px;
+  gap: 0;
+  padding: 0;
   border: 1px solid color-mix(in srgb, var(--text-muted) 45%, transparent);
   border-radius: 3px;
   background: var(--background-primary);
@@ -314,34 +405,9 @@
   white-space: nowrap;
 }
 
-.mindmap-task-due-date > input.mindmap-task-date-trigger {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  min-width: 0;
-  height: 100%;
-  min-height: 0;
-  padding: 0;
-  border: 0;
-  appearance: none;
-  opacity: 0;
-  cursor: pointer;
-}
-
-.mindmap-task-due-date
-  > input.mindmap-task-date-trigger::-webkit-calendar-picker-indicator {
-  position: absolute;
-  inset: 0;
-  width: auto;
-  height: auto;
-  margin: 0;
-  cursor: pointer;
-}
-
 .mindmap-task-due-date .svg-icon {
-  width: 14px;
-  height: 14px;
-  transform: translateY(1px);
+  width: var(--checkbox-size, 16px);
+  height: var(--checkbox-size, 16px);
 }
 
 .mindmap-task-due-date.is-unset {
@@ -383,8 +449,17 @@
   color: var(--color-blue);
 }
 
-.mindmap-task-priority.is-unset {
-  padding-bottom: 2px;
+.mindmap-task-priority > .svg-icon {
+  display: block;
+  width: var(--checkbox-size, 16px);
+  height: var(--checkbox-size, 16px);
+}
+
+.mindmap-task-due-date > span:first-child {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 26px;
 }
 
 .mindmap-task-priority:hover,
@@ -695,6 +770,89 @@
 
 .mindmap-node.is-selected {
   box-shadow: 0 0 0 2px var(--interactive-accent);
+}
+
+.mindmap-node-actions {
+  position: absolute;
+  bottom: calc(100% + 7px);
+  left: 50%;
+  z-index: 10;
+  display: none;
+  align-items: center;
+  gap: 1px;
+  padding: 2px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: var(--background-primary);
+  box-shadow: var(--shadow-s);
+  transform: translateX(-50%);
+}
+
+.mindmap-node-actions::after {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 100%;
+  height: 8px;
+  content: '';
+}
+
+.mindmap-canvas:not(.is-mobile, .is-inline-editing)
+  .mindmap-node.is-actions-hovered::before {
+  position: absolute;
+  right: 0;
+  bottom: 100%;
+  left: 0;
+  height: 8px;
+  content: '';
+}
+
+.mindmap-task-metadata.is-empty.mindmap-node-actions .is-unset {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.mindmap-canvas:not(.is-mobile, .is-inline-editing)
+  .mindmap-node:is(.is-actions-hovered, :focus-within)
+  > .mindmap-node-actions,
+.mindmap-canvas.is-mobile:not(.is-inline-editing)
+  .mindmap-node.is-actions-visible
+  > .mindmap-node-actions {
+  display: flex;
+}
+
+.mindmap-node-actions > .mindmap-node-action {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  flex: 0 0 24px;
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
+  margin: 0;
+  padding: 3px;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--text-muted);
+  box-shadow: none;
+  font-size: inherit;
+  font-weight: normal;
+  line-height: normal;
+  cursor: pointer;
+}
+
+.mindmap-node-actions > .mindmap-node-action:hover,
+.mindmap-node-actions > .mindmap-node-action:focus-visible {
+  color: var(--text-normal);
+  background: transparent;
+}
+
+.mindmap-node-action svg {
+  width: 14px;
+  height: 14px;
 }
 
 .mindmap-node.is-drop-target {

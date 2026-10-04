@@ -23,6 +23,7 @@ import { FENCE_RE } from '../../core/parse/patterns';
 import { relocateNode, relocateTaskNode } from '../../core/write/relocate';
 import {
   branchTargets,
+  branchesOutsidePath,
   collapsedFromFolds,
   FoldKind,
   FoldRange,
@@ -1286,6 +1287,28 @@ export class MindmapView extends ItemView {
     }
     this.syncCollapseToEditor();
     void this.render();
+  }
+
+  /** Keeps the selected node's ancestry open and collapses every other branch. */
+  collapseOutsideSelection(): void {
+    const selected = this.selectedNode();
+
+    if (!selected) {
+      new Notice('Mind map: select one node to focus on.');
+
+      return;
+    }
+    const line = selected.line;
+
+    this.collapsedBranches = branchesOutsidePath(selected);
+    this.syncCollapseToEditor();
+    void this.render().then(() => {
+      if (this.selectedLine === line) {
+        this.laidByLine
+          .get(line)
+          ?.el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      }
+    });
   }
 
   /** Lights up a bulk-fold button while everything it folds is folded. */

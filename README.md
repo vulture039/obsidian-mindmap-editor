@@ -59,6 +59,7 @@ None of these come with a hotkey; bind the ones you want in Settings → Hotkeys
 | `Fit mind map to viewport`                          | Fits the whole map in the viewport and centers it     |
 | `Toggle focus between mind map and Markdown editor` | Jumps between the two panes                           |
 | `Collapse all branches` / `Expand all branches`     | The `⌄⌃` header button, one direction at a time       |
+| `Collapse unselected branches`                      | Keeps the selected node and its parent path visible   |
 | `Fold all node text` / `Unfold all node text`       | The `≡` header button, likewise                       |
 | `Show or hide node text on the map`                 | The `¶` header button                                 |
 | `Refresh the mind map from the Markdown`            | The `⟳` header button: rebuilds the map from its file |

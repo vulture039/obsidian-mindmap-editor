@@ -1,5 +1,7 @@
 # Mind map editor
 
+[![Obsidian downloads](https://img.shields.io/badge/dynamic/json?logo=obsidian&color=483699&label=downloads&query=%24%5B%22mindmap-editor%22%5D.downloads&url=https%3A%2F%2Fraw.githubusercontent.com%2Fobsidianmd%2Fobsidian-releases%2Fmaster%2Fcommunity-plugin-stats.json)](https://obsidian.md/plugins?id=mindmap-editor)
+
 Edit your outline as a mind map, synced to Markdown.
 No new file format, no markup to add.
 

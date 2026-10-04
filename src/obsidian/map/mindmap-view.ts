@@ -433,7 +433,7 @@ export class MindmapView extends ItemView {
       }
       if (
         active?.closest(
-          '.mindmap-task-date-picker, .mindmap-task-priority-picker, .mindmap-node-actions',
+          '.mindmap-task-date-picker, .mindmap-task-priority-picker, .mindmap-node-actions, .mindmap-task-metadata',
         ) ||
         this.taskPickerAnchor?.contains(active)
       ) {
@@ -2715,16 +2715,15 @@ export class MindmapView extends ItemView {
 
       return;
     }
-    const dueDate = details.createDiv({
+    const dueDate = details.createEl('button', {
       cls: `mindmap-task-due-date${metadata.dueDate ? '' : ' is-unset'}`,
-      attr: { 'aria-label': dueDateLabel },
+      attr: { type: 'button', 'aria-label': dueDateLabel },
     });
 
     setIcon(dueDate.createSpan(), 'calendar-days');
     if (metadata.dueDate) {
       dueDate.createSpan({ text: metadata.dueDate });
     }
-    dueDate.tabIndex = 0;
     dueDate.addEventListener('pointerdown', claimPointer);
     dueDate.addEventListener('click', (event) => {
       claimPointer(event);
@@ -3773,7 +3772,7 @@ export class MindmapView extends ItemView {
       ? box.left - pickerBox.width - 4
       : box.right + 4;
 
-    picker.style.left = `${Math.max(4, left)}px`;
+    picker.style.left = `${Math.max(4, Math.min(left, this.canvasEl.win.innerWidth - pickerBox.width - 4))}px`;
     picker.style.top = `${Math.max(4, Math.min(box.top, this.canvasEl.win.innerHeight - pickerBox.height - 4))}px`;
     picker.addEventListener('mouseenter', () => this.cancelTaskSubmenuClose());
     picker.addEventListener('mouseleave', () =>
@@ -3885,7 +3884,7 @@ export class MindmapView extends ItemView {
       ? box.left - pickerBox.width - 4
       : box.right + 4;
 
-    picker.style.left = `${Math.max(4, left)}px`;
+    picker.style.left = `${Math.max(4, Math.min(left, this.canvasEl.win.innerWidth - pickerBox.width - 4))}px`;
     picker.style.top = `${Math.max(4, Math.min(box.top, this.canvasEl.win.innerHeight - pickerBox.height - 4))}px`;
     if (!parent) {
       picker

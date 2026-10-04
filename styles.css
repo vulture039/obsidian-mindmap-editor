@@ -383,7 +383,7 @@
   margin: 6px 0 0;
 }
 
-.mindmap-task-due-date {
+.mindmap-task-metadata .mindmap-task-due-date {
   position: relative;
   display: inline-flex;
   align-items: center;

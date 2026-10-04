@@ -190,11 +190,14 @@ const actionCalendar = await until(() =>
   view.containerEl.doc.querySelector('.mindmap-task-date-picker'),
 );
 click(actionCalendar.querySelector('[aria-label="Next month"]'));
-click(actionCalendar.querySelector('[data-date="2026-11-01"]'));
+const chosenDateButton = actionCalendar.querySelector('[data-date]');
+const chosenDate = chosenDateButton.dataset.date;
+
+click(chosenDateButton);
 await written(beforeActionDate);
 check(
   'the action-bar calendar writes the selected date',
-  (await now()) === '- [ ] Task 📅 2026-11-01',
+  (await now()) === `- [ ] Task 📅 ${chosenDate}`,
   await now(),
 );
 const datedTask = label('Task').closest('.mindmap-node');
@@ -210,7 +213,7 @@ check(
   [...datedActions.children]
     .map((control) => control.getAttribute('aria-label'))
     .join(',') ===
-    'Add child,Add sibling,Remove checkbox,Set priority,Change due date, 2026-11-01,More actions',
+    `Add child,Add sibling,Remove checkbox,Set priority,Change due date, ${chosenDate},More actions`,
 );
 click(datedTask);
 await settle();
@@ -286,7 +289,16 @@ check(
       .textContent,
 );
 inlineDueAnchor.focus();
-click(inlineDueAnchor);
+const beforeClosedAnchorKeys = await now();
+await press('Delete');
+await press('Backspace');
+await settle();
+check(
+  'closed calendar anchor keys preserve the selected task',
+  (await now()) === beforeClosedAnchorKeys,
+  await now(),
+);
+await press('Enter');
 await until(() => view.taskDatePicker);
 check(
   'opening the inline calendar focuses its date controls',
@@ -303,6 +315,46 @@ check(
   JSON.stringify({ selected: view.selectedLine, text: await now() }),
 );
 await press('Escape');
+inlineDueAnchor.focus();
+await press(' ');
+await until(() => view.taskDatePicker);
+check(
+  'Space opens the inline calendar without changing Markdown',
+  !!view.taskDatePicker && (await now()) === beforeAnchorKeys,
+);
+await press('Escape');
+
+const narrowAnchor = view.canvasEl.doc.body.createEl('button');
+const mapWindow = view.canvasEl.win;
+const originalWidth = Object.getOwnPropertyDescriptor(mapWindow, 'innerWidth');
+
+narrowAnchor.getBoundingClientRect = () => new DOMRect(180, 100, 28, 22);
+Object.defineProperty(mapWindow, 'innerWidth', {
+  configurable: true,
+  value: 360,
+});
+try {
+  const task = view.laidByLine.get(0).node;
+
+  view.openTaskDatePicker(task, narrowAnchor);
+  check(
+    'the calendar stays within a narrow viewport',
+    view.taskDatePicker.getBoundingClientRect().right <= 356,
+  );
+  view.showPriorityMenu(null, task, narrowAnchor);
+  check(
+    'the priority picker stays within a narrow viewport',
+    view.priorityMenu.getBoundingClientRect().right <= 356,
+  );
+} finally {
+  view.removeTaskPickers();
+  narrowAnchor.remove();
+  if (originalWidth) {
+    Object.defineProperty(mapWindow, 'innerWidth', originalWidth);
+  } else {
+    delete mapWindow.innerWidth;
+  }
+}
 
 click(
   label('Task')

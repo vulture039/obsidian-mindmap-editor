@@ -250,6 +250,7 @@ export class MindmapView extends ItemView {
   private taskDatePicker: HTMLElement | null = null;
   private taskSubmenuCloseTimer: number | null = null;
   private taskPickerAnchor: HTMLElement | null = null;
+  private taskPickerScope: Scope | null = null;
   private linkActionEl: HTMLElement | null = null;
   private autoOpenActionEl: HTMLElement | null = null;
   private viewport!: MapViewport;
@@ -3602,7 +3603,8 @@ export class MindmapView extends ItemView {
               .setTitle(
                 node.taskMetadata?.dueDate ? 'Change due date' : 'Set due date',
               )
-              .setIcon('calendar-days'),
+              .setIcon('calendar-days')
+              .onClick(() => this.openTaskDatePicker(node, el, menu)),
           );
         }
         add(
@@ -3625,6 +3627,7 @@ export class MindmapView extends ItemView {
     menu.showAtMouseEvent(e);
     this.attachPrioritySubmenu(menu, node);
     this.attachDueDatePicker(menu, node);
+    this.attachTaskSubmenuKeys(menu);
     this.attachTaskSubmenuDismissal(node);
     if (!this.canvasEl || node.checked === null) {
       return;
@@ -3671,6 +3674,21 @@ export class MindmapView extends ItemView {
     item.addEventListener('mouseenter', open);
     item.addEventListener('mouseleave', () => this.scheduleTaskSubmenuClose());
     item.addEventListener('focus', open);
+    item.addEventListener('pointerdown', (event) => event.stopPropagation(), {
+      capture: true,
+    });
+    item.addEventListener(
+      'click',
+      (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        open();
+        this.priorityMenu
+          ?.querySelector('button')
+          ?.focus({ preventScroll: true });
+      },
+      { capture: true },
+    );
   }
 
   private attachDueDatePicker(menu: Menu, node: MindNode): void {
@@ -3705,7 +3723,58 @@ export class MindmapView extends ItemView {
     item.addEventListener('mouseleave', () => this.scheduleTaskSubmenuClose());
     item.addEventListener('focus', open);
     item.addEventListener('pointerdown', claim, { capture: true });
-    item.addEventListener('click', claim, { capture: true });
+    item.addEventListener(
+      'click',
+      (event) => {
+        claim(event);
+        open();
+        this.taskDatePicker
+          ?.querySelector<HTMLButtonElement>('.is-selected, [data-date]')
+          ?.focus({ preventScroll: true });
+      },
+      { capture: true },
+    );
+  }
+
+  private attachTaskSubmenuKeys(menu: Menu): void {
+    // Menu's Enter handler always hides it, even when an item opens a submenu.
+    const scope = (
+      menu as Menu & {
+        scope?: Scope & {
+          keys: (ReturnType<Scope['register']> & {
+            func: Parameters<Scope['register']>[2];
+          })[];
+        };
+      }
+    ).scope;
+
+    if (!scope) {
+      return;
+    }
+
+    for (const key of ['Enter', 'ArrowRight']) {
+      const original = scope.keys.find(
+        (handler) => handler.key === key && !handler.modifiers,
+      );
+
+      if (!original) {
+        continue;
+      }
+      scope.unregister(original);
+      scope.register([], key, (event, context) => {
+        const selected = this.canvasEl.doc.querySelector<HTMLElement>(
+          '.menu-item.selected.mindmap-menu-has-submenu',
+        );
+
+        if (selected) {
+          selected.click();
+
+          return false;
+        }
+
+        return original.func(event, context) as boolean | undefined;
+      });
+    }
   }
 
   private attachTaskSubmenuDismissal(node: MindNode): void {
@@ -3781,6 +3850,7 @@ export class MindmapView extends ItemView {
       this.scheduleTaskSubmenuClose(),
     );
     this.priorityMenu = picker;
+    this.registerTaskPickerKeys(picker);
     if (!parent) {
       picker.querySelector('button')?.focus({ preventScroll: true });
     }
@@ -3887,6 +3957,7 @@ export class MindmapView extends ItemView {
       this.scheduleTaskSubmenuClose(),
     );
     this.taskDatePicker = picker;
+    this.registerTaskPickerKeys(picker);
     const pickerBox = picker.getBoundingClientRect();
     const left = this.taskSubmenuOpensLeft(anchor)
       ? box.left - pickerBox.width - 4
@@ -3901,7 +3972,96 @@ export class MindmapView extends ItemView {
     }
   }
 
+  private registerTaskPickerKeys(picker: HTMLElement): void {
+    // The parent menu sees keys before DOM listeners, so focus needs its own scope.
+    const scope = new Scope();
+
+    scope.register(null, null, (event) => {
+      if (event.key === 'Escape') {
+        this.removeTaskPickers();
+
+        return false;
+      }
+      this.moveTaskPickerFocus(picker, event);
+
+      return !event.defaultPrevented;
+    });
+    picker.addEventListener('focusin', () => {
+      if (this.taskPickerScope === scope) {
+        return;
+      }
+      this.releaseTaskPickerKeys();
+      this.taskPickerScope = scope;
+      this.app.keymap.pushScope(scope);
+    });
+    picker.addEventListener('focusout', (event) => {
+      if (!picker.contains(event.relatedTarget as Node | null)) {
+        this.releaseTaskPickerKeys();
+      }
+    });
+  }
+
+  private releaseTaskPickerKeys(): void {
+    if (this.taskPickerScope) {
+      this.app.keymap.popScope(this.taskPickerScope);
+      this.taskPickerScope = null;
+    }
+  }
+
+  private moveTaskPickerFocus(picker: HTMLElement, event: KeyboardEvent): void {
+    const active = picker.doc.activeElement;
+    const calendarDay = active?.matches('[data-date]');
+    const selector = calendarDay ? '[data-date]' : 'button';
+    const buttons = Array.from(
+      picker.querySelectorAll<HTMLButtonElement>(selector),
+    );
+    const index = buttons.findIndex((button) => button === active);
+    let next = index;
+
+    switch (event.key) {
+      case 'ArrowDown':
+        next += calendarDay ? 7 : 1;
+        break;
+      case 'ArrowUp':
+        next -= calendarDay ? 7 : 1;
+        break;
+      case 'ArrowRight':
+        next += 1;
+        break;
+      case 'ArrowLeft':
+        next -= 1;
+        break;
+      case 'Home':
+        next = 0;
+        break;
+      case 'End':
+        next = buttons.length - 1;
+        break;
+      default:
+        return;
+    }
+    event.preventDefault();
+    buttons[Math.max(0, Math.min(next, buttons.length - 1))]?.focus({
+      preventScroll: true,
+    });
+  }
+
   private removeTaskPickers(): void {
+    this.releaseTaskPickerKeys();
+    const active = this.canvasEl?.doc.activeElement;
+    const hadFocus =
+      this.priorityMenu?.contains(active) ||
+      this.taskDatePicker?.contains(active);
+
+    if (hadFocus) {
+      const anchor = this.taskPickerAnchor;
+      let focus = this.scrollerEl;
+
+      if (anchor?.isConnected && anchor.matches('button')) {
+        focus = anchor;
+      }
+      focus.focus({ preventScroll: true });
+    }
     this.cancelTaskSubmenuClose();
     this.priorityMenu?.remove();
     this.priorityMenu = null;

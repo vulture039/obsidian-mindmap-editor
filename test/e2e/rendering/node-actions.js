@@ -228,6 +228,7 @@ check(
 );
 click(datedTask);
 await settle();
+await press('Escape');
 focusMap();
 click(
   label('Task')
@@ -370,6 +371,170 @@ check(
   !!view.taskDatePicker && (await now()) === beforeAnchorKeys,
 );
 await press('Escape');
+
+const pickerFocusVisible = (picker) => {
+  const active = view.canvasEl.doc.activeElement;
+
+  if (!picker?.contains(active)) {
+    return false;
+  }
+  const style = getComputedStyle(active);
+
+  return (
+    active.matches(':focus-visible') &&
+    style.outlineStyle !== 'none' &&
+    parseFloat(style.outlineWidth) >= 2
+  );
+};
+
+const selectMenuAction = async (title, key = 'Enter') => {
+  const task = label('Task').closest('.mindmap-node');
+
+  focusMap();
+  click(task.querySelector('[aria-label="More actions"]'));
+  await until(menuHasKeyboard);
+  for (let count = 0; count < 20; count += 1) {
+    await press('ArrowDown');
+    const selected = view.canvasEl.doc.querySelector('.menu-item.selected');
+
+    if (selected?.querySelector('.menu-item-title')?.textContent === title) {
+      await press(key);
+
+      return;
+    }
+  }
+  throw new Error(`Menu action unavailable: ${title}`);
+};
+
+await selectMenuAction('Priority');
+await until(() => view.priorityMenu);
+check(
+  'keyboard activation keeps the parent menu beside priority',
+  view.priorityMenu?.contains(view.canvasEl.doc.activeElement) &&
+    !!view.canvasEl.doc.querySelector('.menu'),
+);
+await press('ArrowDown');
+check(
+  'priority arrows move focus between choices',
+  view.canvasEl.doc.activeElement?.textContent === '▲ High' &&
+    pickerFocusVisible(view.priorityMenu),
+);
+await press('ArrowDown');
+check(
+  'priority focus remains visible away from the saved selection',
+  view.canvasEl.doc.activeElement?.textContent === '● Medium' &&
+    pickerFocusVisible(view.priorityMenu),
+);
+await press('ArrowUp');
+const beforeKeyboardPriority = await now();
+await press('Enter');
+await written(beforeKeyboardPriority);
+check(
+  'Enter selects priority without reopening its parent menu',
+  (await now()).includes('▲') &&
+    !view.priorityMenu &&
+    !view.canvasEl.doc.querySelector('.menu'),
+  await now(),
+);
+
+await selectMenuAction('Change due date');
+await until(() => view.taskDatePicker);
+check(
+  'keyboard activation keeps the parent menu beside the calendar',
+  view.taskDatePicker?.contains(view.canvasEl.doc.activeElement) &&
+    !!view.canvasEl.doc.querySelector('.menu'),
+);
+await press('Home');
+await press('ArrowRight');
+await press('ArrowDown');
+const keyboardDate = view.canvasEl.doc.activeElement?.dataset.date;
+check(
+  'calendar arrows move by a day horizontally and a week vertically',
+  keyboardDate?.endsWith('-09') && pickerFocusVisible(view.taskDatePicker),
+  keyboardDate,
+);
+const beforeKeyboardDate = await now();
+await press(' ');
+await written(beforeKeyboardDate);
+check(
+  'Space selects a calendar date without reopening its parent menu',
+  (await now()).includes(`📅 ${keyboardDate}`) && !view.taskDatePicker,
+  await now(),
+);
+
+await selectMenuAction('Priority', 'ArrowRight');
+await until(() => view.priorityMenu);
+check(
+  'Right arrow opens the submenu while keeping its parent',
+  !!view.priorityMenu && !!view.canvasEl.doc.querySelector('.menu'),
+);
+await press('Tab');
+check(
+  'Tab moves within the priority picker',
+  view.canvasEl.doc.activeElement?.textContent === '▲ High',
+);
+await press('Escape');
+check(
+  'Escape closes only the submenu and returns to its parent',
+  !view.priorityMenu &&
+    !!view.canvasEl.doc.querySelector('.menu') &&
+    view.canvasEl.doc.activeElement === view.scrollerEl,
+);
+
+await press('Escape');
+focusMap();
+click(
+  label('Task')
+    .closest('.mindmap-node')
+    .querySelector('[aria-label="More actions"]'),
+);
+await until(menuHasKeyboard);
+const priorityRow = [...view.canvasEl.doc.querySelectorAll('.menu-item')].find(
+  (item) => item.querySelector('.menu-item-title')?.textContent === 'Priority',
+);
+click(priorityRow, 'mouseenter');
+await until(() => view.priorityMenu);
+view.priorityMenu.querySelector('button').focus();
+await press('End');
+await press('ArrowUp');
+const beforeHoverPriority = await now();
+await press(' ');
+await written(beforeHoverPriority);
+check(
+  'hover-open priority accepts keyboard selection while its parent menu is open',
+  (await now()).includes('▼') &&
+    !view.priorityMenu &&
+    !view.canvasEl.doc.querySelector('.menu'),
+);
+
+focusMap();
+click(
+  label('Task')
+    .closest('.mindmap-node')
+    .querySelector('[aria-label="More actions"]'),
+);
+await until(menuHasKeyboard);
+const dateRow = [...view.canvasEl.doc.querySelectorAll('.menu-item')].find(
+  (item) =>
+    item.querySelector('.menu-item-title')?.textContent === 'Change due date',
+);
+click(dateRow);
+await until(() => view.taskDatePicker);
+check(
+  'clicking the date menu opens and focuses the calendar without a hover event',
+  view.taskDatePicker?.contains(view.canvasEl.doc.activeElement),
+);
+await press('Home');
+const beforeMenuDate = await now();
+await press('Enter');
+await written(beforeMenuDate);
+check(
+  'menu calendar accepts Enter while its parent menu is open',
+  /📅 \d{4}-\d{2}-01/.test(await now()) &&
+    !view.taskDatePicker &&
+    !view.canvasEl.doc.querySelector('.menu'),
+  await now(),
+);
 
 const narrowAnchor = view.canvasEl.doc.body.createEl('button');
 const mapWindow = view.canvasEl.win;

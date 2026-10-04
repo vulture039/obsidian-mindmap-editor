@@ -432,6 +432,8 @@ export class MindmapView extends ItemView {
         return false;
       }
       if (
+        this.priorityMenu ||
+        this.taskDatePicker ||
         active?.closest(
           '.mindmap-task-date-picker, .mindmap-task-priority-picker, .mindmap-node-actions, .mindmap-task-metadata',
         ) ||
@@ -3833,10 +3835,16 @@ export class MindmapView extends ItemView {
       previous.addEventListener('click', () => {
         month = new Date(month.getFullYear(), month.getMonth() - 1, 1);
         render();
+        picker
+          .querySelector<HTMLButtonElement>('[aria-label="Previous month"]')
+          ?.focus({ preventScroll: true });
       });
       next.addEventListener('click', () => {
         month = new Date(month.getFullYear(), month.getMonth() + 1, 1);
         render();
+        picker
+          .querySelector<HTMLButtonElement>('[aria-label="Next month"]')
+          ?.focus({ preventScroll: true });
       });
       const grid = picker.createDiv({ cls: 'mindmap-calendar-grid' });
 

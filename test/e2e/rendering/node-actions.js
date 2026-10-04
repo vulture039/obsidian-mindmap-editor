@@ -93,8 +93,19 @@ const deleteItem = await until(() =>
   ),
 );
 check('more actions opens the full node menu', !!deleteItem);
-key('Escape');
-await until(() => !view.containerEl.doc.querySelector('.menu'));
+const menuHasKeyboard = () =>
+  app.keymap
+    .getWindowStack(view.canvasEl.win)
+    .scope.keys.some(
+      (handler) => handler.key === 'ArrowLeft' && !handler.modifiers,
+    );
+
+await until(menuHasKeyboard);
+await press('Escape');
+check(
+  'Escape closes the full menu before further node actions',
+  !!(await until(() => !view.containerEl.doc.querySelector('.menu'))),
+);
 
 first?.dispatchEvent(new PointerEvent('pointerleave'));
 second?.dispatchEvent(new PointerEvent('pointerenter'));
@@ -304,6 +315,42 @@ check(
   'opening the inline calendar focuses its date controls',
   view.taskDatePicker.contains(view.canvasEl.doc.activeElement),
 );
+const beforeMonthKeys = await now();
+for (const direction of ['Next month', 'Previous month']) {
+  const monthButton = view.taskDatePicker.querySelector(
+    `[aria-label="${direction}"]`,
+  );
+  const previousMonth = view.taskDatePicker.querySelector(
+    '.mindmap-calendar-month',
+  ).textContent;
+
+  monthButton.focus();
+  click(monthButton);
+  check(
+    `${direction} moves the calendar and restores button focus`,
+    view.taskDatePicker.querySelector('.mindmap-calendar-month').textContent !==
+      previousMonth &&
+      view.canvasEl.doc.activeElement ===
+        view.taskDatePicker.querySelector(`[aria-label="${direction}"]`),
+  );
+  await press('Delete');
+  await press('Backspace');
+  await settle();
+  check(
+    `${direction} keeps destructive keys out of map commands`,
+    view.selectedLine === 0 && (await now()) === beforeMonthKeys,
+    await now(),
+  );
+}
+view.canvasEl.doc.activeElement.blur();
+await press('Delete');
+await press('Backspace');
+await settle();
+check(
+  'an open calendar protects the task even after focus leaves its controls',
+  view.selectedLine === 0 && (await now()) === beforeMonthKeys,
+  await now(),
+);
 inlineDueAnchor.focus();
 const beforeAnchorKeys = await now();
 await press('Delete');
@@ -367,6 +414,7 @@ const noteMenuItem = await until(() =>
       item.querySelector('.menu-item-title')?.textContent === 'Add note',
   ),
 );
+await until(menuHasKeyboard);
 click(noteMenuItem);
 check(
   'the full menu still opens node note editing',
